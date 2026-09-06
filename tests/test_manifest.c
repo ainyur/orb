@@ -1,7 +1,6 @@
 #include "test.h"
 #define ORB_OS_HEADLESS 1
 #include "../src/orb.c"
-#include <sys/stat.h>
 
 #define DIR "build/scratch/manifest"
 #define ART "\"../../../tests/fixtures/"
@@ -29,7 +28,7 @@ static bool write_manifest(const char* size, const char* sprites) {
 }
 
 int main(void) {
-    mkdir(DIR, 0777);
+    CHECK(orb_os_make_dir(DIR));
     CHECK(write_manifest("[64, 32]", ART "player.aseprite\""));
 
     orb_error err;
