@@ -1,4 +1,3 @@
-#include "game_assets.h"
 #include "orb.h"
 
 typedef struct {
@@ -21,16 +20,16 @@ static orb_config config(void) {
 static void init(void* state, const orb_api* orb) {
     game_state* g = state;
 
-    g->x = 120;
-    g->y = 80;
+    (void)orb;
 
-    orb->animation_start(&g->animation, ORB_ANIMATION_PLAYER_WALK);
+    g->x = 20;
+    g->y = 8;
 }
 
 static void reload(void* state, const orb_api* orb) {
-    (void)state;
+    game_state* g = state;
 
-    orb->log("hello: reloaded");
+    g->animation.animation = orb->animation_find("player", "walk");
 }
 
 static void update(void* state, const orb_api* orb) {

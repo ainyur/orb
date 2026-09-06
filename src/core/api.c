@@ -3,6 +3,7 @@
 #include "../graphics/sprite.h"
 #include "input.h"
 #include "log.h"
+#include <stdio.h>
 #include <string.h>
 
 static orb_assets api_assets;
@@ -12,7 +13,7 @@ static uint8_t api_sprite_generations[ORB_MAX_SPRITES];
 static uint8_t api_animation_generations[ORB_MAX_ANIMATIONS];
 
 // A recast that lands a different source at an index bumps that index, so a
-// handle the running code took from the previous header fails closed.
+// handle found before it fails closed until reload finds the name again.
 static void api_bump_changed(
     uint8_t* generations, const uint64_t* old, uint32_t old_count, const uint64_t* new,
     uint32_t new_count
@@ -23,6 +24,27 @@ static void api_bump_changed(
 
     for (uint32_t i = 0; i < n; i++)
         if (old[i] != new[i]) generations[i]++;
+}
+
+// The handle at the index whose id matches, carrying that index's current
+// generation; 0xffffff (the null handle) on a miss.
+static uint32_t
+api_find(const uint64_t* ids, uint32_t count, const uint8_t* generations, uint64_t id) {
+    for (uint32_t i = 0; i < count; i++)
+        if (ids[i] == id) return i | (uint32_t)generations[i] << 24;
+
+    return 0xffffffu;
+}
+
+static orb_animation api_animation_find(const char* stem, const char* tag) {
+    uint32_t v = api_find(
+        api_assets.animation_ids, api_assets.animation_count, api_animation_generations,
+        orb_asset_id(stem, tag)
+    );
+
+    if (v == 0xffffffu) orb_log("no animation \"%s\" in %s", tag, stem);
+
+    return ORB_ANIMATION(v);
 }
 
 static void api_animation_start(orb_animation_state* st, orb_animation a) {
@@ -55,7 +77,23 @@ static void api_sprite_draw(
     orb_sprite_draw(&api_framebuffer, &api_assets, cam, s, x, y, flags, remap);
 }
 
+static orb_sprite api_sprite_find(const char* stem, int frame) {
+    char suffix[16];
+
+    snprintf(suffix, sizeof suffix, "%d", frame);
+
+    uint32_t v = api_find(
+        api_assets.sprite_ids, api_assets.sprite_count, api_sprite_generations,
+        orb_asset_id(stem, suffix)
+    );
+
+    if (v == 0xffffffu) orb_log("no frame %d in %s", frame, stem);
+
+    return ORB_SPRITE(v);
+}
+
 static const orb_api api_table = {
+    .animation_find = api_animation_find,
     .animation_start = api_animation_start,
     .animation_step = api_animation_step,
     .button_down = orb_button_down,
@@ -67,6 +105,7 @@ static const orb_api api_table = {
     .palette_reset = api_palette_reset,
     .palette_set = api_palette_set,
     .sprite_draw = api_sprite_draw,
+    .sprite_find = api_sprite_find,
 };
 
 const orb_framebuffer* orb_api_framebuffer(void) {
@@ -75,11 +114,6 @@ const orb_framebuffer* orb_api_framebuffer(void) {
 
 void orb_api_init(orb_arena* a, int w, int h) {
     orb_framebuffer_init(&api_framebuffer, a, w, h);
-}
-
-void orb_api_reset_generations(void) {
-    memset(api_sprite_generations, 0, sizeof api_sprite_generations);
-    memset(api_animation_generations, 0, sizeof api_animation_generations);
 }
 
 void orb_api_resolve(uint32_t* rgb) {

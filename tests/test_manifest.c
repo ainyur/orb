@@ -3,9 +3,8 @@
 #include "../src/orb.c"
 #include <sys/stat.h>
 
-// A game dir the test can rewrite, borrowing the example's art.
 #define DIR "build/scratch/manifest"
-#define ART "\"../../../examples/hello/art/"
+#define ART "\"../../../tests/fixtures/"
 
 static orb_config test_config(void) {
     return (orb_config) {.state_size = 16, .state_version = 1};
@@ -43,7 +42,7 @@ int main(void) {
     const orb_api* api = orb_api_table();
 
     api->clear(0);
-    api->sprite_draw(NULL, ORB_SPRITE(2), 0, 0, 0, NULL); // one file: two sprites, no third
+    api->sprite_draw(NULL, ORB_SPRITE(2), 0, 0, 0, NULL);
     CHECK_EQ(orb_api_framebuffer()->px[4 * 64 + 4], 0);
 
     // adding a sprite to game.json and recasting picks it up without a restart
@@ -52,33 +51,35 @@ int main(void) {
     CHECK_EQ(orb_run_manifest()->sprite_count, 2);
     api->clear(0);
     api->sprite_draw(NULL, ORB_SPRITE(2), 0, 0, 0, NULL);
-    CHECK_EQ(orb_api_framebuffer()->px[4 * 64 + 4], 2); // frame 0's red body
+    CHECK_EQ(orb_api_framebuffer()->px[4 * 64 + 4], 2);
 
-    // renaming the source behind index 0 (a copy of player as hero) changes the id
-    // at that index: the handle the running code holds fails closed until the code
-    // reloads against the regenerated header
     orb_span player;
     static alignas(16) uint8_t copy_mem[1 << 16];
     orb_arena copy;
-
     orb_arena_init(&copy, "copy", copy_mem, sizeof copy_mem);
-    CHECK(orb_os_read_file("examples/hello/art/player.aseprite", &copy, &player));
+
+    CHECK(orb_os_read_file("tests/fixtures/player.aseprite", &copy, &player));
     CHECK(orb_os_write_file(DIR "/hero.aseprite", player));
     CHECK(write_manifest("[64, 32]", "\"hero.aseprite\""));
     CHECK(orb_run_recast(&err));
+
     api->clear(0);
     api->sprite_draw(NULL, ORB_SPRITE(0), 0, 0, 0, NULL);
+
     CHECK_EQ(orb_api_framebuffer()->px[4 * 64 + 4], 0);
-    orb_run_set_game(&test_game); // the rebuilt code arrives
+    CHECK_EQ(api->sprite_find("player", 0).v, ORB_NO_SPRITE.v); // gone by that name
+
+    // finding by the new name, as reload does, yields the live handle
     api->clear(0);
-    api->sprite_draw(NULL, ORB_SPRITE(0), 0, 0, 0, NULL);
+    api->sprite_draw(NULL, api->sprite_find("hero", 0), 0, 0, 0, NULL);
+
     CHECK_EQ(orb_api_framebuffer()->px[4 * 64 + 4], 2);
 
-    // the window size and the region sizes are fixed at boot: say so instead of
-    // silently casting against the old ones
     CHECK(write_manifest("[128, 32]", ART "player.aseprite\""));
     CHECK(!orb_run_recast(&err));
     CHECK(strstr(err.text, "restart") != NULL);
+
     orb_os_close();
+
     return 0;
 }

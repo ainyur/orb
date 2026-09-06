@@ -6,6 +6,13 @@
 #define ORB_PATH_MAX 600
 typedef char orb_path[ORB_PATH_MAX];
 
+// What the game's build produces and scry loads: build/game.so or build/game.dll.
+#ifdef _WIN32
+#define ORB_OS_LIB_SUFFIX ".dll"
+#else
+#define ORB_OS_LIB_SUFFIX ".so"
+#endif
+
 typedef struct orb_os_config {
     const char* title;
     int size_w, size_h;

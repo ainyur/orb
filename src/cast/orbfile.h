@@ -24,6 +24,11 @@ enum {
 #define ORB_MAX_SPRITES (1u << 14)
 #define ORB_MAX_ANIMATIONS (1u << 12)
 
+// The id of an asset: a hash of its file stem and frame number or tag name,
+// case-insensitive. Cast stores one per entry; find hashes the request the
+// same way and scans for it.
+uint64_t orb_asset_id(const char* stem, const char* suffix);
+
 typedef struct orb_file_header {
     uint32_t magic, version, section_count, pad;
 } orb_file_header;

@@ -1,6 +1,26 @@
 #include "orbfile.h"
+#include <ctype.h>
 #include <stdio.h>
 #include <string.h>
+
+// FNV-1a over STEM_SUFFIX with every non-alphanumeric folded to '_' and letters
+// uppercased, so "player" + "walk" and "Player" + "WALK" are one id.
+static uint64_t asset_hash(uint64_t h, const char* s) {
+    for (const unsigned char* c = (const unsigned char*)s; *c; c++) {
+        unsigned char x = isalnum(*c) ? (unsigned char)toupper(*c) : (unsigned char)'_';
+
+        h = (h ^ x) * 0x100000001b3u;
+    }
+
+    return h;
+}
+
+uint64_t orb_asset_id(const char* stem, const char* suffix) {
+    uint64_t h = asset_hash(0xcbf29ce484222325u, stem);
+
+    h = (h ^ (unsigned char)'_') * 0x100000001b3u;
+    return asset_hash(h, suffix);
+}
 
 static void file_section(
     orb_arena* a, const uint8_t* base, orb_section* s, uint32_t tag, const void* data, size_t size

@@ -43,7 +43,9 @@ typedef struct {
 
 #define ORB_ANIMATION(i) ((orb_animation) {(uint32_t)(i)})
 #define ORB_SPRITE(i) ((orb_sprite) {(uint32_t)(i)})
-#define ORB_HANDLE_INDEX(h) ((h).v & 0xffffffu) // v = handle index (24 bits) | generation << 24
+#define ORB_NO_ANIMATION ORB_ANIMATION(0xffffffu) // what a find that misses returns; plays nothing
+#define ORB_NO_SPRITE ORB_SPRITE(0xffffffu)       // draws nothing
+#define ORB_HANDLE_INDEX(h) ((h).v & 0xffffffu)   // v = handle index (24 bits) | generation << 24
 #define ORB_HANDLE_GENERATION(h) ((h).v >> 24)
 
 #define ORB_FLIP_X 1u
@@ -58,11 +60,14 @@ typedef struct {
 //  2. No pointer into your library survives a reload: not function pointers,
 //     not string literals, not static const tables. Store handles and indices,
 //     and re-bind behavior in reload.
-//  3. reload also runs after every asset recast, so it is the one place to
-//     re-resolve anything by name.
+//  3. Assets are found by name: sprite_find("player", 0) is frame 0 of
+//     player.aseprite, animation_find("player", "walk") its "walk" tag. reload
+//     runs at boot after init, after every code reload, and after every art
+//     recast, so it is the one place to find things and store the handles.
 // A handle is an index plus a generation. A recast that puts different art at
-// an index bumps its generation, so a handle from the previous header draws
-// and plays nothing until the code is rebuilt against the regenerated header.
+// an index bumps its generation, so a handle found before it draws and plays
+// nothing until reload finds it again. A find that misses logs the name and
+// returns ORB_NO_SPRITE or ORB_NO_ANIMATION.
 typedef struct orb_config {
     size_t arena_size;
     size_t state_size;
@@ -72,6 +77,7 @@ typedef struct orb_config {
 } orb_config;
 
 typedef struct orb_api {
+    orb_animation (*animation_find)(const char* stem, const char* tag);
     void (*animation_start)(orb_animation_state* st, orb_animation a);
     orb_sprite (*animation_step)(orb_animation_state* st);
     bool (*button_down)(int button);
@@ -85,6 +91,7 @@ typedef struct orb_api {
     void (*sprite_draw)(
         const orb_camera* cam, orb_sprite s, int x, int y, uint32_t flags, const uint8_t* remap
     );
+    orb_sprite (*sprite_find)(const char* stem, int frame);
 } orb_api;
 
 typedef struct orb_game {

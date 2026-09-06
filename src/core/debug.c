@@ -48,13 +48,13 @@ static int debug_asset_count;
 static orb_watch debug_source_watches[DEBUG_MAX_WATCHES];
 static int debug_source_count;
 
-// Copy game.so to a fresh name and load the copy, so the compiler can overwrite
+// Copy the game library to a fresh name and load the copy, so the compiler can overwrite
 // the original while it is loaded (Windows locks loaded DLLs; the copy keeps
 // both platforms on one path). The previous copy is closed and removed only
 // after the new one loaded, so a broken build keeps the old code running.
 static const orb_game* debug_load_game(void) {
     char name[64];
-    snprintf(name, sizeof name, "build/.orb-game-%d.so", debug_copy_count++);
+    snprintf(name, sizeof name, "build/.orb-game-%d" ORB_OS_LIB_SUFFIX, debug_copy_count++);
     orb_path path;
 
     orb_path_join(path, debug_dir, name);
@@ -130,10 +130,11 @@ static void debug_build_line(const char* line) {
 }
 
 // Run the game's own build. orb contains no compiler; scry only invokes make.
+// Double quotes: the one quoting both sh and cmd.exe understand.
 static bool debug_build(void) {
     char command[ORB_PATH_MAX + 64];
 
-    snprintf(command, sizeof command, "make --no-print-directory -s -C '%s'", debug_dir);
+    snprintf(command, sizeof command, "make --no-print-directory -s -C \"%s\"", debug_dir);
     return orb_os_run(command, debug_build_line) == 0;
 }
 
@@ -176,7 +177,7 @@ static void debug_poll_scry(void) {
 
 static int debug_boot(const char* game_dir) {
     snprintf(debug_dir, sizeof debug_dir, "%s", game_dir);
-    orb_path_join(debug_so_path, game_dir, "build/game.so");
+    orb_path_join(debug_so_path, game_dir, "build/game" ORB_OS_LIB_SUFFIX);
 
     const orb_game* game = debug_load_game();
 

@@ -11,7 +11,7 @@ static int usage(FILE* to) {
             "\n"
             "  scry [game_dir]         dev loop: build on change, reload code, recast art\n"
             "  run  [game_dir]         plain run, no watching\n"
-            "  cast [game_dir]         cast once, write game_assets.h\n"
+            "  cast [game_dir]         cast once: report what the art yields, and any errors\n"
             "  seal [game_dir] [out]   cast and write the artifact, to bin/<id>.orb by default\n"
             "  help                    this text\n"
             "  --version               print the version\n"

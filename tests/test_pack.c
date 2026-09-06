@@ -38,17 +38,16 @@ int main(void) {
     CHECK_EQ(pack.pixels[r->y * pack.sheet_w + r->x], 5);
     CHECK_EQ(pack.pixels[(r->y + 1) * pack.sheet_w + r->x + 1], 6);
 
-    // 300 frames of 16x16 solid blocks with distinct values wrap onto several shelves
     uint8_t* big = orb_arena_push(&a, 300 * 256, 1);
-
-    for (int f = 0; f < 300; f++)
-        memset(big + f * 256, 1 + f % 250, 256);
+    for (int f = 0; f < 300; f++) memset(big + f * 256, 1 + f % 250, 256);
 
     orb_pack_frames(&a, big, 300, 16, 16, &pack);
+
     CHECK_EQ(pack.rect_count, 250);
     CHECK_EQ(pack.sheet_w, 256);
     CHECK_EQ(pack.sheet_h, 16 * 16); // 250 rects, 16 per shelf, 16 shelves
     CHECK_EQ(pack.rects[16].x, 0);
     CHECK_EQ(pack.rects[16].y, 16);
+
     return 0;
 }

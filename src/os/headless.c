@@ -1,5 +1,9 @@
 #include "orb_os.h"
+#ifdef _WIN32
+#include "win32.c"
+#else
 #include "posix.c"
+#endif
 #include <stdlib.h>
 #include <string.h>
 

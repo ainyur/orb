@@ -93,7 +93,11 @@ int main(void) {
 
     // run a command and receive its combined output one line at a time, plus its status
     run_line_count = 0;
+#ifdef _WIN32
+    CHECK_EQ(orb_os_run("echo a&echo make: *** boom&echo b&exit 3", run_line), 3);
+#else
     CHECK_EQ(orb_os_run("printf 'a\nmake: *** boom\nb\n'; exit 3", run_line), 3);
+#endif
     CHECK_EQ(run_line_count, 3);
     CHECK(strcmp(run_lines[1], "make: *** boom") == 0);
     CHECK(strcmp(run_lines[2], "b") == 0);

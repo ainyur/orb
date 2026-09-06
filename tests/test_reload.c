@@ -2,7 +2,6 @@
 #define ORB_OS_HEADLESS 1
 #include "../src/orb.c"
 
-// A stand-in game whose state size the test can change between reloads.
 static size_t test_state_size = 64;
 static int test_init_count, test_reload_count;
 
@@ -31,24 +30,26 @@ static const orb_game test_game = {test_config, test_init, test_reload, test_upd
 int main(void) {
     orb_error err;
 
-    if (!orb_run_boot(&test_game, "examples/hello", &err)) {
+    if (!orb_run_boot(&test_game, "examples/demo", &err)) {
         fprintf(stderr, "boot: %s\n", err.text);
         return 1;
     }
 
-    CHECK_EQ(test_init_count, 1);
-
-    // same size and version: a plain reload
-    orb_run_set_game(&test_game);
+    // boot: init sets up the state, then reload binds names, as after any recast
     CHECK_EQ(test_init_count, 1);
     CHECK_EQ(test_reload_count, 1);
 
-    // the state struct grew (a field was added) without a version bump: orb treats
-    // that as a new version, resets the state, and keeps the session alive
+    // same size and version
+    orb_run_set_game(&test_game);
+    CHECK_EQ(test_init_count, 1);
+    CHECK_EQ(test_reload_count, 2);
+
+    // the state struct grew (a field was added) without a version bump
+    // orb treats that as a new version, resets the state, and keeps the session alive
     test_state_size = 64 + 16;
     orb_run_set_game(&test_game);
     CHECK_EQ(test_init_count, 2);
-    CHECK_EQ(test_reload_count, 1);
+    CHECK_EQ(test_reload_count, 3);
 
     // shrinking is a layout change too
     test_state_size = 64 - 8;
@@ -56,5 +57,6 @@ int main(void) {
     CHECK_EQ(test_init_count, 3);
 
     orb_os_close();
+
     return 0;
 }

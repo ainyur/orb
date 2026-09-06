@@ -3,10 +3,9 @@
 #include "../src/orb.c"
 
 int main(void) {
-    static alignas(16) uint8_t mem[1 << 20];
     orb_arena a;
+    static alignas(16) uint8_t mem[1 << 20];
     orb_arena_init(&a, "test", mem, sizeof mem);
-    orb_error err;
 
     uint8_t palette[256 * 4] = {0};
 
@@ -40,12 +39,11 @@ int main(void) {
     };
 
     orb_span file = orb_file_write(&a, &in);
-
     CHECK(file.len > sizeof(orb_file_header) + 6 * sizeof(orb_section));
     CHECK(((uintptr_t)file.ptr & 15) == 0);
 
     orb_assets out;
-
+    orb_error err;
     CHECK(orb_file_load(file, &out, &err));
     CHECK_EQ(out.palette[6], 64);
     CHECK_EQ(out.sheet_count, 1);
@@ -67,5 +65,6 @@ int main(void) {
     file.ptr[4] = 99; // version
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "version") != NULL);
+
     return 0;
 }

@@ -27,10 +27,12 @@ static size_t run_state_reserve(size_t state_size) {
 }
 
 // Zero the state and start over: the layout the running code expects changed.
+// init sets the state up, then reload binds names, as it does after any recast.
 static void run_state_reset(orb_config next) {
     memset(run_state.base, 0, run_state.size);
     run_config = next;
     run_game->init(run_state.base, orb_api_table());
+    run_game->reload(run_state.base, orb_api_table());
 }
 
 static bool run_cast(int half, orb_error* err) {
@@ -95,8 +97,6 @@ bool orb_run_boot(const orb_game* game, const char* game_dir, orb_error* err) {
 
     if (!run_cast(0, err)) return false;
 
-    orb_api_reset_generations();
-
     orb_os_config cfg = {
         .title = run_manifest.name, .size_w = run_manifest.size_w, .size_h = run_manifest.size_h
     };
@@ -107,6 +107,7 @@ bool orb_run_boot(const orb_game* game, const char* game_dir, orb_error* err) {
     }
 
     run_game->init(run_state.base, orb_api_table());
+    run_game->reload(run_state.base, orb_api_table());
     return true;
 }
 
@@ -162,7 +163,6 @@ bool orb_run_recast(orb_error* err) {
 
 void orb_run_set_game(const orb_game* game) {
     run_game = game;
-    orb_api_reset_generations(); // the new code was built against the current header
 
     orb_config next = game->config();
 

@@ -1,6 +1,6 @@
 {
-  "id": "hello",
-  "name": "hello, world",
+  "id": "demo",
+  "name": "demo",
   "size": [320, 180],
   "asset_headroom": 4194304,
   "palette": "art/palette.aseprite",

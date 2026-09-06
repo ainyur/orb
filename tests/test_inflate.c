@@ -29,7 +29,7 @@ int main(void) {
     CHECK_EQ(orb_inflate(in, n, out, sizeof out), 23);
     CHECK(memcmp(out, "hello hello hello hello", 23) == 0);
 
-    // dynamic huffman: 200 bytes of skewed random text, expected prefix checked below
+    // dynamic huffman: 200 bytes of skewed random text
     n = unhex(
         "78da0dcecb0184200c05c056682dcac344091112f153fdee69ae13770221271e4bfb8bc65bc2ced6"
         "a940002c17da41dcb152e2ac2474501a06d7057176c327fda95c6798955cbd60d0e73ea3e97e7c0d"
@@ -46,5 +46,6 @@ int main(void) {
     CHECK_EQ(orb_inflate(in, n, out, 100), -1);
     // not zlib
     CHECK_EQ(orb_inflate((const uint8_t*)"nope!!", 6, out, sizeof out), -1);
+
     return 0;
 }
