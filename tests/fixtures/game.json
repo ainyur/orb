@@ -1,0 +1,8 @@
+{
+  "id": "fixture",
+  "name": "Fixture",
+  "size": [64, 32],
+  "asset_headroom": 1048576,
+  "palette": "palette.aseprite",
+  "sprites": ["player.aseprite"]
+}

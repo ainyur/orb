@@ -1,0 +1,8 @@
+{
+  "id": "hello",
+  "name": "hello, world",
+  "size": [320, 180],
+  "asset_headroom": 4194304,
+  "palette": "art/palette.aseprite",
+  "sprites": ["art/player.aseprite"]
+}
