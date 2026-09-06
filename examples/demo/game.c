@@ -1,14 +1,9 @@
 #include "orb.h"
 
-// The screen from game.json, and the sprite's frame size.
 #define SCREEN_W 320
 #define SCREEN_H 180
 #define SPRITE 16
 
-// Movement, in pixels per tick. Holding a direction accelerates to MAX_SPEED;
-// releasing lets friction bleed speed off. Walls bounce with BOUNCE of the
-// speed kept, and flash only for a hit at FLASH_SPEED or more, so pressing
-// into a wall settles against it rather than strobing.
 #define ACCEL 0.15f
 #define MAX_SPEED 3.0f
 #define FRICTION 0.9f
@@ -16,13 +11,10 @@
 #define FLASH_SPEED 2.0f
 #define FLASH_TICKS 8
 
-// With no input for IDLE_TICKS the square wanders on its own: a push, then
-// elastic bounces with a flash at every edge, until any button ends it.
 #define IDLE_TICKS (3 * 60)
 #define IDLE_SPEED_X 2.0f
 #define IDLE_SPEED_Y 1.5f
 
-// Master palette indices from art/palette.aseprite.
 #define INK 1
 #define RED 2
 #define WHITE 3
@@ -55,9 +47,6 @@ static void init(void* state, const orb_api* orb) {
     g->y = (SCREEN_H - SPRITE) / 2;
 }
 
-// Runs at boot after init and after every code reload or art recast: the one
-// place to find assets by name. Rebinding the handle keeps the animation's
-// frame, so a recast does not restart the walk.
 static void reload(void* state, const orb_api* orb) {
     game_state* g = state;
 
@@ -68,7 +57,6 @@ static float clampf(float v, float lo, float hi) {
     return v < lo ? lo : v > hi ? hi : v;
 }
 
-// Bounce one axis off its two walls. Returns the impact speed, 0 for no hit.
 static float bounce(float* pos, float* vel, float max, float keep) {
     float speed = *vel < 0 ? -*vel : *vel;
 
