@@ -51,7 +51,7 @@ int main(void) {
     CHECK_EQ(debug_boot("examples/demo"), 0);
     CHECK(strcmp(debug_so_path, "examples/demo/build/game" ORB_OS_LIB_SUFFIX) == 0);
     CHECK(strncmp(debug_copy_path, "examples/demo/build/", 20) == 0);
-    CHECK(strstr(debug_copy_path, ORB_OS_LIB_SUFFIX) != NULL);
+    CHECK(strstr(debug_copy_path, ORB_OS_LIB_SUFFIX) != nullptr);
     CHECK(orb_os_file_mtime(debug_copy_path) != 0);
 
     debug_finish();

@@ -88,9 +88,9 @@ int main(int argc, char** argv) {
 
     if (strcmp(verb, "scry") == 0 && argc <= 3) return orb_debug_scry(dir);
     if (strcmp(verb, "run") == 0 && argc <= 3) return orb_debug_run(dir);
-    if (strcmp(verb, "cast") == 0 && argc <= 3) return cast_once(dir, false, NULL);
+    if (strcmp(verb, "cast") == 0 && argc <= 3) return cast_once(dir, false, nullptr);
     if (strcmp(verb, "seal") == 0 && argc <= 4)
-        return cast_once(dir, true, argc == 4 ? argv[3] : NULL);
+        return cast_once(dir, true, argc == 4 ? argv[3] : nullptr);
 
     fprintf(stderr, "orb: unknown verb or arguments\n");
     return usage(stderr);

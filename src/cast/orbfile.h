@@ -5,8 +5,8 @@
 #include <assert.h>
 #include <stdbool.h>
 
-#define ORB_FILE_MAGIC 0x0042524Fu
-#define ORB_FILE_VERSION 1u
+constexpr uint32_t ORB_FILE_MAGIC = 0x0042524F;
+constexpr uint32_t ORB_FILE_VERSION = 1;
 
 enum {
     ORB_SEC_PALETTE = 1,
@@ -21,8 +21,8 @@ enum {
 };
 
 // Handle indices are 24 bits; these bound the runtime's per-index generation tables.
-#define ORB_MAX_SPRITES (1u << 14)
-#define ORB_MAX_ANIMATIONS (1u << 12)
+constexpr uint32_t ORB_MAX_SPRITES = 1 << 14;
+constexpr uint32_t ORB_MAX_ANIMATIONS = 1 << 12;
 
 // The id of an asset: a hash of its file stem and frame number or tag name,
 // case-insensitive. Cast stores one per entry; find hashes the request the
@@ -75,7 +75,7 @@ typedef struct orb_assets {
     const uint64_t* sprite_ids;    // one per sprite: a hash of the name it was cast from
     const uint64_t* animation_ids; // one per animation
     // Runtime only, never in a file: the generation a handle must carry to be
-    // valid at each index. NULL means every index is at generation 0.
+    // valid at each index. nullptr means every index is at generation 0.
     const uint8_t* sprite_generations;
     const uint8_t* animation_generations;
 } orb_assets;

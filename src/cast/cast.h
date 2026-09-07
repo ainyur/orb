@@ -20,7 +20,7 @@ typedef struct orb_cast_result {
 } orb_cast_result;
 
 bool orb_manifest_load(orb_arena* a, const char* game_dir, orb_manifest* m, orb_error* err);
-// Read game.json and cast everything it names into out. Exhausting either
+// Read orb.json and cast everything it names into out. Exhausting either
 // arena is a cast error, not a fatal.
 bool orb_cast_game(
     orb_arena* scratch, orb_arena* out, const char* game_dir, orb_manifest* m, orb_cast_result* r,

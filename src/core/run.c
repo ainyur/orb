@@ -45,12 +45,12 @@ static bool run_cast(int half, orb_error* err) {
     if (!orb_cast_game(&run_scratch, &run_assets[half], run_dir, &m, &result, err)) return false;
 
     if (m.size_w != run_boot_manifest.size_w || m.size_h != run_boot_manifest.size_h) {
-        orb_error_set(err, "game.json: size changed; restart orb to apply it");
+        orb_error_set(err, "orb.json: size changed; restart orb to apply it");
         return false;
     }
 
     if (m.asset_headroom != run_boot_manifest.asset_headroom) {
-        orb_error_set(err, "game.json: asset_headroom changed; restart orb to apply it");
+        orb_error_set(err, "orb.json: asset_headroom changed; restart orb to apply it");
         return false;
     }
 

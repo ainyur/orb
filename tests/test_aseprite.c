@@ -2,14 +2,20 @@
 #define ORB_OS_HEADLESS 1
 #include "../src/orb.c"
 
+static const uint8_t player_ase[] = {
+#embed "fixtures/player.aseprite"
+};
+static const uint8_t palette_ase[] = {
+#embed "fixtures/palette.aseprite"
+};
+
 int main(void) {
     static uint8_t mem[1 << 20];
     orb_arena a;
     orb_arena_init(&a, "test", mem, sizeof mem);
     orb_error err;
 
-    orb_span file;
-    CHECK(orb_os_read_file("tests/fixtures/player.aseprite", &a, &file));
+    orb_span file = {(uint8_t*)player_ase, sizeof player_ase};
     orb_ase ase;
 
     CHECK(orb_ase_parse(&a, file, &ase, &err));
@@ -38,8 +44,7 @@ int main(void) {
     CHECK_EQ(ase.tags[0].to, 1);
     CHECK_EQ(ase.tags[0].direction, 0);
 
-    orb_span pal;
-    CHECK(orb_os_read_file("tests/fixtures/palette.aseprite", &a, &pal));
+    orb_span pal = {(uint8_t*)palette_ase, sizeof palette_ase};
     orb_ase p;
 
     CHECK(orb_ase_parse(&a, pal, &p, &err));
@@ -50,6 +55,6 @@ int main(void) {
     uint8_t junk[200] = {0};
 
     CHECK(!orb_ase_parse(&a, (orb_span) {junk, sizeof junk}, &ase, &err));
-    CHECK(strstr(err.text, "aseprite") != NULL);
+    CHECK(strstr(err.text, "aseprite") != nullptr);
     return 0;
 }

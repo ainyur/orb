@@ -24,7 +24,7 @@ static bool write_manifest(const char* size, const char* sprites) {
         size, sprites
     );
 
-    return orb_os_write_file(DIR "/game.json", (orb_span) {(uint8_t*)text, (size_t)n});
+    return orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)text, (size_t)n});
 }
 
 int main(void) {
@@ -41,15 +41,15 @@ int main(void) {
     const orb_api* api = orb_api_table();
 
     api->clear(0);
-    api->sprite_draw(NULL, ORB_SPRITE(2), 0, 0, 0, NULL);
+    api->sprite_draw(nullptr, ORB_SPRITE(2), 0, 0, 0, nullptr);
     CHECK_EQ(orb_api_framebuffer()->px[4 * 64 + 4], 0);
 
-    // adding a sprite to game.json and recasting picks it up without a restart
+    // adding a sprite to orb.json and recasting picks it up without a restart
     CHECK(write_manifest("[64, 32]", ART "player.aseprite\", " ART "player.aseprite\""));
     CHECK(orb_run_recast(&err));
     CHECK_EQ(orb_run_manifest()->sprite_count, 2);
     api->clear(0);
-    api->sprite_draw(NULL, ORB_SPRITE(2), 0, 0, 0, NULL);
+    api->sprite_draw(nullptr, ORB_SPRITE(2), 0, 0, 0, nullptr);
     CHECK_EQ(orb_api_framebuffer()->px[4 * 64 + 4], 2);
 
     orb_span player;
@@ -63,20 +63,20 @@ int main(void) {
     CHECK(orb_run_recast(&err));
 
     api->clear(0);
-    api->sprite_draw(NULL, ORB_SPRITE(0), 0, 0, 0, NULL);
+    api->sprite_draw(nullptr, ORB_SPRITE(0), 0, 0, 0, nullptr);
 
     CHECK_EQ(orb_api_framebuffer()->px[4 * 64 + 4], 0);
     CHECK_EQ(api->sprite_find("player", 0).v, ORB_NO_SPRITE.v); // gone by that name
 
     // finding by the new name, as reload does, yields the live handle
     api->clear(0);
-    api->sprite_draw(NULL, api->sprite_find("hero", 0), 0, 0, 0, NULL);
+    api->sprite_draw(nullptr, api->sprite_find("hero", 0), 0, 0, 0, nullptr);
 
     CHECK_EQ(orb_api_framebuffer()->px[4 * 64 + 4], 2);
 
     CHECK(write_manifest("[128, 32]", ART "player.aseprite\""));
     CHECK(!orb_run_recast(&err));
-    CHECK(strstr(err.text, "restart") != NULL);
+    CHECK(strstr(err.text, "restart") != nullptr);
 
     orb_os_close();
 

@@ -20,7 +20,7 @@ int main(void) {
         " \"asset_headroom\": 1048576, \"palette\": \"" ART "palette.aseprite\",\n"
         " \"sprites\": [\"" ART "player.aseprite\"]}\n";
 
-    CHECK(orb_os_write_file(DIR "/game.json", (orb_span) {(uint8_t*)manifest, strlen(manifest)}));
+    CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)manifest, strlen(manifest)}));
 
     orb_manifest m;
     orb_cast_result r;
@@ -56,28 +56,28 @@ int main(void) {
 
     // ids are what a game finds assets by: the file stem plus frame number or
     // tag, case-insensitive, hashed the same way at cast and at find
-    CHECK(as.sprite_ids != NULL);
+    CHECK(as.sprite_ids != nullptr);
     CHECK(as.sprite_ids[0] == orb_asset_id("player", "0"));
     CHECK(as.sprite_ids[1] == orb_asset_id("Player", "1"));
-    CHECK(as.animation_ids != NULL);
+    CHECK(as.animation_ids != nullptr);
     CHECK(as.animation_ids[0] == orb_asset_id("player", "walk"));
     CHECK(orb_asset_id("player", "walk") != orb_asset_id("player", "0"));
 
     CHECK(strcmp(orb_seal_path(&scratch, DIR, &m), DIR "/bin/fixture.orb") == 0);
     CHECK(!orb_cast_game(&scratch, &out, "build/scratch", &m, &r, &err));
-    CHECK(strstr(err.text, "game.json") != NULL);
+    CHECK(strstr(err.text, "orb.json") != nullptr);
 
     static alignas(16) uint8_t tiny_mem[4096];
     orb_arena tiny;
     orb_arena_init(&tiny, "cast scratch", tiny_mem, sizeof tiny_mem);
     CHECK(!orb_cast_game(&tiny, &out, DIR, &m, &r, &err));
-    CHECK(strstr(err.text, "cast scratch") != NULL);
-    CHECK(strstr(err.text, "asset_headroom") != NULL);
+    CHECK(strstr(err.text, "cast scratch") != nullptr);
+    CHECK(strstr(err.text, "asset_headroom") != nullptr);
 
     orb_arena_init(&tiny, "asset half B", tiny_mem, 512);
 
     CHECK(!orb_cast_game(&scratch, &tiny, DIR, &m, &r, &err));
-    CHECK(strstr(err.text, "asset half B") != NULL);
+    CHECK(strstr(err.text, "asset half B") != nullptr);
 
     return 0;
 }

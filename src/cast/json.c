@@ -111,7 +111,7 @@ static bool json_value(json_parser* j, orb_json** out) {
         }
 
         for (;;) {
-            const char* key = NULL;
+            const char* key = nullptr;
 
             if (object) {
                 json_skip(j);
@@ -200,24 +200,24 @@ orb_json* orb_json_parse(orb_arena* a, const char* text, size_t len, orb_error* 
     json_parser j = {.a = a, .p = text, .end = text + len, .err = err, .line = 1};
     orb_json* root;
 
-    if (!json_value(&j, &root)) return NULL;
+    if (!json_value(&j, &root)) return nullptr;
 
     json_skip(&j);
 
     if (j.p != j.end) {
         json_fail(&j, "trailing characters after the document");
-        return NULL;
+        return nullptr;
     }
 
     return root;
 }
 
 const orb_json* orb_json_get(const orb_json* object, const char* key) {
-    if (!object || object->kind != ORB_JSON_OBJECT) return NULL;
+    if (!object || object->kind != ORB_JSON_OBJECT) return nullptr;
 
     for (const orb_json* c = object->first; c; c = c->next) {
         if (strcmp(c->key, key) == 0) return c;
     }
 
-    return NULL;
+    return nullptr;
 }

@@ -132,7 +132,7 @@ void orb_os_sleep(uint64_t ns) {
         .tv_sec = (time_t)(ns / 1000000000u), .tv_nsec = (long)(ns % 1000000000u)
     };
 
-    nanosleep(&ts, NULL);
+    nanosleep(&ts, nullptr);
 }
 
 uint64_t orb_os_ticks(void) {

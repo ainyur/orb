@@ -3,6 +3,7 @@
 #include "../graphics/sprite.h"
 #include "input.h"
 #include "log.h"
+#include "macros.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -20,7 +21,7 @@ static void api_bump_changed(
 ) {
     if (!old || !new) return;
 
-    uint32_t n = old_count < new_count ? old_count : new_count;
+    uint32_t n = orb_min(old_count, new_count);
 
     for (uint32_t i = 0; i < n; i++)
         if (old[i] != new[i]) generations[i]++;

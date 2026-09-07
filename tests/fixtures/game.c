@@ -55,7 +55,7 @@ static void draw(void* state, const orb_api* orb) {
     game_state* g = state;
 
     orb->clear(1);
-    orb->sprite_draw(NULL, g->sprite, g->x, g->y, g->flip ? ORB_FLIP_X : 0, NULL);
+    orb->sprite_draw(nullptr, g->sprite, g->x, g->y, g->flip ? ORB_FLIP_X : 0, nullptr);
 }
 
 static const orb_game game = {config, init, reload, update, draw};

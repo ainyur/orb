@@ -60,11 +60,11 @@ int main(void) {
     CHECK(((uintptr_t)out.sprites & 15) == 0);
     CHECK_EQ(out.sprite_ids[1], 22);
     CHECK_EQ(out.animation_ids[0], 44);
-    CHECK(out.sprite_generations == NULL); // a loaded file carries no runtime generations
+    CHECK(out.sprite_generations == nullptr); // a loaded file carries no runtime generations
 
     file.ptr[4] = 99; // version
     CHECK(!orb_file_load(file, &out, &err));
-    CHECK(strstr(err.text, "version") != NULL);
+    CHECK(strstr(err.text, "version") != nullptr);
 
     return 0;
 }

@@ -1,4 +1,5 @@
 #include "../core/log.h"
+#include "../core/macros.h"
 #include "orb_os.h"
 #include "posix.c"
 #include <X11/XKBlib.h>
@@ -49,7 +50,7 @@ static int x11_button(KeySym key) {
 }
 
 bool orb_os_open(const orb_os_config* cfg) {
-    x11_display = XOpenDisplay(NULL);
+    x11_display = XOpenDisplay(nullptr);
 
     if (!x11_display) {
         orb_log("cannot open the X display");
@@ -79,7 +80,7 @@ bool orb_os_open(const orb_os_config* cfg) {
     XSelectInput(x11_display, x11_window, KeyPressMask | KeyReleaseMask | StructureNotifyMask);
     x11_wm_delete = XInternAtom(x11_display, "WM_DELETE_WINDOW", False);
     XSetWMProtocols(x11_display, x11_window, &x11_wm_delete, 1);
-    XkbSetDetectableAutoRepeat(x11_display, True, NULL);
+    XkbSetDetectableAutoRepeat(x11_display, True, nullptr);
     XMapWindow(x11_display, x11_window);
     x11_gc = DefaultGC(x11_display, screen);
 
@@ -92,7 +93,7 @@ bool orb_os_open(const orb_os_config* cfg) {
 
     if (!x11_image) orb_log("XCreateImage failed; the display depth is probably not 24 or 32");
 
-    return x11_image != NULL;
+    return x11_image != nullptr;
 }
 
 void orb_os_close(void) {
@@ -102,8 +103,8 @@ void orb_os_close(void) {
 }
 
 void orb_os_present(const uint32_t* rgb) {
-    int w = x11_win_w < x11_max_w ? x11_win_w : x11_max_w;
-    int h = x11_win_h < x11_max_h ? x11_win_h : x11_max_h;
+    int w = orb_min(x11_win_w, x11_max_w);
+    int h = orb_min(x11_win_h, x11_max_h);
     int scale = w / x11_fb_w;
 
     if (h / x11_fb_h < scale) scale = h / x11_fb_h;

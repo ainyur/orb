@@ -7,7 +7,7 @@ void orb_arena_init(orb_arena* a, const char* name, void* mem, size_t size) {
     a->base = mem;
     a->size = size;
     a->used = 0;
-    a->recover = NULL;
+    a->recover = nullptr;
     a->overflow = 0;
 }
 

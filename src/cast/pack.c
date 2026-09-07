@@ -37,13 +37,11 @@ void orb_pack_frames(
     orb_arena* a, const uint8_t* frames, uint32_t frame_count, uint16_t w, uint16_t h, orb_pack* out
 ) {
     size_t frame_size = (size_t)w * h;
-    pack_bounds* bounds =
-        orb_arena_push(a, sizeof(pack_bounds) * frame_count, alignof(pack_bounds));
-    uint32_t* owner =
-        orb_arena_push(a, sizeof(uint32_t) * frame_count, 4); // frame that a rect came from
+    pack_bounds* bounds = orb_arena_push_array(a, pack_bounds, frame_count);
+    uint32_t* owner = orb_arena_push_array(a, uint32_t, frame_count); // frame that a rect came from
 
-    out->frames = orb_arena_push(a, sizeof(orb_pack_frame) * frame_count, alignof(orb_pack_frame));
-    out->rects = orb_arena_push(a, sizeof(orb_pack_rect) * frame_count, alignof(orb_pack_rect));
+    out->frames = orb_arena_push_array(a, orb_pack_frame, frame_count);
+    out->rects = orb_arena_push_array(a, orb_pack_rect, frame_count);
     out->frame_count = frame_count;
     out->rect_count = 0;
 

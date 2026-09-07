@@ -73,7 +73,7 @@ int orb_os_list_dir(const char* dir, const char* suffix, orb_path* out, int max)
 }
 
 bool orb_os_make_dir(const char* path) {
-    return CreateDirectoryA(path, NULL) || GetLastError() == ERROR_ALREADY_EXISTS;
+    return CreateDirectoryA(path, nullptr) || GetLastError() == ERROR_ALREADY_EXISTS;
 }
 
 bool orb_os_read_file(const char* path, orb_arena* into, orb_span* out) {
@@ -118,7 +118,7 @@ int orb_os_run(const char* command, void (*line)(const char* text)) {
     };
     PROCESS_INFORMATION proc;
     BOOL started = CreateProcessA(
-        NULL, cmdline, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &start, &proc
+        nullptr, cmdline, nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &start, &proc
     );
 
     CloseHandle(write_end);
@@ -132,7 +132,7 @@ int orb_os_run(const char* command, void (*line)(const char* text)) {
     size_t fill = 0;
     char chunk[1024];
 
-    for (DWORD got; ReadFile(read_end, chunk, sizeof chunk, &got, NULL) && got > 0;) {
+    for (DWORD got; ReadFile(read_end, chunk, sizeof chunk, &got, nullptr) && got > 0;) {
         for (DWORD i = 0; i < got; i++) {
             if (chunk[i] == '\n' || fill == sizeof text - 1) {
                 if (fill > 0 && text[fill - 1] == '\r') fill--;
@@ -173,11 +173,11 @@ void orb_os_sleep(uint64_t ns) {
 
     if (!timer) {
         timer = CreateWaitableTimerExW(
-            NULL, NULL, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS
+            nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS
         );
     }
 
-    if (!timer) timer = CreateWaitableTimerExW(NULL, NULL, 0, TIMER_ALL_ACCESS);
+    if (!timer) timer = CreateWaitableTimerExW(nullptr, nullptr, 0, TIMER_ALL_ACCESS);
 
     if (!timer) {
         Sleep((DWORD)((ns + 999999u) / 1000000u));
@@ -186,7 +186,7 @@ void orb_os_sleep(uint64_t ns) {
 
     LARGE_INTEGER due = {.QuadPart = -(LONGLONG)((ns + 99u) / 100u)}; // relative, 100 ns units
 
-    SetWaitableTimer(timer, &due, 0, NULL, NULL, FALSE);
+    SetWaitableTimer(timer, &due, 0, nullptr, nullptr, FALSE);
     WaitForSingleObject(timer, INFINITE);
 }
 

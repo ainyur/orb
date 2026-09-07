@@ -15,12 +15,12 @@ bool orb_os_open(const orb_os_config* cfg) {
     headless_pixels = (size_t)cfg->size_w * cfg->size_h;
     headless_frame = calloc(headless_pixels, sizeof *headless_frame);
 
-    return headless_frame != NULL;
+    return headless_frame != nullptr;
 }
 
 void orb_os_close(void) {
     free(headless_frame);
-    headless_frame = NULL;
+    headless_frame = nullptr;
 }
 
 bool orb_os_pump(orb_input* out) {

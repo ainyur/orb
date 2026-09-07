@@ -21,8 +21,8 @@ static const char* cast_string(const orb_json* obj, const char* key, orb_error* 
     const orb_json* v = orb_json_get(obj, key);
 
     if (!v || v->kind != ORB_JSON_STRING) {
-        orb_error_set(err, "game.json: \"%s\" must be a string", key);
-        return NULL;
+        orb_error_set(err, "orb.json: \"%s\" must be a string", key);
+        return nullptr;
     }
 
     return v->str;
@@ -30,7 +30,7 @@ static const char* cast_string(const orb_json* obj, const char* key, orb_error* 
 
 bool orb_manifest_load(orb_arena* a, const char* game_dir, orb_manifest* m, orb_error* err) {
     orb_span text;
-    const char* path = cast_path(a, game_dir, "game.json");
+    const char* path = cast_path(a, game_dir, "orb.json");
 
     if (!orb_os_read_file(path, a, &text)) {
         orb_error_set(err, "cannot read %s", path);
@@ -50,7 +50,7 @@ bool orb_manifest_load(orb_arena* a, const char* game_dir, orb_manifest* m, orb_
     const orb_json* size = orb_json_get(root, "size");
 
     if (!size || size->kind != ORB_JSON_ARRAY || size->count != 2) {
-        orb_error_set(err, "game.json: \"size\" must be [width, height]");
+        orb_error_set(err, "orb.json: \"size\" must be [width, height]");
         return false;
     }
 
@@ -60,7 +60,7 @@ bool orb_manifest_load(orb_arena* a, const char* game_dir, orb_manifest* m, orb_
     const orb_json* headroom = orb_json_get(root, "asset_headroom");
 
     if (!headroom || headroom->kind != ORB_JSON_NUMBER) {
-        orb_error_set(err, "game.json: \"asset_headroom\" must be a number of bytes");
+        orb_error_set(err, "orb.json: \"asset_headroom\" must be a number of bytes");
         return false;
     }
 
@@ -69,7 +69,7 @@ bool orb_manifest_load(orb_arena* a, const char* game_dir, orb_manifest* m, orb_
     const orb_json* sprites = orb_json_get(root, "sprites");
 
     if (!sprites || sprites->kind != ORB_JSON_ARRAY) {
-        orb_error_set(err, "game.json: \"sprites\" must be an array of paths");
+        orb_error_set(err, "orb.json: \"sprites\" must be an array of paths");
         return false;
     }
 
@@ -77,7 +77,7 @@ bool orb_manifest_load(orb_arena* a, const char* game_dir, orb_manifest* m, orb_
 
     for (const orb_json* s = sprites->first; s; s = s->next) {
         if (s->kind != ORB_JSON_STRING) {
-            orb_error_set(err, "game.json: \"sprites\" entries must be strings");
+            orb_error_set(err, "orb.json: \"sprites\" entries must be strings");
             return false;
         }
 
@@ -130,12 +130,12 @@ static void cast_arm(orb_arena* a, jmp_buf* recover) {
 }
 
 static void cast_disarm(orb_arena* a) {
-    a->recover = NULL;
+    a->recover = nullptr;
 }
 
 static void cast_exhausted(const orb_arena* a, orb_error* err) {
     orb_error_set(
-        err, "%s exhausted by %zu bytes: raise asset_headroom in game.json", a->name, a->overflow
+        err, "%s exhausted by %zu bytes: raise asset_headroom in orb.json", a->name, a->overflow
     );
 }
 
@@ -157,7 +157,7 @@ static bool cast_body(
 
     // Generous upper bounds so tables can be filled in one pass.
     uint32_t max_sprites = 0, max_anims = 0;
-    orb_ase* files = orb_arena_push(scratch, sizeof(orb_ase) * m->sprite_count, alignof(orb_ase));
+    orb_ase* files = orb_arena_push_array(scratch, orb_ase, m->sprite_count);
 
     for (int i = 0; i < m->sprite_count; i++) {
         if (!cast_load_ase(scratch, game_dir, m->sprites[i], &files[i], err)) return false;
@@ -172,8 +172,7 @@ static bool cast_body(
     uint16_t* durations = orb_arena_push(scratch, sizeof(uint16_t) * max_sprites, 16);
     uint64_t* sprite_ids = orb_arena_push(scratch, sizeof(uint64_t) * max_sprites, 16);
     uint64_t* animation_ids = orb_arena_push(scratch, sizeof(uint64_t) * max_anims, 16);
-    orb_pack* packs =
-        orb_arena_push(scratch, sizeof(orb_pack) * m->sprite_count, alignof(orb_pack));
+    orb_pack* packs = orb_arena_push_array(scratch, orb_pack, m->sprite_count);
 
     r->sprite_count = r->animation_count = 0;
 

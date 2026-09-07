@@ -49,13 +49,13 @@ run-wine: bin/orb.exe
 	$(MAKE) --no-print-directory -s -C $(GAME) build/game.dll
 	WINEDEBUG=-all wine bin/orb.exe run $(GAME)
 
-build/test_%: tests/test_%.c tests/test.h $(SRC) | build/scratch
+build/test_%: tests/test_%.c tests/test.h $(SRC) $(wildcard tests/fixtures/*) | build/scratch
 	$(CC) $(CFLAGS) -DORB_OS_HEADLESS -Isrc -o $@ $< $(TESTLIBS)
 
 test: $(TESTS)
 	@for t in $(TESTS); do echo "== $$t"; ./$$t || exit 1; done
 
-build/wine/test_%.exe: tests/test_%.c tests/test.h $(SRC) | build/scratch build/wine
+build/wine/test_%.exe: tests/test_%.c tests/test.h $(SRC) $(wildcard tests/fixtures/*) | build/scratch build/wine
 	$(WINCC) $(WINCFLAGS) -DORB_OS_HEADLESS -Isrc -o $@ $<
 
 

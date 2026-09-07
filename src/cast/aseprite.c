@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define ASE_MAX_LAYERS 64
+constexpr int ASE_MAX_LAYERS = 64;
 
 typedef struct {
     const uint8_t* zdata;
@@ -51,10 +51,9 @@ bool orb_ase_parse(orb_arena* a, orb_span file, orb_ase* out, orb_error* err) {
 
     ase_layer layers[ASE_MAX_LAYERS];
     int layer_count = 0;
-    ase_cel* cels =
-        orb_arena_push(a, sizeof(ase_cel) * out->frame_count * ASE_MAX_LAYERS, alignof(ase_cel));
+    ase_cel* cels = orb_arena_push_array(a, ase_cel, out->frame_count * ASE_MAX_LAYERS);
 
-    out->durations = orb_arena_push(a, sizeof(uint16_t) * out->frame_count, 2);
+    out->durations = orb_arena_push_array(a, uint16_t, out->frame_count);
 
     p += 128;
 
@@ -139,8 +138,7 @@ bool orb_ase_parse(orb_arena* a, orb_span file, orb_ase* out, orb_error* err) {
                 cel->present = true;
             } else if (type == 0x2018) { // tags
                 out->tag_count = ase_u16(d);
-                out->tags =
-                    orb_arena_push(a, sizeof(orb_ase_tag) * out->tag_count, alignof(orb_ase_tag));
+                out->tags = orb_arena_push_array(a, orb_ase_tag, out->tag_count);
 
                 const uint8_t* q = d + 10;
 

@@ -1,7 +1,7 @@
 #include "sprite.h"
 
 // A handle is current when it carries the generation the table holds for its
-// index; a table of NULL means everything is at generation 0.
+// index; a table of nullptr means everything is at generation 0.
 static bool sprite_current(const uint8_t* generations, uint32_t index, uint32_t generation) {
     return generations ? generations[index] == generation : generation == 0;
 }

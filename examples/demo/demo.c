@@ -15,7 +15,7 @@
 #define IDLE_SPEED_X 2.0f
 #define IDLE_SPEED_Y 1.5f
 
-#define INK 1
+#define BG 1
 #define RED 2
 #define WHITE 3
 
@@ -126,9 +126,10 @@ static void draw(void* state, const orb_api* orb) {
 
     remap[WHITE] = RED;
 
-    orb->clear(INK);
+    orb->clear(BG);
     orb->sprite_draw(
-        NULL, g->sprite, (int)g->x, (int)g->y, g->flip ? ORB_FLIP_X : 0, g->flash > 0 ? remap : NULL
+        nullptr, g->sprite, (int)g->x, (int)g->y, g->flip ? ORB_FLIP_X : 0,
+        g->flash > 0 ? remap : nullptr
     );
 }
 

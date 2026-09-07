@@ -3,7 +3,7 @@
 #include "../core/input.h"
 #include "../orb.h"
 
-#define ORB_PATH_MAX 600
+constexpr int ORB_PATH_MAX = 600;
 typedef char orb_path[ORB_PATH_MAX];
 
 // What the game's build produces and scry loads: build/game.so or build/game.dll.

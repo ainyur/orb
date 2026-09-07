@@ -111,8 +111,8 @@ bool orb_os_open(const orb_os_config* cfg) {
 
     WNDCLASSA wc = {
         .lpfnWndProc = gdi_proc,
-        .hInstance = GetModuleHandleA(NULL),
-        .hCursor = LoadCursor(NULL, IDC_ARROW),
+        .hInstance = GetModuleHandleA(nullptr),
+        .hCursor = LoadCursor(nullptr, IDC_ARROW),
         .hbrBackground = GetStockObject(BLACK_BRUSH),
         .lpszClassName = "orb",
     };
@@ -131,7 +131,8 @@ bool orb_os_open(const orb_os_config* cfg) {
     int x = (max_w - outer_w) / 2, y = (max_h - outer_h) / 2; // centered, not cascaded
 
     gdi_window = CreateWindowA(
-        wc.lpszClassName, cfg->title, style, x, y, outer_w, outer_h, NULL, NULL, wc.hInstance, NULL
+        wc.lpszClassName, cfg->title, style, x, y, outer_w, outer_h, nullptr, nullptr, wc.hInstance,
+        nullptr
     );
 
     if (!gdi_window) {
@@ -145,9 +146,9 @@ bool orb_os_open(const orb_os_config* cfg) {
 
 void orb_os_close(void) {
     DestroyWindow(gdi_window);
-    UnregisterClassA("orb", GetModuleHandleA(NULL));
-    gdi_window = NULL;
-    gdi_last = NULL;
+    UnregisterClassA("orb", GetModuleHandleA(nullptr));
+    gdi_window = nullptr;
+    gdi_last = nullptr;
 }
 
 void orb_os_present(const uint32_t* rgb) {
@@ -159,7 +160,7 @@ void orb_os_present(const uint32_t* rgb) {
 }
 
 bool orb_os_pump(orb_input* out) {
-    for (MSG msg; PeekMessageA(&msg, NULL, 0, 0, PM_REMOVE);) {
+    for (MSG msg; PeekMessageA(&msg, nullptr, 0, 0, PM_REMOVE);) {
         TranslateMessage(&msg);
         DispatchMessageA(&msg);
     }

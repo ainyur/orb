@@ -6,8 +6,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define DEBUG_SETTLE_NS 200000000u
-#define DEBUG_MAX_WATCHES 64
+constexpr uint64_t DEBUG_SETTLE_NS = 200000000;
+constexpr int DEBUG_MAX_WATCHES = 64;
 
 void orb_watch_init(orb_watch* w, const char* path) {
     snprintf(w->path, sizeof w->path, "%s", path);
@@ -61,7 +61,7 @@ static const orb_game* debug_load_game(void) {
 
     if (!orb_os_copy_file(debug_so_path, path)) {
         orb_log("cannot copy %s to %s", debug_so_path, path);
-        return NULL;
+        return nullptr;
     }
 
     void* lib = orb_os_dlopen(path);
@@ -69,7 +69,7 @@ static const orb_game* debug_load_game(void) {
     if (!lib) {
         orb_log("cannot load %s", path);
         remove(path);
-        return NULL;
+        return nullptr;
     }
 
     const orb_game* (*entry)(void) = (const orb_game* (*)(void))orb_os_dlsym(lib, "orb_game_main");
@@ -78,7 +78,7 @@ static const orb_game* debug_load_game(void) {
         orb_log("%s does not define orb_game_main", debug_so_path);
         orb_os_dlclose(lib);
         remove(path);
-        return NULL;
+        return nullptr;
     }
 
     // Install the new game before the old library goes away, so run_game
@@ -106,13 +106,13 @@ static void debug_add_watch(const char* rel) {
     orb_watch_init(&debug_asset_watches[debug_asset_count++], path);
 }
 
-// game.json and everything it names. Rebuilt after every successful recast, since
+// orb.json and everything it names. Rebuilt after every successful recast, since
 // the manifest may have gained or lost files.
 static void debug_watch_assets(void) {
     const orb_manifest* m = orb_run_manifest();
 
     debug_asset_count = 0;
-    debug_add_watch("game.json");
+    debug_add_watch("orb.json");
     debug_add_watch(m->palette);
 
     for (int i = 0; i < m->sprite_count; i++)
@@ -203,7 +203,7 @@ static int debug_finish(void) {
 int orb_debug_run(const char* game_dir) {
     if (debug_boot(game_dir)) return 1;
 
-    orb_run_loop(NULL);
+    orb_run_loop(nullptr);
     return debug_finish();
 }
 
@@ -226,7 +226,7 @@ int orb_debug_scry(const char* game_dir) {
         orb_watch_init(&debug_source_watches[i], sources[i]);
 
     orb_log(
-        "scry: watching %d source files, %d art files, and game.json", debug_source_count,
+        "scry: watching %d source files, %d art files, and orb.json", debug_source_count,
         debug_asset_count - 1
     );
 
