@@ -15,13 +15,13 @@ jobs:
     runs-on: windows-latest
     defaults:
       run:
-        shell: msys2 {0}
+        shell: bash
     steps:
       - uses: actions/checkout@v4
-      - uses: msys2/setup-msys2@v2
-        with:
-          msystem: UCRT64
-          release: false
-          install: make mingw-w64-ucrt-x86_64-gcc
+      - run: |
+          mkdir -p "$HOME/bin"
+          cp "$(command -v mingw32-make)" "$HOME/bin/make.exe"
+          cygpath -w "$HOME/bin" >> "$GITHUB_PATH"
+      - run: gcc --version && make --version
       - run: make test
       - run: make
