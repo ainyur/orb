@@ -1,4 +1,5 @@
 #include "framebuffer.h"
+
 #include <string.h>
 
 void orb_framebuffer_blit(

@@ -1,5 +1,6 @@
 #include "arena.h"
 #include "log.h"
+
 #include <string.h>
 
 void orb_arena_init(orb_arena* a, const char* name, void* mem, size_t size) {

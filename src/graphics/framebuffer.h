@@ -1,5 +1,6 @@
 #pragma once
 #include "../core/arena.h"
+
 #include <stdbool.h>
 
 typedef struct orb_framebuffer {

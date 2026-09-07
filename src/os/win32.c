@@ -212,6 +212,9 @@ bool orb_os_write_file(const char* path, orb_span data) {
 }
 
 void orb_path_join(orb_path out, const char* dir, const char* rel) {
-    if (snprintf(out, ORB_PATH_MAX, "%s/%s", dir, rel) >= ORB_PATH_MAX)
-        orb_fatal("path too long: %s/%s", dir, rel);
+    bool absolute = rel[0] == '/' || rel[0] == '\\' || (rel[0] && rel[1] == ':');
+    int n = absolute ? snprintf(out, ORB_PATH_MAX, "%s", rel)
+                     : snprintf(out, ORB_PATH_MAX, "%s/%s", dir, rel);
+
+    if (n >= ORB_PATH_MAX) orb_fatal("path too long: %s/%s", dir, rel);
 }

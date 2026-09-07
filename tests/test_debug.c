@@ -6,6 +6,10 @@ static void debug_swallow(const char* line) {
     (void)line;
 }
 
+static orb_span span(const char* s) {
+    return (orb_span) {(uint8_t*)s, strlen(s)};
+}
+
 int main(void) {
     uint8_t a[] = "a", b[] = "b";
     const char* path = "build/scratch/watch.txt";
@@ -59,7 +63,7 @@ int main(void) {
     CHECK_EQ(orb_os_file_mtime(debug_copy_path), 0);
     CHECK(orb_os_make_dir("build/scratch/with space"));
 
-    const char* makefile = "all:\n\t@true\n";
+    const char* makefile = "all:\n\t@false\nbuild/game" ORB_OS_LIB_SUFFIX ":\n\t@true\n";
     CHECK(orb_os_write_file(
         "build/scratch/with space/Makefile",
         (orb_span) {
@@ -74,6 +78,48 @@ int main(void) {
     CHECK(debug_is_make_noise("make: *** [Makefile:4: game.so] Error 1"));
     CHECK(debug_is_make_noise("make[1]: Leaving directory '/x'"));
     CHECK(!debug_is_make_noise("game.c:31:17: error: expected ';'"));
+    CHECK(!debug_is_make_noise("make: *** No rule to make target 'build/game.so'.  Stop."));
+
+    CHECK(orb_os_make_dir("build/scratch/deps"));
+    snprintf(debug_dir, sizeof debug_dir, "%s", "build/scratch/deps");
+    remove("build/scratch/deps/build/a.d");
+    remove("build/scratch/deps/build/b.d");
+    CHECK(!debug_watch_sources());
+    CHECK(orb_os_make_dir("build/scratch/deps/build"));
+
+    const char *a_d = "build/a.o: a.c ../inc/h.h\n", *b_d = "build/b.o: b.c \\\n ../inc/h.h\n";
+    CHECK(orb_os_write_file("build/scratch/deps/build/a.d", span(a_d)));
+    CHECK(orb_os_write_file("build/scratch/deps/build/b.d", span(b_d)));
+    CHECK(debug_watch_sources());
+    CHECK_EQ(debug_source_count, 3);
+    CHECK(strcmp(debug_source_watches[0].path, "build/scratch/deps/a.c") == 0);
+    CHECK(strcmp(debug_source_watches[1].path, "build/scratch/deps/../inc/h.h") == 0);
+    CHECK(strcmp(debug_source_watches[2].path, "build/scratch/deps/b.c") == 0);
+
+    const char* text = "build/demo.o: demo.c ../../src/orb.h \\\n"
+                       " ../../src/core/api.h with\\ space.h\n"
+                       "demo.c:\n"
+                       "../../src/orb.h:\n"
+                       "build/other.o: other.c ../../src/orb.h /abs/x.h\n";
+
+    snprintf(debug_dir, sizeof debug_dir, "%s", "game");
+    debug_source_count = 0;
+    debug_watch_depfile(span(text));
+
+    CHECK_EQ(debug_source_count, 6);
+    CHECK(strcmp(debug_source_watches[0].path, "game/demo.c") == 0);
+    CHECK(strcmp(debug_source_watches[1].path, "game/../../src/orb.h") == 0);
+    CHECK(strcmp(debug_source_watches[2].path, "game/../../src/core/api.h") == 0);
+    CHECK(strcmp(debug_source_watches[3].path, "game/with space.h") == 0);
+    CHECK(strcmp(debug_source_watches[4].path, "game/other.c") == 0);
+    CHECK(strcmp(debug_source_watches[5].path, "/abs/x.h") == 0);
+
+    debug_watch_depfile(span("build/z.o: other.c z.c\n"));
+    CHECK_EQ(debug_source_count, 7);
+    CHECK(strcmp(debug_source_watches[6].path, "game/z.c") == 0);
+
+    debug_watch_depfile(span("  \n\n"));
+    CHECK_EQ(debug_source_count, 7);
 
     return 0;
 }

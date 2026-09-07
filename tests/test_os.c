@@ -101,5 +101,11 @@ int main(void) {
     CHECK_EQ(run_line_count, 3);
     CHECK(strcmp(run_lines[1], "make: *** boom") == 0);
     CHECK(strcmp(run_lines[2], "b") == 0);
+    orb_path joined;
+    orb_path_join(joined, "game", "art/x.aseprite");
+    CHECK(strcmp(joined, "game/art/x.aseprite") == 0);
+    orb_path_join(joined, "game", "/abs/x.h");
+    CHECK(strcmp(joined, "/abs/x.h") == 0);
+
     return 0;
 }

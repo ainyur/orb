@@ -2,12 +2,14 @@
 #include "../os/orb_os.h"
 #include "log.h"
 #include "run.h"
+
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 constexpr uint64_t DEBUG_SETTLE_NS = 200000000;
-constexpr int DEBUG_MAX_WATCHES = 64;
+constexpr int DEBUG_MAX_WATCHES = 1024;
 
 void orb_watch_init(orb_watch* w, const char* path) {
     snprintf(w->path, sizeof w->path, "%s", path);
@@ -47,6 +49,7 @@ static orb_watch debug_asset_watches[DEBUG_MAX_WATCHES];
 static int debug_asset_count;
 static orb_watch debug_source_watches[DEBUG_MAX_WATCHES];
 static int debug_source_count;
+static uint8_t debug_depfile_mem[1 << 16];
 
 // Copy the game library to a fresh name and load the copy, so the compiler can overwrite
 // the original while it is loaded (Windows locks loaded DLLs; the copy keeps
@@ -96,33 +99,92 @@ static const orb_game* debug_load_game(void) {
     return game;
 }
 
-static void debug_add_watch(const char* rel) {
-    if (debug_asset_count == DEBUG_MAX_WATCHES)
-        orb_fatal("more than %d watched files", DEBUG_MAX_WATCHES);
-
+static void debug_watch_add(orb_watch* table, int* count, const char* rel) {
     orb_path path;
 
     orb_path_join(path, debug_dir, rel);
-    orb_watch_init(&debug_asset_watches[debug_asset_count++], path);
+
+    for (int i = 0; i < *count; i++)
+        if (strcmp(table[i].path, path) == 0) return;
+
+    if (*count == DEBUG_MAX_WATCHES) orb_fatal("more than %d watched files", DEBUG_MAX_WATCHES);
+
+    orb_watch_init(&table[(*count)++], path);
 }
 
-// orb.json and everything it names. Rebuilt after every successful recast, since
-// the manifest may have gained or lost files.
 static void debug_watch_assets(void) {
     const orb_manifest* m = orb_run_manifest();
 
     debug_asset_count = 0;
-    debug_add_watch("orb.json");
-    debug_add_watch(m->palette);
+    debug_watch_add(debug_asset_watches, &debug_asset_count, "orb.json");
+    debug_watch_add(debug_asset_watches, &debug_asset_count, m->palette);
 
     for (int i = 0; i < m->sprite_count; i++)
-        debug_add_watch(m->sprites[i]);
+        debug_watch_add(debug_asset_watches, &debug_asset_count, m->sprites[i]);
 }
 
-// make's own lines: its failure summary and directory chatter. The compiler's
-// diagnostics are what the author needs, and scry reports the failure itself.
+static void debug_watch_depfile(orb_span text) {
+    for (size_t i = 0; i < text.len;) {
+        orb_path token;
+        size_t n = 0;
+
+        for (; i < text.len; i++) {
+            uint8_t c = text.ptr[i], next = i + 1 < text.len ? text.ptr[i + 1] : 0;
+
+            if (c == '\\' && isspace(next)) {
+                if (next != ' ') break;
+                c = ' ';
+                i++;
+            } else if (isspace(c))
+                break;
+
+            if (n + 1 == sizeof token) orb_fatal("dependency path too long: %.*s", (int)n, token);
+
+            token[n++] = (char)c;
+        }
+
+        i++;
+        token[n] = 0;
+
+        if (n && token[n - 1] != ':')
+            debug_watch_add(debug_source_watches, &debug_source_count, token);
+    }
+}
+
+static bool debug_watch_sources(void) {
+    static orb_path depfiles[DEBUG_MAX_WATCHES];
+    orb_path build;
+    orb_arena a;
+
+    orb_path_join(build, debug_dir, "build");
+    orb_arena_init(&a, "depfile", debug_depfile_mem, sizeof debug_depfile_mem);
+
+    int files = orb_os_list_dir(build, ".d", depfiles, DEBUG_MAX_WATCHES);
+
+    if (files <= 0) {
+        orb_log(
+            "scry: no build/*.d files; compile with -MMD so scry can watch what the build reads"
+        );
+        return false;
+    }
+
+    debug_source_count = 0;
+
+    for (int i = 0; i < files; i++) {
+        orb_span text;
+
+        orb_arena_reset(&a);
+
+        if (!orb_os_read_file(depfiles[i], &a, &text)) orb_fatal("cannot read %s", depfiles[i]);
+
+        debug_watch_depfile(text);
+    }
+
+    return true;
+}
+
 static bool debug_is_make_noise(const char* line) {
-    return strncmp(line, "make", 4) == 0 && (line[4] == ':' || line[4] == '[');
+    return strncmp(line, "make", 4) == 0 && (strstr(line, "*** [") || strstr(line, "directory '"));
 }
 
 static void debug_build_line(const char* line) {
@@ -134,7 +196,10 @@ static void debug_build_line(const char* line) {
 static bool debug_build(void) {
     char command[ORB_PATH_MAX + 64];
 
-    snprintf(command, sizeof command, "make --no-print-directory -s -C \"%s\"", debug_dir);
+    snprintf(
+        command, sizeof command,
+        "make --no-print-directory -s -C \"%s\" build/game" ORB_OS_LIB_SUFFIX, debug_dir
+    );
     return orb_os_run(command, debug_build_line) == 0;
 }
 
@@ -170,7 +235,12 @@ static void debug_poll_scry(void) {
         if (orb_watch_poll(&debug_source_watches[i], now)) changed = true;
     }
 
-    if (changed && !debug_build()) orb_log("scry: build failed, keeping the running code");
+    if (changed) {
+        if (debug_build())
+            debug_watch_sources();
+        else
+            orb_log("scry: build failed, keeping the running code");
+    }
 
     debug_poll_reload();
 }
@@ -210,21 +280,11 @@ int orb_debug_run(const char* game_dir) {
 int orb_debug_scry(const char* game_dir) {
     snprintf(debug_dir, sizeof debug_dir, "%s", game_dir);
 
-    if (!debug_build()) return 1;
+    if (!debug_build() || !debug_watch_sources()) return 1;
     if (debug_boot(game_dir)) return 1;
 
     orb_watch_init(&debug_so_watch, debug_so_path);
     debug_watch_assets();
-
-    orb_path sources[DEBUG_MAX_WATCHES];
-    int c = orb_os_list_dir(game_dir, ".c", sources, DEBUG_MAX_WATCHES);
-    int h = orb_os_list_dir(game_dir, ".h", sources + c, DEBUG_MAX_WATCHES - c);
-
-    debug_source_count = c + h;
-
-    for (int i = 0; i < debug_source_count; i++)
-        orb_watch_init(&debug_source_watches[i], sources[i]);
-
     orb_log(
         "scry: watching %d source files, %d art files, and orb.json", debug_source_count,
         debug_asset_count - 1

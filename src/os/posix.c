@@ -1,5 +1,6 @@
 #include "../core/log.h"
 #include "orb_os.h"
+
 #include <dirent.h>
 #include <dlfcn.h>
 #include <errno.h>
@@ -154,6 +155,8 @@ bool orb_os_write_file(const char* path, orb_span data) {
 }
 
 void orb_path_join(orb_path out, const char* dir, const char* rel) {
-    if (snprintf(out, ORB_PATH_MAX, "%s/%s", dir, rel) >= ORB_PATH_MAX)
-        orb_fatal("path too long: %s/%s", dir, rel);
+    int n = rel[0] == '/' ? snprintf(out, ORB_PATH_MAX, "%s", rel)
+                          : snprintf(out, ORB_PATH_MAX, "%s/%s", dir, rel);
+
+    if (n >= ORB_PATH_MAX) orb_fatal("path too long: %s/%s", dir, rel);
 }

@@ -1,4 +1,5 @@
 #include "inflate.h"
+
 #include <string.h>
 
 typedef struct {

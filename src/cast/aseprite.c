@@ -1,5 +1,6 @@
 #include "aseprite.h"
 #include "inflate.h"
+
 #include <stdalign.h>
 #include <stdio.h>
 #include <string.h>

@@ -1,6 +1,7 @@
 #pragma once
 #include "../core/arena.h"
 #include "../core/log.h"
+
 #include <stdbool.h>
 #include <stddef.h>
 

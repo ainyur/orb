@@ -4,6 +4,7 @@
 #include "input.h"
 #include "log.h"
 #include "macros.h"
+
 #include <stdio.h>
 #include <string.h>
 

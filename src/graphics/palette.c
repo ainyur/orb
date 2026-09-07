@@ -1,4 +1,5 @@
 #include "palette.h"
+
 #include <string.h>
 
 uint32_t orb_palette_get(const orb_palette* p, int i) {

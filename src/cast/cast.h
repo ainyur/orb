@@ -1,6 +1,7 @@
 #pragma once
 #include "../core/arena.h"
 #include "../orb.h"
+
 #include <stdbool.h>
 
 typedef struct orb_manifest {

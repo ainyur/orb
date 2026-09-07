@@ -1,6 +1,7 @@
 #include "../core/log.h"
 #include "orb_os.h"
 #include "win32.c"
+
 #include <string.h>
 
 static HWND gdi_window;
