@@ -1,8 +1,8 @@
 #include "cast.h"
-#include "../os/orb_os.h"
+#include "../os/os.h"
 #include "aseprite.h"
 #include "json.h"
-#include "orbfile.h"
+#include "file.h"
 #include "pack.h"
 
 #include <ctype.h>

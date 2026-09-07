@@ -1,6 +1,6 @@
 #include "../core/log.h"
 #include "../core/macros.h"
-#include "orb_os.h"
+#include "os.h"
 #include "posix.c"
 
 #include <X11/XKBlib.h>
