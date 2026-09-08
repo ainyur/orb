@@ -22,7 +22,9 @@ int main(void) {
     orb_animation_desc animations[1] = {{.first_sprite = 0, .first_duration = 0, .count = 2}};
     uint16_t durations[2] = {6, 12};
     uint64_t sprite_ids[2] = {11, 22}, animation_ids[1] = {44};
+    orb_info_desc info = {.w = 64, .h = 32, .name = "fixture"};
     orb_assets in = {
+        .info = &info,
         .palette = palette,
         .sheets = sheets,
         .sheet_count = 1,
@@ -45,6 +47,9 @@ int main(void) {
     orb_assets out;
     orb_error err;
     CHECK(orb_file_load(file, &out, &err));
+    CHECK_EQ(out.info->w, 64);
+    CHECK_EQ(out.info->h, 32);
+    CHECK(strcmp(out.info->name, "fixture") == 0);
     CHECK_EQ(out.palette[6], 64);
     CHECK_EQ(out.sheet_count, 1);
     CHECK_EQ(out.sheets[0].w, 4);
@@ -62,7 +67,7 @@ int main(void) {
     CHECK_EQ(out.animation_ids[0], 44);
     CHECK(out.sprite_generations == nullptr); // a loaded file carries no runtime generations
 
-    file.ptr[4] = 99; // version
+    mem[file.ptr - mem + 4] = 99; // version
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "version") != nullptr);
 

@@ -1,6 +1,6 @@
 #pragma once
 
-// Each argument is evaluated once; typeof keeps the operands' own type.
+// Each argument is evaluated once. `typeof` keeps the operands' own type.
 #define orb_max(x, y)                                                                              \
     ({                                                                                             \
         typeof(x) orb_max_x_ = (x);                                                                \

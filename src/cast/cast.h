@@ -1,5 +1,7 @@
 #pragma once
+
 #include "../core/arena.h"
+#include "../core/log.h"
 #include "../orb.h"
 
 #include <stdbool.h>
@@ -21,11 +23,12 @@ typedef struct orb_cast_result {
 } orb_cast_result;
 
 bool orb_manifest_load(orb_arena* a, const char* game_dir, orb_manifest* m, orb_error* err);
-// Read orb.json and cast everything it names into out. Exhausting either
-// arena is a cast error, not a fatal.
 bool orb_cast_game(
-    orb_arena* scratch, orb_arena* out, const char* game_dir, orb_manifest* m, orb_cast_result* r,
+    orb_arena* scratch,
+    orb_arena* out,
+    const char* game_dir,
+    orb_manifest* m,
+    orb_cast_result* r,
     orb_error* err
 );
-// Where seal writes when no path is given: bin/<id>.orb beside the manifest.
 const char* orb_seal_path(orb_arena* a, const char* game_dir, const orb_manifest* m);

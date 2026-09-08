@@ -155,5 +155,6 @@ bool orb_os_pump(orb_input* out) {
     }
 
     memcpy(out->down, x11_keys, sizeof x11_keys);
+
     return true;
 }

@@ -5,19 +5,14 @@
 #include "input.h"
 #include "log.h"
 
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 static const orb_game* run_game;
 static orb_config run_config;
-static orb_manifest run_manifest;      // from the last successful cast; valid until the next one
-static orb_manifest run_boot_manifest; // what the regions and window were sized from
-static const char* run_dir;
-static orb_arena run_arena, run_state, run_assets[2], run_scratch;
-static int run_live;
+static orb_info_desc run_info;
+static orb_arena run_arena, run_state;
 static uint32_t* run_rgb;
-static uint8_t run_boot_mem[1 << 18];
 
 // The state region keeps room to grow, so adding a field to the game state struct
 // across a code reload does not end the session.
@@ -26,6 +21,40 @@ static size_t run_state_reserve(size_t state_size) {
 
     return reserve < (256u << 10) ? (256u << 10) : reserve;
 }
+
+static bool run_load(orb_span file, orb_error* err) {
+    orb_assets assets;
+
+    if (!orb_file_load(file, &assets, err)) return false;
+
+    orb_api_set_assets(&assets);
+    run_info = *assets.info;
+    return true;
+}
+
+static bool run_open(orb_error* err) {
+    orb_api_init(&run_arena, (orb_size) {run_info.w, run_info.h});
+    run_rgb = orb_arena_push_array(&run_arena, uint32_t, (size_t)run_info.w* run_info.h);
+
+    orb_os_config cfg = {.title = run_info.name, .size_w = run_info.w, .size_h = run_info.h};
+
+    if (!orb_os_open(&cfg)) {
+        orb_error_set(err, "cannot open a window");
+        return false;
+    }
+
+    run_game->init(run_state.base, orb_api_table());
+    run_game->reload(run_state.base, orb_api_table());
+    return true;
+}
+
+#ifndef ORB_RELEASE
+static orb_manifest run_manifest;      // from the last successful cast; valid until the next one
+static orb_manifest run_boot_manifest; // what the regions and window were sized from
+static const char* run_dir;
+static orb_arena run_assets[2], run_scratch;
+static int run_live;
+static uint8_t run_boot_mem[1 << 18];
 
 // Zero the state and start over: the layout the running code expects changed.
 // init sets the state up, then reload binds names, as it does after any recast.
@@ -55,17 +84,14 @@ static bool run_cast(int half, orb_error* err) {
         return false;
     }
 
-    orb_assets assets;
+    if (!run_load(result.file, err)) return false;
 
-    if (!orb_file_load(result.file, &assets, err)) return false;
-
-    orb_api_set_assets(&assets);
     run_live = half;
     run_manifest = m;
     return true;
 }
 
-bool orb_run_boot(const orb_game* game, const char* game_dir, orb_error* err) {
+static bool run_boot_sources(const char* game_dir, orb_error* err) {
     orb_arena boot;
 
     orb_arena_init(&boot, "boot", run_boot_mem, sizeof run_boot_mem);
@@ -74,6 +100,20 @@ bool orb_run_boot(const orb_game* game, const char* game_dir, orb_error* err) {
 
     run_boot_manifest = run_manifest;
     run_dir = game_dir;
+    run_assets[0] = orb_arena_carve(&run_arena, "asset half A", run_manifest.asset_headroom);
+    run_assets[1] = orb_arena_carve(&run_arena, "asset half B", run_manifest.asset_headroom);
+    run_scratch = orb_arena_carve(&run_arena, "cast scratch", run_manifest.asset_headroom);
+
+    return run_cast(0, err);
+}
+#endif
+
+bool orb_run_boot(
+    const orb_game* game,
+    [[maybe_unused]] const char* game_dir,
+    orb_span sealed,
+    orb_error* err
+) {
     run_game = game;
     run_config = game->config();
 
@@ -88,28 +128,12 @@ bool orb_run_boot(const orb_game* game, const char* game_dir, orb_error* err) {
 
     orb_arena_init(&run_arena, "arena", mem, run_config.arena_size);
     run_state = orb_arena_carve(&run_arena, "game state", run_state_reserve(run_config.state_size));
-    run_assets[0] = orb_arena_carve(&run_arena, "asset half A", run_manifest.asset_headroom);
-    run_assets[1] = orb_arena_carve(&run_arena, "asset half B", run_manifest.asset_headroom);
-    run_scratch = orb_arena_carve(&run_arena, "cast scratch", run_manifest.asset_headroom);
-    orb_api_init(&run_arena, run_manifest.size_w, run_manifest.size_h);
-    run_rgb = orb_arena_push(
-        &run_arena, sizeof(uint32_t) * run_manifest.size_w * run_manifest.size_h, 16
-    );
 
-    if (!run_cast(0, err)) return false;
+#ifndef ORB_RELEASE
+    if (!sealed.len) return run_boot_sources(game_dir, err) && run_open(err);
+#endif
 
-    orb_os_config cfg = {
-        .title = run_manifest.name, .size_w = run_manifest.size_w, .size_h = run_manifest.size_h
-    };
-
-    if (!orb_os_open(&cfg)) {
-        orb_error_set(err, "cannot open a window");
-        return false;
-    }
-
-    run_game->init(run_state.base, orb_api_table());
-    run_game->reload(run_state.base, orb_api_table());
-    return true;
+    return run_load(sealed, err) && run_open(err);
 }
 
 bool orb_run_tick(void) {
@@ -155,6 +179,7 @@ void orb_run_loop(void (*poll)(void)) {
     }
 }
 
+#ifndef ORB_RELEASE
 bool orb_run_recast(orb_error* err) {
     if (!run_cast(1 - run_live, err)) return false;
 
@@ -188,3 +213,4 @@ void orb_run_set_game(const orb_game* game) {
 const orb_manifest* orb_run_manifest(void) {
     return &run_manifest;
 }
+#endif

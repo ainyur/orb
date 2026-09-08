@@ -19,7 +19,7 @@ int main(void) {
 
     orb_pack pack;
 
-    orb_pack_frames(&a, frames, 3, 8, 8, &pack);
+    orb_pack_frames(&a, frames, 3, (orb_size) {8, 8}, &pack);
     CHECK_EQ(pack.frame_count, 3);
     CHECK_EQ(pack.rect_count, 2);
     CHECK_EQ(pack.frames[0].rect, 0);
@@ -39,9 +39,10 @@ int main(void) {
     CHECK_EQ(pack.pixels[(r->y + 1) * pack.sheet_w + r->x + 1], 6);
 
     uint8_t* big = orb_arena_push(&a, 300 * 256, 1);
-    for (int f = 0; f < 300; f++) memset(big + f * 256, 1 + f % 250, 256);
+    for (int f = 0; f < 300; f++)
+        memset(big + f * 256, 1 + f % 250, 256);
 
-    orb_pack_frames(&a, big, 300, 16, 16, &pack);
+    orb_pack_frames(&a, big, 300, (orb_size) {16, 16}, &pack);
 
     CHECK_EQ(pack.rect_count, 250);
     CHECK_EQ(pack.sheet_w, 256);

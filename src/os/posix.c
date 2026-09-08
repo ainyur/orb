@@ -83,6 +83,7 @@ int orb_os_list_dir(const char* dir, const char* suffix, orb_path* out, int max)
 
     closedir(d);
     qsort(out, (size_t)count, sizeof out[0], posix_compare_names);
+
     return count;
 }
 
@@ -96,16 +97,18 @@ bool orb_os_read_file(const char* path, orb_arena* into, orb_span* out) {
     if (stat(path, &st) != 0) return false;
 
     // push before opening: an exhausted arena may longjmp out of here
-    out->ptr = orb_arena_push(into, (size_t)st.st_size + 1, 16);
+    uint8_t* data = orb_arena_push(into, (size_t)st.st_size + 1, 16);
 
     FILE* f = fopen(path, "rb");
 
     if (!f) return false;
 
-    out->len = fread(out->ptr, 1, (size_t)st.st_size, f);
-    out->ptr[out->len] = 0;
+    out->len = fread(data, 1, (size_t)st.st_size, f);
+    data[out->len] = 0;
+    out->ptr = data;
 
     fclose(f);
+
     return out->len == (size_t)st.st_size;
 }
 

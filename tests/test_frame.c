@@ -24,7 +24,7 @@ static bool find(uint32_t color, int* x, int* y) {
 int main(void) {
     orb_error err;
 
-    if (!orb_run_boot(orb_game_main(), "tests/fixtures", &err)) {
+    if (!orb_run_boot(orb_game_main(), "tests/fixtures", (orb_span) {}, &err)) {
         fprintf(stderr, "boot: %s\n", err.text);
         return 1;
     }
@@ -48,7 +48,8 @@ int main(void) {
     in.down[ORB_BTN_RIGHT] = true;
     orb_os_headless_set_input(&in);
 
-    for (int i = 0; i < 10; i++) CHECK(orb_run_tick());
+    for (int i = 0; i < 10; i++)
+        CHECK(orb_run_tick());
 
     orb_run_draw();
 
@@ -74,6 +75,25 @@ int main(void) {
     orb_run_draw();
 
     CHECK_EQ(pixel(bx + 7, by), GREEN);
+
+    orb_os_close();
+
+    static alignas(16) uint8_t scratch_mem[4 << 20], out_mem[1 << 20];
+    orb_arena scratch, out;
+    orb_manifest m;
+    orb_cast_result r;
+
+    orb_arena_init(&scratch, "scratch", scratch_mem, sizeof scratch_mem);
+    orb_arena_init(&out, "out", out_mem, sizeof out_mem);
+
+    CHECK(orb_cast_game(&scratch, &out, "tests/fixtures", &m, &r, &err));
+    CHECK(orb_run_boot(orb_game_main(), nullptr, r.file, &err));
+    CHECK(orb_run_tick());
+
+    orb_run_draw();
+
+    CHECK_EQ(pixel(0, 0), BACKGROUND);
+    CHECK(find(RED, &bx, &by));
 
     orb_os_close();
 

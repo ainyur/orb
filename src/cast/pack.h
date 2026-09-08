@@ -1,5 +1,7 @@
 #pragma once
+
 #include "../core/arena.h"
+#include "../orb.h"
 
 typedef struct orb_pack_rect {
     uint16_t x, y, w, h;
@@ -20,5 +22,9 @@ typedef struct orb_pack {
 } orb_pack;
 
 void orb_pack_frames(
-    orb_arena* a, const uint8_t* frames, uint32_t frame_count, uint16_t w, uint16_t h, orb_pack* out
+    orb_arena* a,
+    const uint8_t* frames,
+    uint32_t frame_count,
+    orb_size frame,
+    orb_pack* out
 );

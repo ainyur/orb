@@ -23,15 +23,14 @@ uint64_t orb_asset_id(const char* stem, const char* suffix) {
     return asset_hash(h, suffix);
 }
 
-static void file_section(
-    orb_arena* a, const uint8_t* base, orb_section* s, uint32_t tag, const void* data, size_t size
-) {
-    uint8_t* dst = orb_arena_push(a, size, 16);
+static void
+file_section(orb_arena* a, const uint8_t* base, orb_section* s, uint32_t tag, orb_span data) {
+    uint8_t* dst = orb_arena_push(a, data.len, 16);
 
-    memcpy(dst, data, size);
+    memcpy(dst, data.ptr, data.len);
     s->tag = tag;
     s->offset = (uint32_t)(dst - base);
-    s->size = (uint32_t)size;
+    s->size = (uint32_t)data.len;
 }
 
 orb_span orb_file_write(orb_arena* a, const orb_assets* in) {
@@ -43,28 +42,40 @@ orb_span orb_file_write(orb_arena* a, const orb_assets* in) {
     header->section_count = ORB_SEC_COUNT_;
 
     orb_section* table = orb_arena_push(a, sizeof(orb_section) * ORB_SEC_COUNT_, 16);
+    orb_section* s = table;
 
-    file_section(a, base, &table[0], ORB_SEC_PALETTE, in->palette, 256 * 4);
     file_section(
-        a, base, &table[1], ORB_SEC_SHEETS, in->sheets, sizeof(orb_sheet_desc) * in->sheet_count
+        a, base, s++, ORB_SEC_INFO, (orb_span) {(const uint8_t*)in->info, sizeof *in->info}
     );
-    file_section(a, base, &table[2], ORB_SEC_PIXELS, in->pixels, in->pixel_count);
+    file_section(a, base, s++, ORB_SEC_PALETTE, (orb_span) {(const uint8_t*)in->palette, 256 * 4});
     file_section(
-        a, base, &table[3], ORB_SEC_SPRITES, in->sprites, sizeof(orb_sprite_desc) * in->sprite_count
-    );
-    file_section(
-        a, base, &table[4], ORB_SEC_ANIMATIONS, in->animations,
-        sizeof(orb_animation_desc) * in->animation_count
+        a, base, s++, ORB_SEC_SHEETS,
+        (orb_span) {(const uint8_t*)in->sheets, sizeof(orb_sheet_desc) * in->sheet_count}
     );
     file_section(
-        a, base, &table[5], ORB_SEC_DURATIONS, in->durations, sizeof(uint16_t) * in->duration_count
+        a, base, s++, ORB_SEC_PIXELS, (orb_span) {(const uint8_t*)in->pixels, in->pixel_count}
     );
     file_section(
-        a, base, &table[6], ORB_SEC_SPRITE_IDS, in->sprite_ids, sizeof(uint64_t) * in->sprite_count
+        a, base, s++, ORB_SEC_SPRITES,
+        (orb_span) {(const uint8_t*)in->sprites, sizeof(orb_sprite_desc) * in->sprite_count}
     );
     file_section(
-        a, base, &table[7], ORB_SEC_ANIMATION_IDS, in->animation_ids,
-        sizeof(uint64_t) * in->animation_count
+        a, base, s++, ORB_SEC_ANIMATIONS,
+        (orb_span) {
+            (const uint8_t*)in->animations, sizeof(orb_animation_desc) * in->animation_count
+        }
+    );
+    file_section(
+        a, base, s++, ORB_SEC_DURATIONS,
+        (orb_span) {(const uint8_t*)in->durations, sizeof(uint16_t) * in->duration_count}
+    );
+    file_section(
+        a, base, s++, ORB_SEC_SPRITE_IDS,
+        (orb_span) {(const uint8_t*)in->sprite_ids, sizeof(uint64_t) * in->sprite_count}
+    );
+    file_section(
+        a, base, s++, ORB_SEC_ANIMATION_IDS,
+        (orb_span) {(const uint8_t*)in->animation_ids, sizeof(uint64_t) * in->animation_count}
     );
     return (orb_span) {base, (size_t)(a->base + a->used - base)};
 }
@@ -109,6 +120,15 @@ bool orb_file_load(orb_span file, orb_assets* out, orb_error* err) {
         const uint8_t* data = file.ptr + s->offset;
 
         switch (s->tag) {
+        case ORB_SEC_INFO:
+            if (s->size < sizeof(orb_info_desc) ||
+                !memchr(data + 4, 0, sizeof(orb_info_desc) - 4)) {
+                orb_error_set(err, "orb file: bad info section");
+                return false;
+            }
+
+            out->info = (const orb_info_desc*)data;
+            break;
         case ORB_SEC_PALETTE:
             out->palette = data;
             break;
@@ -143,8 +163,8 @@ bool orb_file_load(orb_span file, orb_assets* out, orb_error* err) {
         }
     }
 
-    if (!out->palette) {
-        orb_error_set(err, "orb file: no palette section");
+    if (!out->info || !out->palette) {
+        orb_error_set(err, "orb file: no info or palette section");
         return false;
     }
 

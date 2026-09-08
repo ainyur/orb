@@ -255,7 +255,7 @@ static int debug_boot(const char* game_dir) {
 
     orb_error err;
 
-    if (!orb_run_boot(game, game_dir, &err)) {
+    if (!orb_run_boot(game, game_dir, (orb_span) {}, &err)) {
         orb_log("%s", err.text);
         return 1;
     }

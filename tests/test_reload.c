@@ -30,7 +30,7 @@ static const orb_game test_game = {test_config, test_init, test_reload, test_upd
 int main(void) {
     orb_error err;
 
-    if (!orb_run_boot(&test_game, "examples/demo", &err)) {
+    if (!orb_run_boot(&test_game, "examples/demo", (orb_span) {}, &err)) {
         fprintf(stderr, "boot: %s\n", err.text);
         return 1;
     }

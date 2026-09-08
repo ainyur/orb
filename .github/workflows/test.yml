@@ -12,6 +12,7 @@ jobs:
       - run: gcc --version && make --version
       - run: make test
       - run: make
+      - run: make release GAME=examples/demo
 
   windows:
     runs-on: windows-latest
@@ -27,3 +28,4 @@ jobs:
       - run: gcc --version && make --version
       - run: make test
       - run: make
+      - run: make release GAME=examples/demo

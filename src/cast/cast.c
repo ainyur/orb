@@ -1,8 +1,8 @@
 #include "cast.h"
 #include "../os/os.h"
 #include "aseprite.h"
-#include "json.h"
 #include "file.h"
+#include "json.h"
 #include "pack.h"
 
 #include <ctype.h>
@@ -58,6 +58,11 @@ bool orb_manifest_load(orb_arena* a, const char* game_dir, orb_manifest* m, orb_
     m->size_w = (int)size->first->num;
     m->size_h = (int)size->first->next->num;
 
+    if (m->size_w < 1 || m->size_w > 4096 || m->size_h < 1 || m->size_h > 4096) {
+        orb_error_set(err, "orb.json: \"size\" must be within 1..4096");
+        return false;
+    }
+
     const orb_json* headroom = orb_json_get(root, "asset_headroom");
 
     if (!headroom || headroom->kind != ORB_JSON_NUMBER) {
@@ -103,7 +108,11 @@ static const char* cast_stem(orb_arena* a, const char* path) {
 }
 
 static bool cast_load_ase(
-    orb_arena* scratch, const char* game_dir, const char* rel, orb_ase* ase, orb_error* err
+    orb_arena* scratch,
+    const char* game_dir,
+    const char* rel,
+    orb_ase* ase,
+    orb_error* err
 ) {
     const char* path = cast_path(scratch, game_dir, rel);
     orb_span file;
@@ -141,8 +150,12 @@ static void cast_exhausted(const orb_arena* a, orb_error* err) {
 }
 
 static bool cast_body(
-    orb_arena* scratch, orb_arena* out, const char* game_dir, const orb_manifest* m,
-    orb_cast_result* r, orb_error* err
+    orb_arena* scratch,
+    orb_arena* out,
+    const char* game_dir,
+    const orb_manifest* m,
+    orb_cast_result* r,
+    orb_error* err
 ) {
     orb_ase master;
 
@@ -215,7 +228,7 @@ static bool cast_body(
 
         orb_pack* pack = &packs[i];
 
-        orb_pack_frames(scratch, ase->frames, ase->frame_count, ase->w, ase->h, pack);
+        orb_pack_frames(scratch, ase->frames, ase->frame_count, (orb_size) {ase->w, ase->h}, pack);
         sheets[i] =
             (orb_sheet_desc) {.w = pack->sheet_w, .h = pack->sheet_h, .pixels = pixel_total};
         pixel_total += (uint32_t)pack->sheet_w * pack->sheet_h;
@@ -278,7 +291,12 @@ static bool cast_body(
         );
     }
 
+    orb_info_desc info = {.w = (uint16_t)m->size_w, .h = (uint16_t)m->size_h};
+
+    snprintf(info.name, sizeof info.name, "%s", m->name);
+
     orb_assets assets = {
+        .info = &info,
         .palette = palette,
         .sheets = sheets,
         .sheet_count = (uint32_t)m->sprite_count,
@@ -307,7 +325,11 @@ const char* orb_seal_path(orb_arena* a, const char* game_dir, const orb_manifest
 }
 
 bool orb_cast_game(
-    orb_arena* scratch, orb_arena* out, const char* game_dir, orb_manifest* m, orb_cast_result* r,
+    orb_arena* scratch,
+    orb_arena* out,
+    const char* game_dir,
+    orb_manifest* m,
+    orb_cast_result* r,
     orb_error* err
 ) {
     jmp_buf recover;

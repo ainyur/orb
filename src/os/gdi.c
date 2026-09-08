@@ -142,6 +142,7 @@ bool orb_os_open(const orb_os_config* cfg) {
     }
 
     ShowWindow(gdi_window, SW_SHOW);
+
     return true;
 }
 
@@ -167,5 +168,6 @@ bool orb_os_pump(orb_input* out) {
     }
 
     memcpy(out->down, gdi_keys, sizeof gdi_keys);
+
     return !gdi_closed;
 }

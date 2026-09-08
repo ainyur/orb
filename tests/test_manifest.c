@@ -33,7 +33,7 @@ int main(void) {
 
     orb_error err;
 
-    if (!orb_run_boot(&test_game, DIR, &err)) {
+    if (!orb_run_boot(&test_game, DIR, (orb_span) {}, &err)) {
         fprintf(stderr, "boot: %s\n", err.text);
         return 1;
     }
@@ -41,7 +41,7 @@ int main(void) {
     const orb_api* api = orb_api_table();
 
     api->clear(0);
-    api->sprite_draw(nullptr, ORB_SPRITE(2), 0, 0, 0, nullptr);
+    api->sprite_draw(ORB_SPRITE(2), (orb_vec2) {0, 0}, 0, nullptr);
     CHECK_EQ(orb_api_framebuffer()->px[4 * 64 + 4], 0);
 
     // adding a sprite to orb.json and recasting picks it up without a restart
@@ -49,7 +49,7 @@ int main(void) {
     CHECK(orb_run_recast(&err));
     CHECK_EQ(orb_run_manifest()->sprite_count, 2);
     api->clear(0);
-    api->sprite_draw(nullptr, ORB_SPRITE(2), 0, 0, 0, nullptr);
+    api->sprite_draw(ORB_SPRITE(2), (orb_vec2) {0, 0}, 0, nullptr);
     CHECK_EQ(orb_api_framebuffer()->px[4 * 64 + 4], 2);
 
     orb_span player;
@@ -63,14 +63,14 @@ int main(void) {
     CHECK(orb_run_recast(&err));
 
     api->clear(0);
-    api->sprite_draw(nullptr, ORB_SPRITE(0), 0, 0, 0, nullptr);
+    api->sprite_draw(ORB_SPRITE(0), (orb_vec2) {0, 0}, 0, nullptr);
 
     CHECK_EQ(orb_api_framebuffer()->px[4 * 64 + 4], 0);
     CHECK_EQ(api->sprite_find("player", 0).v, ORB_NO_SPRITE.v); // gone by that name
 
     // finding by the new name, as reload does, yields the live handle
     api->clear(0);
-    api->sprite_draw(nullptr, api->sprite_find("hero", 0), 0, 0, 0, nullptr);
+    api->sprite_draw(api->sprite_find("hero", 0), (orb_vec2) {0, 0}, 0, nullptr);
 
     CHECK_EQ(orb_api_framebuffer()->px[4 * 64 + 4], 2);
 

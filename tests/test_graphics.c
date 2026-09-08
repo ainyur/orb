@@ -9,7 +9,7 @@ int main(void) {
     orb_arena_init(&a, "test", mem, sizeof mem);
 
     orb_framebuffer fb;
-    orb_framebuffer_init(&fb, &a, 8, 4);
+    orb_framebuffer_init(&fb, &a, (orb_size) {8, 4});
     orb_framebuffer_clear(&fb, 7);
 
     CHECK_EQ(fb.px[0], 7);
@@ -17,13 +17,13 @@ int main(void) {
 
     uint8_t src[6] = {1, 0, 2, 3, 4, 5}; // 3x2
     orb_framebuffer_blit(
-        &fb, src, 3, 3, 2, 6, 3, false, false, nullptr
+        &fb, src, 3, (orb_size) {3, 2}, (orb_vec2) {6, 3}, 0, nullptr
     ); // clipped right and bottom
 
     CHECK_EQ(fb.px[3 * 8 + 6], 1);
     CHECK_EQ(fb.px[3 * 8 + 7], 7);
 
-    orb_framebuffer_blit(&fb, src, 3, 3, 2, 0, 0, true, false, nullptr);
+    orb_framebuffer_blit(&fb, src, 3, (orb_size) {3, 2}, (orb_vec2) {0, 0}, ORB_FLIP_X, nullptr);
     CHECK_EQ(fb.px[0], 2);
     CHECK_EQ(fb.px[2], 1);
     CHECK_EQ(fb.px[8], 5);
@@ -33,13 +33,15 @@ int main(void) {
         remap[i] = (uint8_t)i;
     remap[1] = 9;
 
-    orb_framebuffer_blit(&fb, src, 3, 3, 2, 0, 2, false, true, remap);
+    orb_framebuffer_blit(&fb, src, 3, (orb_size) {3, 2}, (orb_vec2) {0, 2}, ORB_FLIP_Y, remap);
 
     CHECK_EQ(fb.px[2 * 8 + 0], 3);
     CHECK_EQ(fb.px[3 * 8 + 0], 9);
 
-    orb_framebuffer_blit(&fb, src, 3, 3, 2, -1, -1, false, false, nullptr); // clipped top-left
-                                                                            //
+    orb_framebuffer_blit(
+        &fb, src, 3, (orb_size) {3, 2}, (orb_vec2) {-1, -1}, 0, nullptr
+    ); // clipped top-left
+       //
     CHECK_EQ(fb.px[0], 4);
 
     orb_palette pal;
@@ -89,23 +91,25 @@ int main(void) {
 
     orb_framebuffer_clear(&fb, 0);
     orb_sprite_draw(
-        &fb, &as, nullptr, ORB_SPRITE(0), 1, 0, 0, nullptr
+        &fb, &as, (orb_vec2f) {}, ORB_SPRITE(0), (orb_vec2) {1, 0}, 0, nullptr
     ); // origin (1,1) -> lands at (2,1)
     CHECK_EQ(fb.px[1 * 8 + 2], 1);
     CHECK_EQ(fb.px[2 * 8 + 3], 6);
     orb_framebuffer_clear(&fb, 0);
     orb_sprite_draw(
-        &fb, &as, nullptr, ORB_SPRITE(0), 0, 0, ORB_FLIP_X, nullptr
+        &fb, &as, (orb_vec2f) {}, ORB_SPRITE(0), (orb_vec2) {0, 0}, ORB_FLIP_X, nullptr
     ); // x = fw - ox - w = 1
     CHECK_EQ(fb.px[1 * 8 + 1], 2);
     CHECK_EQ(fb.px[1 * 8 + 2], 1);
 
-    orb_camera cam = {.x = 2, .y = 0};
-
     orb_framebuffer_clear(&fb, 0);
-    orb_sprite_draw(&fb, &as, &cam, ORB_SPRITE(1), 4, 0, 0, nullptr); // camera subtracts 2 -> x 2
+    orb_sprite_draw(
+        &fb, &as, (orb_vec2f) {2, 0}, ORB_SPRITE(1), (orb_vec2) {4, 0}, 0, nullptr
+    ); // camera subtracts 2 -> x 2
     CHECK_EQ(fb.px[0 * 8 + 2], 3);
-    orb_sprite_draw(&fb, &as, nullptr, ORB_SPRITE(99), 0, 0, 0, nullptr); // invalid handle: nothing
+    orb_sprite_draw(
+        &fb, &as, (orb_vec2f) {}, ORB_SPRITE(99), (orb_vec2) {0, 0}, 0, nullptr
+    ); // invalid handle: nothing
 
     orb_animation_state st;
 
@@ -121,13 +125,21 @@ int main(void) {
     CHECK_EQ(orb_animation_step(&as, &st).v, 1);
     CHECK_EQ(st.frame, 0); // frame 1 lasts one tick, so it advanced
 
-    orb_api_init(&a, 8, 4);
+    orb_api_init(&a, (orb_size) {8, 4});
     orb_api_set_assets(&as);
 
     const orb_api* api = orb_api_table();
 
     api->clear(0);
-    api->sprite_draw(nullptr, ORB_SPRITE(0), 1, 0, 0, nullptr);
+    api->sprite_draw(ORB_SPRITE(0), (orb_vec2) {1, 0}, 0, nullptr);
+    CHECK_EQ(orb_api_framebuffer()->px[1 * 8 + 2], 1);
+    api->camera_set((orb_vec2f) {2, 0});
+    api->clear(0);
+    api->sprite_draw(ORB_SPRITE(1), (orb_vec2) {4, 0}, 0, nullptr);
+    CHECK_EQ(orb_api_framebuffer()->px[0 * 8 + 2], 3);
+    api->camera_set((orb_vec2f) {});
+    api->clear(0);
+    api->sprite_draw(ORB_SPRITE(0), (orb_vec2) {1, 0}, 0, nullptr);
     CHECK_EQ(orb_api_framebuffer()->px[1 * 8 + 2], 1);
     api->palette_set(1, 9, 8, 7);
     CHECK_EQ(api->palette_get(1), 0x090807);
@@ -151,9 +163,9 @@ int main(void) {
     CHECK_EQ(api->sprite_find("nobody", 0).v, ORB_NO_SPRITE.v);
     CHECK_EQ(api->animation_find("player", "run").v, ORB_NO_ANIMATION.v);
     api->clear(0);
-    api->sprite_draw(nullptr, ORB_NO_SPRITE, 0, 0, 0, nullptr); // a miss draws nothing
+    api->sprite_draw(ORB_NO_SPRITE, (orb_vec2) {0, 0}, 0, nullptr); // a miss draws nothing
     CHECK_EQ(orb_api_framebuffer()->px[0], 0);
-    api->sprite_draw(nullptr, frame1, 0, 0, 0, nullptr);
+    api->sprite_draw(frame1, (orb_vec2) {0, 0}, 0, nullptr);
     CHECK_EQ(orb_api_framebuffer()->px[0], 3);
 
     // a recast that puts a different source at an index bumps that index's
@@ -167,9 +179,9 @@ int main(void) {
     orb_api_set_assets(&as);
 
     api->clear(0);
-    api->sprite_draw(nullptr, frame1, 0, 0, 0, nullptr); // index 1 changed: nothing
+    api->sprite_draw(frame1, (orb_vec2) {0, 0}, 0, nullptr); // index 1 changed: nothing
     CHECK_EQ(orb_api_framebuffer()->px[0], 0);
-    api->sprite_draw(nullptr, ORB_SPRITE(0), 0, 0, 0, nullptr); // index 0 did not
+    api->sprite_draw(ORB_SPRITE(0), (orb_vec2) {0, 0}, 0, nullptr); // index 0 did not
     CHECK_EQ(orb_api_framebuffer()->px[1 * 8 + 1], 1);
     api->animation_start(&st, ORB_ANIMATION(0));
     CHECK_EQ(api->animation_step(&st).v, 0xffffffu);
@@ -180,7 +192,7 @@ int main(void) {
     CHECK_EQ(ORB_HANDLE_INDEX(hero), 1);
     CHECK_EQ(ORB_HANDLE_GENERATION(hero), 1);
     api->clear(0);
-    api->sprite_draw(nullptr, hero, 0, 0, 0, nullptr);
+    api->sprite_draw(hero, (orb_vec2) {0, 0}, 0, nullptr);
     CHECK_EQ(orb_api_framebuffer()->px[0], 3);
     api->animation_start(&st, api->animation_find("hero", "walk"));
     CHECK_EQ(api->animation_step(&st).v, 0);

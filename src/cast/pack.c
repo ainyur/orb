@@ -35,8 +35,13 @@ static bool pack_same(const uint8_t* fa, pack_bounds a, const uint8_t* fb, pack_
 }
 
 void orb_pack_frames(
-    orb_arena* a, const uint8_t* frames, uint32_t frame_count, uint16_t w, uint16_t h, orb_pack* out
+    orb_arena* a,
+    const uint8_t* frames,
+    uint32_t frame_count,
+    orb_size frame,
+    orb_pack* out
 ) {
+    int w = frame.w, h = frame.h;
     size_t frame_size = (size_t)w * h;
     pack_bounds* bounds = orb_arena_push_array(a, pack_bounds, frame_count);
     uint32_t* owner = orb_arena_push_array(a, uint32_t, frame_count); // frame that a rect came from

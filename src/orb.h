@@ -1,14 +1,23 @@
 #pragma once
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
-typedef struct orb_camera {
+typedef struct orb_size {
+    int w, h;
+} orb_size;
+
+typedef struct orb_vec2 {
+    int x, y;
+} orb_vec2;
+
+typedef struct orb_vec2f {
     float x, y;
-} orb_camera;
+} orb_vec2f;
 
 typedef struct {
-    uint8_t* ptr;
+    const uint8_t* ptr;
     size_t len;
 } orb_span;
 
@@ -83,14 +92,13 @@ typedef struct orb_api {
     bool (*button_down)(int button);
     bool (*button_pressed)(int button);
     bool (*button_released)(int button);
+    void (*camera_set)(orb_vec2f at);
     void (*clear)(uint8_t index);
     void (*log)(const char* fmt, ...);
     uint32_t (*palette_get)(int i);
     void (*palette_reset)(void);
     void (*palette_set)(int i, uint8_t r, uint8_t g, uint8_t b);
-    void (*sprite_draw)(
-        const orb_camera* cam, orb_sprite s, int x, int y, uint32_t flags, const uint8_t* remap
-    );
+    void (*sprite_draw)(orb_sprite s, orb_vec2 at, uint32_t flags, const uint8_t* remap);
     orb_sprite (*sprite_find)(const char* stem, int frame);
 } orb_api;
 

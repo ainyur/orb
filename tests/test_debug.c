@@ -65,12 +65,8 @@ int main(void) {
 
     const char* makefile = "all:\n\t@false\nbuild/game" ORB_OS_LIB_SUFFIX ":\n\t@true\n";
     CHECK(orb_os_write_file(
-        "build/scratch/with space/Makefile",
-        (orb_span) {
-            (uint8_t*)makefile,
-            strlen(makefile)
-        })
-    );
+        "build/scratch/with space/Makefile", (orb_span) {(uint8_t*)makefile, strlen(makefile)}
+    ));
 
     snprintf(debug_dir, sizeof debug_dir, "%s", "build/scratch/with space");
 

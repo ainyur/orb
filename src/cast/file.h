@@ -1,4 +1,5 @@
 #pragma once
+
 #include "../core/arena.h"
 #include "../core/log.h"
 #include "../orb.h"
@@ -18,7 +19,8 @@ enum {
     ORB_SEC_DURATIONS,
     ORB_SEC_SPRITE_IDS,
     ORB_SEC_ANIMATION_IDS,
-    ORB_SEC_COUNT_ = 8
+    ORB_SEC_INFO,
+    ORB_SEC_COUNT_ = ORB_SEC_INFO
 };
 
 // Handle indices are 24 bits; these bound the runtime's per-index generation tables.
@@ -37,6 +39,11 @@ typedef struct orb_file_header {
 typedef struct orb_section {
     uint32_t tag, offset, size, pad;
 } orb_section;
+
+typedef struct orb_info_desc {
+    uint16_t w, h;
+    char name[60];
+} orb_info_desc;
 
 typedef struct orb_sheet_desc {
     uint16_t w, h;
@@ -57,11 +64,13 @@ typedef struct orb_animation_desc {
 
 static_assert(sizeof(orb_file_header) == 16, "orb_file_header layout");
 static_assert(sizeof(orb_section) == 16, "orb_section layout");
+static_assert(sizeof(orb_info_desc) == 64, "orb_info_desc layout");
 static_assert(sizeof(orb_sheet_desc) == 8, "orb_sheet_desc layout");
 static_assert(sizeof(orb_sprite_desc) == 20, "orb_sprite_desc layout");
 static_assert(sizeof(orb_animation_desc) == 16, "orb_animation_desc layout");
 
 typedef struct orb_assets {
+    const orb_info_desc* info;
     const uint8_t* palette;
     const orb_sheet_desc* sheets;
     uint32_t sheet_count;

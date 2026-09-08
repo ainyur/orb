@@ -36,8 +36,13 @@ orb_sprite orb_animation_step(const orb_assets* assets, orb_animation_state* st)
 }
 
 void orb_sprite_draw(
-    orb_framebuffer* fb, const orb_assets* assets, const orb_camera* cam, orb_sprite s, int x,
-    int y, uint32_t flags, const uint8_t* remap
+    orb_framebuffer* fb,
+    const orb_assets* assets,
+    orb_vec2f cam,
+    orb_sprite s,
+    orb_vec2 at,
+    uint32_t flags,
+    const uint8_t* remap
 ) {
     uint32_t index = ORB_HANDLE_INDEX(s);
 
@@ -50,15 +55,12 @@ void orb_sprite_draw(
 
     const orb_sheet_desc* sheet = &assets->sheets[d->sheet];
 
-    if (cam) {
-        x -= (int)cam->x;
-        y -= (int)cam->y;
-    }
+    at.x -= (int)cam.x;
+    at.y -= (int)cam.y;
+    at.x += flags & ORB_FLIP_X ? d->fw - d->ox - d->w : d->ox;
+    at.y += flags & ORB_FLIP_Y ? d->fh - d->oy - d->h : d->oy;
 
-    bool flip_x = flags & ORB_FLIP_X, flip_y = flags & ORB_FLIP_Y;
-    int dx = x + (flip_x ? d->fw - d->ox - d->w : d->ox);
-    int dy = y + (flip_y ? d->fh - d->oy - d->h : d->oy);
     const uint8_t* src = assets->pixels + sheet->pixels + d->y * sheet->w + d->x;
 
-    orb_framebuffer_blit(fb, src, sheet->w, d->w, d->h, dx, dy, flip_x, flip_y, remap);
+    orb_framebuffer_blit(fb, src, sheet->w, (orb_size) {d->w, d->h}, at, flags, remap);
 }

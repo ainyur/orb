@@ -128,7 +128,7 @@ static void draw(void* state, const orb_api* orb) {
 
     orb->clear(BG);
     orb->sprite_draw(
-        nullptr, g->sprite, (int)g->x, (int)g->y, g->flip ? ORB_FLIP_X : 0,
+        g->sprite, (orb_vec2) {(int)g->x, (int)g->y}, g->flip ? ORB_FLIP_X : 0,
         g->flash > 0 ? remap : nullptr
     );
 }
