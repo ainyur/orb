@@ -26,11 +26,12 @@ typedef struct {
     int idle;  // ticks since the last input
     orb_animation_state animation;
     orb_sprite sprite;
+    orb_sample bounce;
 } game_state;
 
 static orb_config config(void) {
     return (orb_config) {
-        .arena_size = 64 << 20,
+        .arena_size = 96 << 20,
         .state_size = sizeof(game_state),
         .state_version = 1,
         .save_version = 1,
@@ -41,16 +42,16 @@ static orb_config config(void) {
 static void init(void* state, const orb_api* orb) {
     game_state* g = state;
 
-    (void)orb;
-
     g->x = (SCREEN_W - SPRITE) / 2;
     g->y = (SCREEN_H - SPRITE) / 2;
+    orb->song_play(orb->song_find("song"), true);
 }
 
 static void reload(void* state, const orb_api* orb) {
     game_state* g = state;
 
     g->animation.animation = orb->animation_find("player", "walk");
+    g->bounce = orb->sample_find("bounce");
 }
 
 static float clampf(float v, float lo, float hi) {
@@ -110,7 +111,12 @@ static void update(void* state, const orb_api* orb) {
     float hit_y = bounce(&g->y, &g->vy, SCREEN_H - SPRITE, keep);
     float hit = hit_x > hit_y ? hit_x : hit_y;
 
-    if (hit > 0 && (wandering || hit >= FLASH_SPEED)) g->flash = FLASH_TICKS;
+    if (hit > 0 && (wandering || hit >= FLASH_SPEED)) {
+        float pan = (g->x + SPRITE / 2) / (SCREEN_W / 2.0f) - 1;
+
+        g->flash = FLASH_TICKS;
+        orb->sound_play(g->bounce, (orb_sound_params) {.volume = 0.8f, .pan = pan}, 0);
+    }
     if (g->flash > 0) g->flash--;
 
     g->sprite = orb->animation_step(&g->animation);

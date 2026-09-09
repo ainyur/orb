@@ -1,0 +1,13 @@
+# Clangd parses each file on its own, but orb is a unity build. A static in a
+# file that orb.c or a backend includes has its callers in the file that
+# includes it, and gcc reports an unused one at build time. So the warning here
+# is only ever a red herring.
+CompileFlags:
+  Add: [-Wno-unused-function]
+---
+# The Windows backend parses against the mingw headers.
+If:
+  PathMatch: src/os/(win32|gdi|wasapi)\.c
+CompileFlags:
+  Add: [--target=x86_64-w64-mingw32]
+  Remove: [-D_POSIX_C_SOURCE=200809L]

@@ -18,7 +18,8 @@ int main(void) {
     const char* manifest =
         "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
         " \"asset_headroom\": 1048576, \"palette\": \"" ART "palette.aseprite\",\n"
-        " \"sprites\": [\"" ART "player.aseprite\"]}\n";
+        " \"sprites\": [\"" ART "player.aseprite\"],\n"
+        " \"sounds\": [\"" ART "beep.wav\"], \"songs\": [\"" ART "loop.wav\"]}\n";
 
     CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)manifest, strlen(manifest)}));
 
@@ -48,6 +49,12 @@ int main(void) {
     const orb_sheet_desc* sh = &as.sheets[0];
     const orb_sprite_desc* sp = &as.sprites[0];
     CHECK_EQ(as.pixels[sh->pixels + sp->y * sh->w + sp->x], 2);
+
+    CHECK_EQ(m.sound_count, 1);
+    CHECK_EQ(m.song_count, 1);
+    CHECK_EQ(r.sample_count, 2);
+    CHECK_EQ(r.song_count, 1);
+
     CHECK_EQ(as.animation_count, 1);
     CHECK_EQ(as.animations[0].first_sprite, 0);
     CHECK_EQ(as.animations[0].count, 2);
@@ -62,6 +69,45 @@ int main(void) {
     CHECK(as.animation_ids != nullptr);
     CHECK(as.animation_ids[0] == orb_asset_id("player", "walk"));
     CHECK(orb_asset_id("player", "walk") != orb_asset_id("player", "0"));
+
+    // sounds first, then each song's sample; a song's sample is never a sound
+    CHECK_EQ(as.sample_count, 2);
+    CHECK_EQ(as.samples[0].count, 4800);
+    CHECK_EQ(as.samples[0].channels, 1);
+    CHECK_EQ(as.samples[0].rate, 48000);
+    CHECK_EQ(as.samples[0].loop_end, 0);
+    CHECK_EQ(as.samples[1].first, 4800);
+    CHECK_EQ(as.samples[1].channels, 2);
+    CHECK_EQ(as.samples[1].count, 96000);
+    CHECK_EQ(as.samples[1].loop_start, 0);
+    CHECK_EQ(as.samples[1].loop_end, 96000);
+    CHECK_EQ(as.pcm_count, 4800 + 2 * 96000);
+    CHECK_EQ(as.pcm[0], -12000);
+    CHECK_EQ(as.song_count, 1);
+    CHECK_EQ(as.songs[0].sample, 1);
+    CHECK(as.sample_ids[0] == orb_asset_id("beep", ""));
+    CHECK(as.sample_ids[1] == orb_asset_id("loop", "song"));
+    CHECK(as.song_ids[0] == orb_asset_id("LOOP", ""));
+
+    // a song that is not a wav is refused by name
+    const char* tracker =
+        "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
+        " \"asset_headroom\": 1048576, \"palette\": \"" ART "palette.aseprite\",\n"
+        " \"sprites\": [], \"songs\": [\"music/title.fur\"]}\n";
+    CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)tracker, strlen(tracker)}));
+    CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
+    CHECK(strstr(err.text, "title.fur") != nullptr);
+    CHECK(strstr(err.text, ".wav") != nullptr);
+
+    // a sound must be mono, since pan positions it; only a song may be stereo
+    const char* stereo = "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
+                         " \"asset_headroom\": 1048576, \"palette\": \"" ART "palette.aseprite\",\n"
+                         " \"sprites\": [], \"sounds\": [\"" ART "loop.wav\"]}\n";
+    CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)stereo, strlen(stereo)}));
+    CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
+    CHECK(strstr(err.text, "loop.wav") != nullptr);
+    CHECK(strstr(err.text, "mono") != nullptr);
+    CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)manifest, strlen(manifest)}));
 
     CHECK(strcmp(orb_seal_path(&scratch, DIR, &m), DIR "/bin/fixture.orb") == 0);
     CHECK(!orb_cast_game(&scratch, &out, "build/scratch", &m, &r, &err));

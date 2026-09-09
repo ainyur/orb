@@ -16,6 +16,15 @@ typedef struct orb_vec2f {
     float x, y;
 } orb_vec2f;
 
+typedef struct orb_sound_params {
+    float volume, pan; // 0..1, -1..1
+    int pitch_cents;   // -2400..2400; 0 is the sample's own rate
+} orb_sound_params;
+
+typedef struct orb_volumes {
+    float master, song, sound; // 0..1 each, 1 by default
+} orb_volumes;
+
 typedef struct {
     const uint8_t* ptr;
     size_t len;
@@ -57,9 +66,32 @@ typedef struct {
 #define ORB_HANDLE_INDEX(h) ((h).v & 0xffffffu)   // v = handle index (24 bits) | generation << 24
 #define ORB_HANDLE_GENERATION(h) ((h).v >> 24)
 
+typedef struct {
+    uint32_t v;
+} orb_sample;
+
+typedef struct {
+    uint32_t v;
+} orb_song;
+
+// Opaque: a game only passes it back. Not an ORB_HANDLE_INDEX handle.
+typedef struct {
+    uint32_t v;
+} orb_voice;
+
+#define ORB_SAMPLE(i) ((orb_sample) {(uint32_t)(i)})
+#define ORB_SONG(i) ((orb_song) {(uint32_t)(i)})
+#define ORB_NO_SAMPLE ORB_SAMPLE(0xffffffu) // what a find that misses returns; plays nothing
+#define ORB_NO_SONG ORB_SONG(0xffffffu)
+#define ORB_NO_VOICE                                                                               \
+    ((orb_voice) {0xffffu}) // what a play that fails returns; set and stop ignore it
+
 #define ORB_FLIP_X 1u
 #define ORB_FLIP_Y 2u
 #define ORB_TICK_SECONDS (1.0f / 60)
+
+constexpr int ORB_AUDIO_RATE = 48000;
+constexpr int ORB_AUDIO_CHANNELS = 2;
 
 // Reload rules. orb reloads game code and recasts art while the game runs, and
 // three rules keep that safe:
@@ -76,7 +108,7 @@ typedef struct {
 // A handle is an index plus a generation. A recast that puts different art at
 // an index bumps its generation, so a handle found before it draws and plays
 // nothing until reload finds it again. A find that misses logs the name and
-// returns ORB_NO_SPRITE or ORB_NO_ANIMATION.
+// returns ORB_NO_SPRITE, ORB_NO_ANIMATION, ORB_NO_SAMPLE, or ORB_NO_SONG.
 typedef struct orb_config {
     size_t arena_size;
     size_t state_size;
@@ -85,6 +117,13 @@ typedef struct orb_config {
     uint32_t max_entities;
 } orb_config;
 
+// Audio. sample_find("jump") is jump.wav from the manifest's sounds; song_find("title")
+// is title.wav from its songs. sound_play returns a voice handle; when all 16 game voices
+// are busy it steals the oldest voice whose priority is at or below the new sound's, or
+// returns ORB_NO_VOICE. sound_set and sound_stop on a voice that ended or was stolen do
+// nothing. song_play loops on the WAV's own loop points when it has them, else over the
+// whole file. Volumes are 0..1 and start at 1. orb_sound_params.volume 0 is silence, so a
+// zero-initialized orb_sound_params plays nothing; set .volume explicitly.
 typedef struct orb_api {
     orb_animation (*animation_find)(const char* stem, const char* tag);
     void (*animation_start)(orb_animation_state* st, orb_animation a);
@@ -98,8 +137,18 @@ typedef struct orb_api {
     uint32_t (*palette_get)(int i);
     void (*palette_reset)(void);
     void (*palette_set)(int i, uint8_t r, uint8_t g, uint8_t b);
+    orb_sample (*sample_find)(const char* stem);
+    orb_song (*song_find)(const char* stem);
+    void (*song_pause)(void);
+    void (*song_play)(orb_song s, bool loop);
+    void (*song_resume)(void);
+    void (*song_stop)(int fade_ms);
+    orb_voice (*sound_play)(orb_sample s, orb_sound_params p, int priority);
+    void (*sound_set)(orb_voice v, orb_sound_params p);
+    void (*sound_stop)(orb_voice v);
     void (*sprite_draw)(orb_sprite s, orb_vec2 at, uint32_t flags, const uint8_t* remap);
     orb_sprite (*sprite_find)(const char* stem, int frame);
+    void (*volume_set)(orb_volumes v);
 } orb_api;
 
 typedef struct orb_game {

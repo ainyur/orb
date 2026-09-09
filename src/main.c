@@ -86,8 +86,9 @@ static int cast_once(const char* dir, bool seal, const char* out_path) {
     }
 
     printf(
-        "%s %u sprites, %u animations (%zu bytes)\n", out_path ? "sealed" : "cast",
-        result.sprite_count, result.animation_count, result.file.len
+        "%s %u sprites, %u animations, %u samples, %u songs (%zu bytes)\n",
+        out_path ? "sealed" : "cast", result.sprite_count, result.animation_count,
+        result.sample_count, result.song_count, result.file.len
     );
 
     return 0;

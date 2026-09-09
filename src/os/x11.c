@@ -3,6 +3,8 @@
 #include "os.h"
 #include "posix.c"
 
+#include "alsa.c"
+
 #include <X11/XKBlib.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -92,12 +94,18 @@ bool orb_os_open(const orb_os_config* cfg) {
         (unsigned)x11_max_w, (unsigned)x11_max_h, 32, 0
     );
 
-    if (!x11_image) orb_log("XCreateImage failed; the display depth is probably not 24 or 32");
+    if (!x11_image) {
+        orb_log("XCreateImage failed; the display depth is probably not 24 or 32");
+        return false;
+    }
 
-    return x11_image != nullptr;
+    alsa_open();
+
+    return true;
 }
 
 void orb_os_close(void) {
+    alsa_close();
     XDestroyImage(x11_image); // also frees x11_pixels
     XDestroyWindow(x11_display, x11_window);
     XCloseDisplay(x11_display);

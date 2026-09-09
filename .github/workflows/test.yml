@@ -8,7 +8,7 @@ jobs:
     container: gcc:15
     steps:
       - uses: actions/checkout@v4
-      - run: apt-get update && apt-get install -y make libx11-dev
+      - run: apt-get update && apt-get install -y make libx11-dev libasound2-dev
       - run: gcc --version && make --version
       - run: make test
       - run: make

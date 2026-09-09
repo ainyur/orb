@@ -12,13 +12,24 @@ void orb_error_set(orb_error* e, const char* fmt, ...) {
     va_end(ap);
 }
 
+// Formats into a local buffer and writes it with one fputs, so a line from the
+// audio thread cannot interleave with a main-thread line between the text and
+// its newline.
 void orb_log(const char* fmt, ...) {
+    char line[512];
     va_list ap;
 
     va_start(ap, fmt);
-    vfprintf(stderr, fmt, ap);
+    int n = vsnprintf(line, sizeof line, fmt, ap);
     va_end(ap);
-    fputc('\n', stderr);
+
+    size_t len = n < 0 ? 0 : (size_t)n;
+
+    if (len > sizeof line - 2) len = sizeof line - 2;
+
+    line[len] = '\n';
+    line[len + 1] = '\0';
+    fputs(line, stderr);
 }
 
 [[noreturn]] void orb_fatal(const char* fmt, ...) {

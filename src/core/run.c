@@ -143,6 +143,7 @@ bool orb_run_tick(void) {
 
     orb_input_step(&in);
     run_game->update(run_state.base, orb_api_table());
+    orb_api_poll();
     return true;
 }
 

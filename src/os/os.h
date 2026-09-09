@@ -39,6 +39,10 @@ void orb_os_sleep(uint64_t ns);
 uint64_t orb_os_ticks(void);
 bool orb_os_write_file(const char* path, orb_span data);
 
+// orb implements this in core/api.c; the OS audio thread calls it for every
+// buffer it needs: frames * ORB_AUDIO_CHANNELS interleaved int16 at ORB_AUDIO_RATE.
+void orb_audio_render(int16_t* out, int frames);
+
 #ifdef ORB_OS_HEADLESS
 const uint32_t* orb_os_headless_frame(void);
 void orb_os_headless_set_input(const orb_input* in);

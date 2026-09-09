@@ -4,6 +4,7 @@
 #include "file.h"
 #include "json.h"
 #include "pack.h"
+#include "wav.h"
 
 #include <ctype.h>
 #include <stdalign.h>
@@ -27,6 +28,43 @@ static const char* cast_string(const orb_json* obj, const char* key, orb_error* 
     }
 
     return v->str;
+}
+
+// A manifest array of paths. A required key that is missing is an error; an
+// optional one is an empty list.
+static bool cast_string_list(
+    orb_arena* a,
+    const orb_json* root,
+    const char* key,
+    bool required,
+    const char*** out,
+    int* count,
+    orb_error* err
+) {
+    const orb_json* list = orb_json_get(root, key);
+
+    *out = nullptr;
+    *count = 0;
+
+    if (!list && !required) return true;
+
+    if (!list || list->kind != ORB_JSON_ARRAY) {
+        orb_error_set(err, "orb.json: \"%s\" must be an array of paths", key);
+        return false;
+    }
+
+    *out = orb_arena_push(a, sizeof(char*) * list->count, alignof(char*));
+
+    for (const orb_json* s = list->first; s; s = s->next) {
+        if (s->kind != ORB_JSON_STRING) {
+            orb_error_set(err, "orb.json: \"%s\" entries must be strings", key);
+            return false;
+        }
+
+        (*out)[(*count)++] = s->str;
+    }
+
+    return true;
 }
 
 bool orb_manifest_load(orb_arena* a, const char* game_dir, orb_manifest* m, orb_error* err) {
@@ -72,25 +110,9 @@ bool orb_manifest_load(orb_arena* a, const char* game_dir, orb_manifest* m, orb_
 
     m->asset_headroom = (size_t)headroom->num;
 
-    const orb_json* sprites = orb_json_get(root, "sprites");
-
-    if (!sprites || sprites->kind != ORB_JSON_ARRAY) {
-        orb_error_set(err, "orb.json: \"sprites\" must be an array of paths");
-        return false;
-    }
-
-    m->sprites = orb_arena_push(a, sizeof(char*) * sprites->count, alignof(char*));
-
-    for (const orb_json* s = sprites->first; s; s = s->next) {
-        if (s->kind != ORB_JSON_STRING) {
-            orb_error_set(err, "orb.json: \"sprites\" entries must be strings");
-            return false;
-        }
-
-        m->sprites[m->sprite_count++] = s->str;
-    }
-
-    return true;
+    return cast_string_list(a, root, "sprites", true, &m->sprites, &m->sprite_count, err) &&
+           cast_string_list(a, root, "sounds", false, &m->sounds, &m->sound_count, err) &&
+           cast_string_list(a, root, "songs", false, &m->songs, &m->song_count, err);
 }
 
 // "art/player.aseprite" -> "PLAYER"
@@ -125,6 +147,37 @@ static bool cast_load_ase(
     orb_error inner;
 
     if (!orb_ase_parse(scratch, file, ase, &inner)) {
+        orb_error_set(err, "%s: %s", rel, inner.text);
+        return false;
+    }
+
+    return true;
+}
+
+static bool cast_has_suffix(const char* path, const char* suffix) {
+    size_t n = strlen(path), m = strlen(suffix);
+
+    return n >= m && strcmp(path + n - m, suffix) == 0;
+}
+
+static bool cast_load_wav(
+    orb_arena* scratch,
+    const char* game_dir,
+    const char* rel,
+    orb_wav* wav,
+    orb_error* err
+) {
+    const char* path = cast_path(scratch, game_dir, rel);
+    orb_span file;
+
+    if (!orb_os_read_file(path, scratch, &file)) {
+        orb_error_set(err, "cannot read %s", path);
+        return false;
+    }
+
+    orb_error inner;
+
+    if (!orb_wav_parse(scratch, file, wav, &inner)) {
         orb_error_set(err, "%s: %s", rel, inner.text);
         return false;
     }
@@ -188,7 +241,7 @@ static bool cast_body(
     uint64_t* animation_ids = orb_arena_push(scratch, sizeof(uint64_t) * max_anims, 16);
     orb_pack* packs = orb_arena_push_array(scratch, orb_pack, m->sprite_count);
 
-    r->sprite_count = r->animation_count = 0;
+    r->sprite_count = r->animation_count = r->sample_count = r->song_count = 0;
 
     uint32_t pixel_total = 0, duration_count = 0;
 
@@ -291,6 +344,68 @@ static bool cast_body(
         );
     }
 
+    // Sounds first, then each song's sample, so a song and a sound may share a stem.
+    uint32_t wav_count = (uint32_t)(m->sound_count + m->song_count);
+    orb_wav* wavs = orb_arena_push_array(scratch, orb_wav, wav_count);
+    orb_sample_desc* samples = orb_arena_push(scratch, sizeof(orb_sample_desc) * wav_count, 16);
+    uint64_t* sample_ids = orb_arena_push(scratch, sizeof(uint64_t) * wav_count, 16);
+    orb_song_desc* songs = orb_arena_push(scratch, sizeof(orb_song_desc) * m->song_count, 16);
+    uint64_t* song_ids = orb_arena_push(scratch, sizeof(uint64_t) * m->song_count, 16);
+    uint32_t pcm_total = 0;
+
+    for (uint32_t i = 0; i < wav_count; i++) {
+        bool song = i >= (uint32_t)m->sound_count;
+        const char* rel = song ? m->songs[i - m->sound_count] : m->sounds[i];
+
+        if (song && !cast_has_suffix(rel, ".wav")) {
+            orb_error_set(
+                err, "%s: only .wav songs are accepted yet; tracker songs come later", rel
+            );
+            return false;
+        }
+
+        if (!cast_load_wav(scratch, game_dir, rel, &wavs[i], err)) return false;
+
+        const orb_wav* w = &wavs[i];
+        bool loop = w->has_loop && w->loop_end > w->loop_start;
+
+        if (!song && w->channels != 1) {
+            orb_error_set(
+                err, "%s: sounds must be mono, since pan positions them; only songs may be stereo",
+                rel
+            );
+            return false;
+        }
+
+        if (w->has_loop && !loop) orb_log("%s: loop points ignored, the loop is empty", rel);
+
+        samples[i] = (orb_sample_desc) {
+            .first = pcm_total,
+            .count = w->count,
+            .loop_start = loop ? w->loop_start : 0,
+            .loop_end = loop ? w->loop_end : 0,
+            .rate = w->rate,
+            .channels = w->channels
+        };
+        sample_ids[i] = orb_asset_id(cast_stem(scratch, rel), song ? "song" : "");
+        pcm_total += w->count * w->channels;
+    }
+
+    for (int i = 0; i < m->song_count; i++) {
+        songs[i] = (orb_song_desc) {.sample = (uint32_t)(m->sound_count + i)};
+        song_ids[i] = orb_asset_id(cast_stem(scratch, m->songs[i]), "");
+    }
+
+    int16_t* pcm = orb_arena_push(scratch, sizeof(int16_t) * pcm_total, 16);
+
+    for (uint32_t i = 0; i < wav_count; i++)
+        memcpy(
+            pcm + samples[i].first, wavs[i].pcm, sizeof(int16_t) * wavs[i].count * wavs[i].channels
+        );
+
+    r->sample_count = wav_count;
+    r->song_count = (uint32_t)m->song_count;
+
     orb_info_desc info = {.w = (uint16_t)m->size_w, .h = (uint16_t)m->size_h};
 
     snprintf(info.name, sizeof info.name, "%s", m->name);
@@ -309,7 +424,15 @@ static bool cast_body(
         .durations = durations,
         .duration_count = duration_count,
         .sprite_ids = sprite_ids,
-        .animation_ids = animation_ids
+        .animation_ids = animation_ids,
+        .samples = samples,
+        .sample_count = wav_count,
+        .pcm = pcm,
+        .pcm_count = pcm_total,
+        .songs = songs,
+        .song_count = (uint32_t)m->song_count,
+        .sample_ids = sample_ids,
+        .song_ids = song_ids
     };
 
     r->file = orb_file_write(out, &assets);

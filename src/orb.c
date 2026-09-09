@@ -7,9 +7,11 @@
 #include "cast/inflate.c"
 #include "cast/json.c"
 #include "cast/pack.c"
+#include "cast/wav.c"
 #include "core/debug.c"
 #endif
 
+#include "audio/mixer.c"
 #include "core/api.c"
 #include "core/arena.c"
 #include "core/input.c"

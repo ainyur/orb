@@ -2,7 +2,9 @@
   "id": "fixture",
   "name": "Fixture",
   "size": [64, 32],
-  "asset_headroom": 1048576,
+  "asset_headroom": 2097152,
   "palette": "palette.aseprite",
-  "sprites": ["player.aseprite"]
+  "sprites": ["player.aseprite"],
+  "sounds": ["beep.wav"],
+  "songs": ["loop.wav"]
 }

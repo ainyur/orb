@@ -38,6 +38,41 @@ int main(void) {
 
     CHECK_EQ(pixel(0, 0), BACKGROUND);
 
+    // sounds and the song play through the API table into the headless render
+    const orb_api* api = orb_api_table();
+    orb_sample beep = api->sample_find("beep");
+    orb_song loop = api->song_find("loop");
+    CHECK(beep.v != ORB_NO_SAMPLE.v);
+    CHECK(loop.v != ORB_NO_SONG.v);
+    CHECK_EQ(api->sample_find("loop").v, ORB_NO_SAMPLE.v); // a song's sample is not a sound
+    CHECK_EQ(api->song_find("beep").v, ORB_NO_SONG.v);
+
+    api->song_play(loop, true);
+
+    orb_voice voice = api->sound_play(beep, (orb_sound_params) {.volume = 1}, 0);
+    CHECK(voice.v != ORB_NO_VOICE.v);
+
+    static int16_t audio[8192 * 2];
+    orb_audio_render(audio, 1024);
+
+    bool left = false, right = false;
+
+    for (int i = 0; i < 1024; i++) {
+        if (audio[i * 2]) left = true;
+        if (audio[i * 2 + 1]) right = true;
+    }
+
+    CHECK(left && right);
+
+    // the beep ends on its own inside 4800 frames and the song fades out in 100 ms
+    api->song_stop(100);
+    orb_audio_render(audio, 8192);
+
+    for (int i = 8192 - 512; i < 8192; i++) {
+        CHECK_EQ(audio[i * 2], 0);
+        CHECK_EQ(audio[i * 2 + 1], 0);
+    }
+
     int bx, by;
     CHECK(find(RED, &bx, &by));
 
@@ -75,6 +110,9 @@ int main(void) {
     orb_run_draw();
 
     CHECK_EQ(pixel(bx + 7, by), GREEN);
+
+    // handles survive a recast that changes nothing, so a game need not find again
+    CHECK(api->sound_play(beep, (orb_sound_params) {.volume = 1}, 0).v != ORB_NO_VOICE.v);
 
     orb_os_close();
 

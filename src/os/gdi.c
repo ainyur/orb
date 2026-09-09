@@ -2,6 +2,8 @@
 #include "os.h"
 #include "win32.c"
 
+#include "wasapi.c"
+
 #include <string.h>
 
 static HWND gdi_window;
@@ -143,10 +145,14 @@ bool orb_os_open(const orb_os_config* cfg) {
 
     ShowWindow(gdi_window, SW_SHOW);
 
+    wasapi_open();
+
     return true;
 }
 
 void orb_os_close(void) {
+    wasapi_close();
+
     DestroyWindow(gdi_window);
     UnregisterClassA("orb", GetModuleHandleA(nullptr));
     gdi_window = nullptr;
