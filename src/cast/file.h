@@ -80,8 +80,9 @@ typedef struct orb_sample_desc {
 } orb_sample_desc;
 
 typedef struct orb_song_desc {
-    uint32_t sample; // a kind field joins this when tracker songs arrive
-    uint32_t pad[3];
+    uint32_t sample;
+    float bpm; // from the manifest; beats = seconds * bpm / 60
+    uint32_t pad[2];
 } orb_song_desc;
 
 static_assert(sizeof(orb_file_header) == 16, "orb_file_header layout");

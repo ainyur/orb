@@ -18,11 +18,7 @@ static uint8_t api_sprite_generations[ORB_MAX_SPRITES];
 static uint8_t api_animation_generations[ORB_MAX_ANIMATIONS];
 static uint8_t api_sample_generations[ORB_MAX_SAMPLES];
 static uint8_t api_song_generations[ORB_MAX_SONGS];
-static orb_mixer api_mixer = {
-    .volumes = {1, 1, 1}
-};                              // mirrors orb_mixer_init (which tests use): assets are
-                                // published before orb_api_init runs, so this static needs
-                                // its own initializer rather than waiting to be initialized
+static orb_mixer api_mixer = ORB_MIXER_INIT;
 static orb_assets api_views[2]; // the mixer reads one; a publish fills the other and swaps
 static int api_view;
 
@@ -134,6 +130,10 @@ static void api_song_play(orb_song s, bool loop) {
     orb_mixer_song_play(&api_mixer, s, loop);
 }
 
+static orb_song_position api_song_position(void) {
+    return orb_mixer_song_position(&api_mixer);
+}
+
 static void api_song_resume(void) {
     orb_mixer_song_resume(&api_mixer);
 }
@@ -194,6 +194,7 @@ static const orb_api api_table = {
     .song_find = api_song_find,
     .song_pause = api_song_pause,
     .song_play = api_song_play,
+    .song_position = api_song_position,
     .song_resume = api_song_resume,
     .song_stop = api_song_stop,
     .sound_play = api_sound_play,

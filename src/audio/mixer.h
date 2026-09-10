@@ -68,8 +68,13 @@ typedef struct orb_mixer {
     _Atomic(const orb_assets*) assets;
     const orb_assets* seen; // audio thread: what the last render used
     atomic_uint render_begin, render_end;
-    orb_volumes volumes; // the audio thread's copy
+    _Atomic orb_song_position song_position; // stored after each render
+    orb_volumes volumes;                     // the audio thread's copy
 } orb_mixer;
+
+// The defaults. api.c's static mixer starts from it too, since assets are
+// published before orb_api_init runs.
+#define ORB_MIXER_INIT {.song_position = {-1, -1}, .volumes = {1, 1, 1}}
 
 void orb_mixer_init(orb_mixer* m);
 void orb_mixer_render(orb_mixer* m, int16_t* out, int frames); // the audio thread; the rest is main
@@ -78,6 +83,7 @@ uint32_t
 orb_mixer_set_assets(orb_mixer* m, const orb_assets* assets); // the render to wait for, 0 if none
 void orb_mixer_song_pause(orb_mixer* m);
 void orb_mixer_song_play(orb_mixer* m, orb_song s, bool loop);
+orb_song_position orb_mixer_song_position(const orb_mixer* m);
 void orb_mixer_song_resume(orb_mixer* m);
 void orb_mixer_song_stop(orb_mixer* m, int fade_ms);
 orb_voice orb_mixer_sound_play(orb_mixer* m, orb_sample s, orb_sound_params p, int priority);

@@ -47,6 +47,8 @@ int main(void) {
     CHECK_EQ(api->sample_find("loop").v, ORB_NO_SAMPLE.v); // a song's sample is not a sound
     CHECK_EQ(api->song_find("beep").v, ORB_NO_SONG.v);
 
+    CHECK(api->song_position().seconds == -1);
+    CHECK(api->song_position().beats == -1);
     api->song_play(loop, true);
 
     orb_voice voice = api->sound_play(beep, (orb_sound_params) {.volume = 1}, 0);
@@ -63,6 +65,11 @@ int main(void) {
     }
 
     CHECK(left && right);
+
+    // the position is the render head: 1024 output frames into a 48 kHz file at 120 BPM
+    orb_song_position at = api->song_position();
+    CHECK(at.seconds > 1023.0f / 48000 && at.seconds < 1025.0f / 48000);
+    CHECK(at.beats > 1023.0f / 48000 * 2 && at.beats < 1025.0f / 48000 * 2);
 
     // the beep ends on its own inside 4800 frames and the song fades out in 100 ms
     api->song_stop(100);

@@ -6,6 +6,11 @@
 
 #include <stdbool.h>
 
+typedef struct orb_manifest_song {
+    float bpm; // within 0..1000
+    const char* path;
+} orb_manifest_song;
+
 typedef struct orb_manifest {
     const char* id;
     const char* name;
@@ -14,7 +19,7 @@ typedef struct orb_manifest {
     int sprite_count;
     const char** sounds;
     int sound_count;
-    const char** songs;
+    const orb_manifest_song* songs;
     int song_count;
     int size_w, size_h;
     size_t asset_headroom;

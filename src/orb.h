@@ -25,6 +25,10 @@ typedef struct orb_volumes {
     float master, song, sound; // 0..1 each, 1 by default
 } orb_volumes;
 
+typedef struct orb_song_position {
+    float seconds, beats; // into the song's file; both -1 when no song plays
+} orb_song_position;
+
 typedef struct {
     const uint8_t* ptr;
     size_t len;
@@ -122,8 +126,11 @@ typedef struct orb_config {
 // are busy it steals the oldest voice whose priority is at or below the new sound's, or
 // returns ORB_NO_VOICE. sound_set and sound_stop on a voice that ended or was stolen do
 // nothing. song_play loops on the WAV's own loop points when it has them, else over the
-// whole file. Volumes are 0..1 and start at 1. orb_sound_params.volume 0 is silence, so a
-// zero-initialized orb_sound_params plays nothing; set .volume explicitly.
+// whole file. song_position is where the mixer's render head is in the song's file, as
+// seconds and as beats from the manifest's bpm; it wraps with the loop and freezes on pause.
+// The render head runs ahead of the speaker by one device buffer, a few tens of
+// milliseconds. Volumes are 0..1 and start at 1. orb_sound_params.volume 0 is silence, so
+// a zero-initialized orb_sound_params plays nothing; set .volume explicitly.
 typedef struct orb_api {
     orb_animation (*animation_find)(const char* stem, const char* tag);
     void (*animation_start)(orb_animation_state* st, orb_animation a);
@@ -141,6 +148,7 @@ typedef struct orb_api {
     orb_song (*song_find)(const char* stem);
     void (*song_pause)(void);
     void (*song_play)(orb_song s, bool loop);
+    orb_song_position (*song_position)(void);
     void (*song_resume)(void);
     void (*song_stop)(int fade_ms);
     orb_voice (*sound_play)(orb_sample s, orb_sound_params p, int priority);

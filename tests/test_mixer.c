@@ -11,7 +11,7 @@ static const orb_sample_desc samples[3] = {
     {.first = 0, .count = 8, .loop_start = 2, .loop_end = 2, .rate = 48000, .channels = 1},
 };
 static const uint64_t sample_ids[3] = {11, 22, 33};
-static const orb_song_desc songs[2] = {{.sample = 1}, {.sample = 2}};
+static const orb_song_desc songs[2] = {{.sample = 1, .bpm = 120}, {.sample = 2, .bpm = 90}};
 static const uint64_t song_ids[2] = {44, 55};
 static orb_assets assets = {
     .samples = samples,
@@ -39,6 +39,10 @@ static int playing_count(void) {
     return n;
 }
 
+static bool near(float a, float b) {
+    return fabsf(a - b) < 1e-7f;
+}
+
 static bool song_playing(void) {
     return atomic_load(&mixer.voices[ORB_SONG_VOICE].playing) != 0;
 }
@@ -49,6 +53,8 @@ int main(void) {
 
     orb_mixer_init(&mixer);
     CHECK(mixer.volumes.master == 1 && mixer.volumes.song == 1 && mixer.volumes.sound == 1);
+    CHECK(orb_mixer_song_position(&mixer).seconds == -1); // before any render
+    CHECK(atomic_is_lock_free(&mixer.song_position));     // the main thread reads it with one load
 
     // silence before any assets; the render counters advance
     CHECK(!orb_mixer_rendered(&mixer, 1));
@@ -215,6 +221,23 @@ int main(void) {
     render(9);
     CHECK(!song_playing());
 
+    // song_position is the render head in the file as seconds and beats, -1 with no song
+    CHECK(orb_mixer_song_position(&mixer).seconds == -1);
+    CHECK(orb_mixer_song_position(&mixer).beats == -1);
+    orb_mixer_song_play(&mixer, ORB_SONG(1), true); // 8 frames at 48000, 90 BPM
+    render(6);
+    CHECK(near(orb_mixer_song_position(&mixer).seconds, 6.0f / 48000));
+    CHECK(near(orb_mixer_song_position(&mixer).beats, 6.0f / 48000 * 1.5f));
+    render(4); // wraps at 8: the playhead is at frame 2 again
+    CHECK(near(orb_mixer_song_position(&mixer).seconds, 2.0f / 48000));
+    orb_mixer_song_pause(&mixer);
+    render(5);
+    CHECK(near(orb_mixer_song_position(&mixer).seconds, 2.0f / 48000));
+    orb_mixer_song_resume(&mixer);
+    orb_mixer_song_stop(&mixer, 0);
+    render(1);
+    CHECK(orb_mixer_song_position(&mixer).seconds == -1);
+
     // a recast that puts a different id at a sample's index silences the voices using it
     orb_mixer_song_play(&mixer, ORB_SONG(0), true);
     v = orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), full, 0);
@@ -230,6 +253,25 @@ int main(void) {
     CHECK_EQ(playing_count(), 0);
     CHECK(song_playing());
     CHECK_EQ(out[0], 2000);
+
+    // a recast that shrinks the looping song's sample under the playhead wraps, not ends
+    orb_mixer_set_assets(&mixer, &assets);
+    orb_mixer_song_play(&mixer, ORB_SONG(0), true);
+    render(3);
+    static const orb_sample_desc shrunk[3] = {
+        {.first = 0, .count = 8, .rate = 48000, .channels = 1},
+        {.first = 8, .count = 2, .loop_start = 0, .loop_end = 2, .rate = 48000, .channels = 2},
+        {.first = 0, .count = 8, .loop_start = 2, .loop_end = 2, .rate = 48000, .channels = 1},
+    };
+    static orb_assets shorter;
+    shorter = assets;
+    shorter.samples = shrunk;
+    orb_mixer_set_assets(&mixer, &shorter);
+    render(1);
+    CHECK(song_playing());
+    CHECK_EQ(out[0], 2000); // frame 3 wrapped to 1 of the 2-frame loop
+    CHECK(near(orb_mixer_song_position(&mixer).seconds, 0)); // and then to 0 after advancing
+    orb_mixer_set_assets(&mixer, &assets);
 
     static const uint64_t song_changed[3] = {11, 98, 33};
     static orb_assets swapped_song;

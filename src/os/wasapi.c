@@ -10,65 +10,34 @@
 #include <stdatomic.h>
 
 constexpr REFERENCE_TIME WASAPI_BUFFER = 200000; // 20 ms in 100 ns units
+constexpr DWORD WASAPI_WAIT_MS = 100;  // a dead device may never signal, so the wait polls
+constexpr int WASAPI_STALL_WAITS = 10; // full-buffer timeouts before the device counts as dead
+constexpr DWORD WASAPI_TICK_MS = 20;   // the outage loop's period
+constexpr int WASAPI_TICK_FRAMES = ORB_AUDIO_RATE * (int)WASAPI_TICK_MS / 1000;
+constexpr int WASAPI_RETRY_TICKS = 1000 / (int)WASAPI_TICK_MS; // one reopen attempt a second
+constexpr DWORD WASAPI_JOIN_MS = 2000; // close gives up on a thread wedged inside a COM call
 
+// The main thread owns the event, the thread handle, and the stop flag; the
+// audio thread owns the client and reopens it on its own when the device goes.
 static HANDLE wasapi_event, wasapi_thread;
 static IAudioClient* wasapi_client;
 static IAudioRenderClient* wasapi_render;
 static UINT32 wasapi_buffer_frames;
 static atomic_bool wasapi_stop;
-static bool wasapi_com;
-
-static DWORD WINAPI wasapi_run(void* arg) {
-    (void)arg;
-
-    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-
-    HRESULT hr = S_OK;
-
-    for (;;) {
-        if (WaitForSingleObject(wasapi_event, INFINITE) != WAIT_OBJECT_0) {
-            hr = HRESULT_FROM_WIN32(GetLastError());
-            break;
-        }
-
-        if (atomic_load(&wasapi_stop)) break;
-
-        UINT32 padding;
-
-        hr = IAudioClient_GetCurrentPadding(wasapi_client, &padding);
-        if (FAILED(hr)) break;
-
-        UINT32 frames = wasapi_buffer_frames - padding;
-
-        if (frames == 0) continue;
-
-        BYTE* data;
-
-        hr = IAudioRenderClient_GetBuffer(wasapi_render, frames, &data);
-        if (FAILED(hr)) break;
-
-        orb_audio_render((int16_t*)data, (int)frames);
-        IAudioRenderClient_ReleaseBuffer(wasapi_render, frames, 0);
-    }
-
-    if (!atomic_load(&wasapi_stop))
-        orb_log("audio: WASAPI error 0x%08lx; sound stops", (unsigned long)hr);
-
-    IAudioClient_Stop(wasapi_client);
-    CoUninitialize();
-    return 0;
-}
 
 static void wasapi_release(void) {
     if (wasapi_render) IAudioRenderClient_Release(wasapi_render);
-    if (wasapi_client) IAudioClient_Release(wasapi_client);
-    if (wasapi_event) CloseHandle(wasapi_event);
+
+    if (wasapi_client) {
+        IAudioClient_Stop(wasapi_client);
+        IAudioClient_Release(wasapi_client);
+    }
 
     wasapi_render = nullptr;
     wasapi_client = nullptr;
-    wasapi_event = nullptr;
 }
 
+// Opens the default render endpoint in shared mode; on failure nothing is left held.
 static HRESULT wasapi_start(void) {
     IMMDeviceEnumerator* enumerator = nullptr;
     IMMDevice* device = nullptr;
@@ -97,12 +66,7 @@ static HRESULT wasapi_start(void) {
         hr = IAudioClient_Initialize(
             wasapi_client, AUDCLNT_SHAREMODE_SHARED, flags, WASAPI_BUFFER, 0, &format, nullptr
         );
-
-    if (SUCCEEDED(hr)) {
-        wasapi_event = CreateEventA(nullptr, FALSE, FALSE, nullptr);
-        hr = wasapi_event ? IAudioClient_SetEventHandle(wasapi_client, wasapi_event) : E_FAIL;
-    }
-
+    if (SUCCEEDED(hr)) hr = IAudioClient_SetEventHandle(wasapi_client, wasapi_event);
     if (SUCCEEDED(hr)) hr = IAudioClient_GetBufferSize(wasapi_client, &wasapi_buffer_frames);
     if (SUCCEEDED(hr))
         hr =
@@ -111,49 +75,134 @@ static HRESULT wasapi_start(void) {
 
     if (device) IMMDevice_Release(device);
     if (enumerator) IMMDeviceEnumerator_Release(enumerator);
+    if (FAILED(hr)) wasapi_release();
 
     return hr;
 }
 
-static void wasapi_open(void) {
-    if (FAILED(CoInitializeEx(nullptr, COINIT_MULTITHREADED))) {
-        orb_log("no audio device: COM did not initialize");
-        return;
+// One buffer: wait for the engine, then fill what the padding leaves free. A
+// sleeping HDMI sink stops draining without invalidating the client, so the
+// buffer stays full and the event never fires; a run of timed-out waits like
+// that counts as the device being gone.
+static HRESULT wasapi_fill(void) {
+    static int stalls;
+    DWORD wait = WaitForSingleObject(wasapi_event, WASAPI_WAIT_MS);
+
+    if (wait == WAIT_FAILED) return HRESULT_FROM_WIN32(GetLastError());
+    if (atomic_load(&wasapi_stop)) return S_OK;
+
+    UINT32 padding;
+    HRESULT hr = IAudioClient_GetCurrentPadding(wasapi_client, &padding);
+
+    if (FAILED(hr)) return hr;
+
+    UINT32 frames = wasapi_buffer_frames - padding;
+
+    if (frames == 0) {
+        if (wait != WAIT_TIMEOUT || ++stalls < WASAPI_STALL_WAITS) return S_OK;
+
+        stalls = 0;
+        return AUDCLNT_E_DEVICE_INVALIDATED;
     }
 
-    wasapi_com = true; // S_FALSE still counts as success and needs a matching uninitialize
+    stalls = 0;
 
-    HRESULT hr = wasapi_start();
+    BYTE* data;
 
-    if (FAILED(hr)) {
-        orb_log("no audio device: WASAPI error 0x%08lx", (unsigned long)hr);
-        wasapi_release();
-        return;
-    }
+    hr = IAudioRenderClient_GetBuffer(wasapi_render, frames, &data);
 
-    atomic_store(&wasapi_stop, false);
-    wasapi_thread = CreateThread(nullptr, 0, wasapi_run, nullptr, 0, nullptr);
+    if (FAILED(hr)) return hr;
 
-    if (!wasapi_thread) {
-        orb_log("audio: cannot start the audio thread; sound is off");
-        IAudioClient_Stop(wasapi_client);
-        wasapi_release();
-    }
+    orb_audio_render((int16_t*)data, (int)frames);
+    return IAudioRenderClient_ReleaseBuffer(wasapi_render, frames, 0);
 }
 
-static void wasapi_close(void) {
-    if (wasapi_thread) {
-        atomic_store(&wasapi_stop, true);
-        SetEvent(wasapi_event);
-        WaitForSingleObject(wasapi_thread, INFINITE);
-        CloseHandle(wasapi_thread);
-        wasapi_thread = nullptr;
+// No device: keep the mixer's clock running into silence, so sounds end, the ring
+// drains, and song_position advances, and try the device again once a second.
+// The frames owed come from the tick clock, since Sleep rounds to the scheduler
+// tick and a reopen attempt blocks; the wait is on the event so close wakes it.
+// The first retry waits a full second so an endpoint that opens but fails at once
+// cannot spin the thread through open and release.
+static HRESULT wasapi_outage(void) {
+    static int16_t silence[WASAPI_TICK_FRAMES * ORB_AUDIO_CHANNELS];
+    uint64_t start = orb_os_ticks(), rendered = 0;
+    HRESULT hr = E_FAIL;
+
+    for (int tick = 1; !atomic_load(&wasapi_stop); tick++) {
+        WaitForSingleObject(wasapi_event, WASAPI_TICK_MS);
+
+        uint64_t owed = (orb_os_ticks() - start) * ORB_AUDIO_RATE / 1000000000u;
+
+        for (; rendered + WASAPI_TICK_FRAMES <= owed; rendered += WASAPI_TICK_FRAMES)
+            orb_audio_render(silence, WASAPI_TICK_FRAMES);
+
+        if (tick % WASAPI_RETRY_TICKS == 0 && SUCCEEDED(hr = wasapi_start())) return hr;
+    }
+
+    return hr;
+}
+
+static DWORD WINAPI wasapi_run(void* arg) {
+    (void)arg;
+
+    HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    HRESULT hr = SUCCEEDED(com) ? wasapi_start() : com; // without COM every open fails, but
+                                                        // the outage loop still keeps time
+
+    if (FAILED(hr)) orb_log("no audio device: WASAPI error 0x%08lx; retrying", (unsigned long)hr);
+
+    while (!atomic_load(&wasapi_stop)) {
+        if (FAILED(hr)) {
+            hr = wasapi_outage();
+
+            if (SUCCEEDED(hr)) orb_log("audio: device open");
+
+            continue;
+        }
+
+        hr = wasapi_fill();
+
+        if (FAILED(hr)) {
+            orb_log("audio: WASAPI error 0x%08lx; device lost, retrying", (unsigned long)hr);
+            wasapi_release();
+        }
     }
 
     wasapi_release();
 
-    if (wasapi_com) {
-        CoUninitialize();
-        wasapi_com = false;
+    if (SUCCEEDED(com)) CoUninitialize();
+
+    return 0;
+}
+
+static void wasapi_open(void) {
+    wasapi_event = CreateEventA(nullptr, FALSE, FALSE, nullptr);
+    atomic_store(&wasapi_stop, false);
+    wasapi_thread =
+        wasapi_event ? CreateThread(nullptr, 0, wasapi_run, nullptr, 0, nullptr) : nullptr;
+
+    if (wasapi_thread) return;
+
+    orb_log("audio: cannot start the audio thread; sound is off");
+
+    if (wasapi_event) CloseHandle(wasapi_event);
+
+    wasapi_event = nullptr;
+}
+
+static void wasapi_close(void) {
+    if (!wasapi_thread) return;
+
+    atomic_store(&wasapi_stop, true);
+    SetEvent(wasapi_event);
+
+    if (WaitForSingleObject(wasapi_thread, WASAPI_JOIN_MS) != WAIT_OBJECT_0) {
+        orb_log("audio: the audio thread is stuck in the device; exit reaps it");
+        return; // close runs only at exit, and the thread may still touch the handles
     }
+
+    CloseHandle(wasapi_thread);
+    CloseHandle(wasapi_event);
+    wasapi_thread = nullptr;
+    wasapi_event = nullptr;
 }

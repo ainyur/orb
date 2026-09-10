@@ -6,5 +6,5 @@
   "palette": "palette.aseprite",
   "sprites": ["player.aseprite"],
   "sounds": ["beep.wav"],
-  "songs": ["loop.wav"]
+  "songs": [{"bpm": 120, "path": "loop.wav"}]
 }

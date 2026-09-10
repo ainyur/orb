@@ -276,6 +276,11 @@ bool orb_file_load(orb_span file, orb_assets* out, orb_error* err) {
             return false;
         }
 
+        if (d->rate < 1 || d->rate > 192000) {
+            orb_error_set(err, "orb file: sample %u has a bad rate %u", i, d->rate);
+            return false;
+        }
+
         if (d->loop_end != 0 && (d->loop_end > d->count || d->loop_start >= d->loop_end)) {
             orb_error_set(
                 err, "orb file: sample %u has a bad loop start %u end %u for %u frames", i,
@@ -291,6 +296,11 @@ bool orb_file_load(orb_span file, orb_assets* out, orb_error* err) {
                 err, "orb file: song %u names sample %u of %u", i, out->songs[i].sample,
                 out->sample_count
             );
+            return false;
+        }
+
+        if (!(out->songs[i].bpm > 0 && out->songs[i].bpm <= 1000)) { // also refuses NaN
+            orb_error_set(err, "orb file: song %u has a bad bpm %g", i, (double)out->songs[i].bpm);
             return false;
         }
     }

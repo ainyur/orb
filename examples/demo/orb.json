@@ -6,5 +6,5 @@
   "palette": "art/palette.aseprite",
   "sprites": ["art/player.aseprite"],
   "sounds": ["sfx/bounce.wav"],
-  "songs": ["music/song.wav"]
+  "songs": [{"bpm": 120, "path": "music/song.wav"}]
 }

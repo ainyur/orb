@@ -126,7 +126,7 @@ static void debug_watch_assets(void) {
         debug_watch_add(debug_asset_watches, &debug_asset_count, m->sounds[i]);
 
     for (int i = 0; i < m->song_count; i++)
-        debug_watch_add(debug_asset_watches, &debug_asset_count, m->songs[i]);
+        debug_watch_add(debug_asset_watches, &debug_asset_count, m->songs[i].path);
 }
 
 static void debug_watch_depfile(orb_span text) {

@@ -67,6 +67,46 @@ static bool cast_string_list(
     return true;
 }
 
+// "songs": [{"bpm": 120, "path": "music/title.wav"}, ...]. Every song names its
+// tempo, since a rendered file carries none and song_position reports beats.
+static bool cast_song_list(orb_arena* a, const orb_json* root, orb_manifest* m, orb_error* err) {
+    const orb_json* list = orb_json_get(root, "songs");
+
+    m->songs = nullptr;
+    m->song_count = 0;
+
+    if (!list) return true;
+
+    if (list->kind != ORB_JSON_ARRAY) {
+        orb_error_set(err, "orb.json: \"songs\" must be an array of {\"bpm\", \"path\"} objects");
+        return false;
+    }
+
+    orb_manifest_song* songs = orb_arena_push_array(a, orb_manifest_song, list->count);
+
+    for (const orb_json* s = list->first; s; s = s->next) {
+        const orb_json* bpm = orb_json_get(s, "bpm"); // nullptr when s is not an object
+        const orb_json* path = orb_json_get(s, "path");
+
+        if (!path || path->kind != ORB_JSON_STRING) {
+            orb_error_set(
+                err, "orb.json: \"songs\" entries are {\"bpm\": 120, \"path\": \"music/title.wav\"}"
+            );
+            return false;
+        }
+
+        if (!bpm || bpm->kind != ORB_JSON_NUMBER || !(bpm->num > 0 && bpm->num <= 1000)) {
+            orb_error_set(err, "orb.json: %s: \"bpm\" must be a number within 0..1000", path->str);
+            return false;
+        }
+
+        songs[m->song_count++] = (orb_manifest_song) {.bpm = (float)bpm->num, .path = path->str};
+    }
+
+    m->songs = songs;
+    return true;
+}
+
 bool orb_manifest_load(orb_arena* a, const char* game_dir, orb_manifest* m, orb_error* err) {
     orb_span text;
     const char* path = cast_path(a, game_dir, "orb.json");
@@ -112,7 +152,7 @@ bool orb_manifest_load(orb_arena* a, const char* game_dir, orb_manifest* m, orb_
 
     return cast_string_list(a, root, "sprites", true, &m->sprites, &m->sprite_count, err) &&
            cast_string_list(a, root, "sounds", false, &m->sounds, &m->sound_count, err) &&
-           cast_string_list(a, root, "songs", false, &m->songs, &m->song_count, err);
+           cast_song_list(a, root, m, err);
 }
 
 // "art/player.aseprite" -> "PLAYER"
@@ -355,12 +395,10 @@ static bool cast_body(
 
     for (uint32_t i = 0; i < wav_count; i++) {
         bool song = i >= (uint32_t)m->sound_count;
-        const char* rel = song ? m->songs[i - m->sound_count] : m->sounds[i];
+        const char* rel = song ? m->songs[i - m->sound_count].path : m->sounds[i];
 
         if (song && !cast_has_suffix(rel, ".wav")) {
-            orb_error_set(
-                err, "%s: only .wav songs are accepted yet; tracker songs come later", rel
-            );
+            orb_error_set(err, "%s: only .wav songs are accepted", rel);
             return false;
         }
 
@@ -392,8 +430,9 @@ static bool cast_body(
     }
 
     for (int i = 0; i < m->song_count; i++) {
-        songs[i] = (orb_song_desc) {.sample = (uint32_t)(m->sound_count + i)};
-        song_ids[i] = orb_asset_id(cast_stem(scratch, m->songs[i]), "");
+        songs[i] =
+            (orb_song_desc) {.sample = (uint32_t)(m->sound_count + i), .bpm = m->songs[i].bpm};
+        song_ids[i] = orb_asset_id(cast_stem(scratch, m->songs[i].path), "");
     }
 
     int16_t* pcm = orb_arena_push(scratch, sizeof(int16_t) * pcm_total, 16);

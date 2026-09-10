@@ -19,7 +19,8 @@ int main(void) {
         "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
         " \"asset_headroom\": 1048576, \"palette\": \"" ART "palette.aseprite\",\n"
         " \"sprites\": [\"" ART "player.aseprite\"],\n"
-        " \"sounds\": [\"" ART "beep.wav\"], \"songs\": [\"" ART "loop.wav\"]}\n";
+        " \"sounds\": [\"" ART "beep.wav\"],\n"
+        " \"songs\": [{\"bpm\": 120, \"path\": \"" ART "loop.wav\"}]}\n";
 
     CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)manifest, strlen(manifest)}));
 
@@ -85,6 +86,7 @@ int main(void) {
     CHECK_EQ(as.pcm[0], -12000);
     CHECK_EQ(as.song_count, 1);
     CHECK_EQ(as.songs[0].sample, 1);
+    CHECK(as.songs[0].bpm == 120);
     CHECK(as.sample_ids[0] == orb_asset_id("beep", ""));
     CHECK(as.sample_ids[1] == orb_asset_id("loop", "song"));
     CHECK(as.song_ids[0] == orb_asset_id("LOOP", ""));
@@ -93,11 +95,37 @@ int main(void) {
     const char* tracker =
         "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
         " \"asset_headroom\": 1048576, \"palette\": \"" ART "palette.aseprite\",\n"
-        " \"sprites\": [], \"songs\": [\"music/title.fur\"]}\n";
+        " \"sprites\": [], \"songs\": [{\"bpm\": 120, \"path\": \"music/title.fur\"}]}\n";
     CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)tracker, strlen(tracker)}));
     CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
     CHECK(strstr(err.text, "title.fur") != nullptr);
     CHECK(strstr(err.text, ".wav") != nullptr);
+
+    // a song is an object with a path and a positive bpm; a bare path and a bad bpm are refused
+    const char* bare = "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
+                       " \"asset_headroom\": 1048576, \"palette\": \"" ART "palette.aseprite\",\n"
+                       " \"sprites\": [], \"songs\": [\"" ART "loop.wav\"]}\n";
+    CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)bare, strlen(bare)}));
+    CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
+    CHECK(strstr(err.text, "songs") != nullptr);
+    CHECK(strstr(err.text, "bpm") != nullptr);
+
+    const char* slow =
+        "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
+        " \"asset_headroom\": 1048576, \"palette\": \"" ART "palette.aseprite\",\n"
+        " \"sprites\": [], \"songs\": [{\"bpm\": 0, \"path\": \"" ART "loop.wav\"}]}\n";
+    CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)slow, strlen(slow)}));
+    CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
+    CHECK(strstr(err.text, "loop.wav") != nullptr);
+    CHECK(strstr(err.text, "bpm") != nullptr);
+
+    const char* fast =
+        "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
+        " \"asset_headroom\": 1048576, \"palette\": \"" ART "palette.aseprite\",\n"
+        " \"sprites\": [], \"songs\": [{\"bpm\": 1e999, \"path\": \"" ART "loop.wav\"}]}\n";
+    CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)fast, strlen(fast)}));
+    CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
+    CHECK(strstr(err.text, "bpm") != nullptr);
 
     // a sound must be mono, since pan positions it; only a song may be stereo
     const char* stereo = "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"

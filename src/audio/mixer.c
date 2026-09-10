@@ -168,6 +168,14 @@ static void mixer_apply(orb_mixer* m, const orb_assets* assets, const orb_mixer_
     }
 }
 
+// Folds a looping voice's position back into its loop.
+static void mixer_wrap(orb_voice_state* v, uint32_t loop_start, uint32_t end) {
+    uint64_t start = (uint64_t)loop_start << 32;
+    uint64_t length = (uint64_t)(end - loop_start) << 32;
+
+    if (v->position >= start + length) v->position = start + (v->position - start) % length;
+}
+
 // One voice into the float accumulator: linear interpolation, pan as a pair of
 // gains, the group volume, and the fade. Ends the voice when its sample runs out.
 static void
@@ -194,16 +202,13 @@ mixer_render_voice(orb_mixer* m, const orb_assets* assets, int index, float* acc
     for (int i = 0; i < frames; i++) {
         uint32_t at = (uint32_t)(v->position >> 32);
 
-        if (at >= end) {
+        if (at >= end) { // a one-shot's end, or a recast shrank a looping sample under it
             if (!v->loop || end <= loop_start) {
                 mixer_voice_end(v);
                 return;
             }
 
-            uint64_t start = (uint64_t)loop_start << 32;
-            uint64_t length = (uint64_t)(end - loop_start) << 32;
-
-            v->position = start + (v->position - start) % length;
+            mixer_wrap(v, loop_start, end);
             at = (uint32_t)(v->position >> 32);
         }
 
@@ -227,6 +232,8 @@ mixer_render_voice(orb_mixer* m, const orb_assets* assets, int index, float* acc
         }
 
         v->position += v->step;
+
+        if (v->loop) mixer_wrap(v, loop_start, end); // now, so the published frame is in the loop
 
         if (v->fade > 0) {
             v->fade_gain -= v->fade;
@@ -302,9 +309,22 @@ static orb_voice_state* mixer_held(orb_mixer* m, orb_voice handle) {
     return &m->voices[index];
 }
 
+// The song voice's frame as seconds and beats, one atomic store so the main
+// thread never sees one without the other. -1 for both when no song plays.
+static void mixer_publish_position(orb_mixer* m, const orb_assets* assets) {
+    const orb_voice_state* v = &m->voices[ORB_SONG_VOICE];
+    orb_song_position p = {-1, -1};
+
+    if (assets && mixer_owns(v, v->generation)) {
+        p.seconds = (float)(v->position >> 32) / (float)assets->samples[v->sample].rate;
+        p.beats = p.seconds * assets->songs[v->song].bpm / 60;
+    }
+
+    atomic_store_explicit(&m->song_position, p, memory_order_relaxed);
+}
+
 void orb_mixer_init(orb_mixer* m) {
-    memset(m, 0, sizeof *m);
-    m->volumes = (orb_volumes) {1, 1, 1};
+    *m = (orb_mixer)ORB_MIXER_INIT;
 }
 
 void orb_mixer_render(orb_mixer* m, int16_t* out, int frames) {
@@ -342,6 +362,7 @@ void orb_mixer_render(orb_mixer* m, int16_t* out, int frames) {
         frames -= n;
     }
 
+    mixer_publish_position(m, assets);
     atomic_fetch_add(&m->render_end, 1);
 }
 
@@ -376,6 +397,10 @@ void orb_mixer_song_play(orb_mixer* m, orb_song s, bool loop) {
                .loop = loop
            }
     );
+}
+
+orb_song_position orb_mixer_song_position(const orb_mixer* m) {
+    return atomic_load_explicit(&m->song_position, memory_order_relaxed);
 }
 
 void orb_mixer_song_resume(orb_mixer* m) {
