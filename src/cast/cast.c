@@ -155,6 +155,25 @@ bool orb_manifest_load(orb_arena* a, const char* game_dir, orb_manifest* m, orb_
            cast_song_list(a, root, m, err);
 }
 
+// A WAV's descriptor: an empty loop is no loop.
+static orb_sample_desc cast_sample_desc(const orb_wav* w, uint32_t first) {
+    bool loop = w->has_loop && w->loop_end > w->loop_start;
+
+    return (orb_sample_desc) {
+        .first = first,
+        .count = w->count,
+        .loop_start = loop ? w->loop_start : 0,
+        .loop_end = loop ? w->loop_end : 0,
+        .rate = w->rate,
+        .channels = w->channels
+    };
+}
+
+// The i-th WAV: the sounds in manifest order, then the songs.
+static const char* cast_wav_path(const orb_manifest* m, uint32_t i) {
+    return i < (uint32_t)m->sound_count ? m->sounds[i] : m->songs[i - m->sound_count].path;
+}
+
 // "art/player.aseprite" -> "PLAYER"
 static const char* cast_stem(orb_arena* a, const char* path) {
     const char* slash = strrchr(path, '/');
@@ -217,7 +236,7 @@ static bool cast_load_wav(
 
     orb_error inner;
 
-    if (!orb_wav_parse(scratch, file, wav, &inner)) {
+    if (!orb_wav_parse(file, wav, &inner)) {
         orb_error_set(err, "%s: %s", rel, inner.text);
         return false;
     }
@@ -385,8 +404,10 @@ static bool cast_body(
     }
 
     // Sounds first, then each song's sample, so a song and a sound may share a stem.
+    // Two passes, each file's bytes dropped after use: the first sizes the packed PCM,
+    // the second decodes into it, so scratch holds one file beside the pack instead of
+    // every file, its widened copy, and the pack.
     uint32_t wav_count = (uint32_t)(m->sound_count + m->song_count);
-    orb_wav* wavs = orb_arena_push_array(scratch, orb_wav, wav_count);
     orb_sample_desc* samples = orb_arena_push(scratch, sizeof(orb_sample_desc) * wav_count, 16);
     uint64_t* sample_ids = orb_arena_push(scratch, sizeof(uint64_t) * wav_count, 16);
     orb_song_desc* songs = orb_arena_push(scratch, sizeof(orb_song_desc) * m->song_count, 16);
@@ -395,19 +416,22 @@ static bool cast_body(
 
     for (uint32_t i = 0; i < wav_count; i++) {
         bool song = i >= (uint32_t)m->sound_count;
-        const char* rel = song ? m->songs[i - m->sound_count].path : m->sounds[i];
+        const char* rel = cast_wav_path(m, i);
+        size_t mark = scratch->used;
+        orb_wav w;
 
         if (song && !cast_has_suffix(rel, ".wav")) {
             orb_error_set(err, "%s: only .wav songs are accepted", rel);
             return false;
         }
 
-        if (!cast_load_wav(scratch, game_dir, rel, &wavs[i], err)) return false;
+        if (!cast_load_wav(scratch, game_dir, rel, &w, err)) return false;
 
-        const orb_wav* w = &wavs[i];
-        bool loop = w->has_loop && w->loop_end > w->loop_start;
+        scratch->used = mark; // the header is all this pass needs
 
-        if (!song && w->channels != 1) {
+        bool loop = w.has_loop && w.loop_end > w.loop_start;
+
+        if (!song && w.channels != 1) {
             orb_error_set(
                 err, "%s: sounds must be mono, since pan positions them; only songs may be stereo",
                 rel
@@ -415,18 +439,11 @@ static bool cast_body(
             return false;
         }
 
-        if (w->has_loop && !loop) orb_log("%s: loop points ignored, the loop is empty", rel);
+        if (w.has_loop && !loop) orb_log("%s: loop points ignored, the loop is empty", rel);
 
-        samples[i] = (orb_sample_desc) {
-            .first = pcm_total,
-            .count = w->count,
-            .loop_start = loop ? w->loop_start : 0,
-            .loop_end = loop ? w->loop_end : 0,
-            .rate = w->rate,
-            .channels = w->channels
-        };
+        samples[i] = cast_sample_desc(&w, pcm_total);
         sample_ids[i] = orb_asset_id(cast_stem(scratch, rel), song ? "song" : "");
-        pcm_total += w->count * w->channels;
+        pcm_total += w.count * w.channels;
     }
 
     for (int i = 0; i < m->song_count; i++) {
@@ -437,10 +454,23 @@ static bool cast_body(
 
     int16_t* pcm = orb_arena_push(scratch, sizeof(int16_t) * pcm_total, 16);
 
-    for (uint32_t i = 0; i < wav_count; i++)
-        memcpy(
-            pcm + samples[i].first, wavs[i].pcm, sizeof(int16_t) * wavs[i].count * wavs[i].channels
-        );
+    for (uint32_t i = 0; i < wav_count; i++) {
+        const char* rel = cast_wav_path(m, i);
+        size_t mark = scratch->used;
+        orb_wav w;
+
+        if (!cast_load_wav(scratch, game_dir, rel, &w, err)) return false;
+
+        orb_sample_desc again = cast_sample_desc(&w, samples[i].first);
+
+        if (memcmp(&again, &samples[i], sizeof again) != 0) { // the pack is sized by pass one
+            orb_error_set(err, "%s changed while casting", rel);
+            return false;
+        }
+
+        orb_wav_decode(&w, pcm + samples[i].first);
+        scratch->used = mark;
+    }
 
     r->sample_count = wav_count;
     r->song_count = (uint32_t)m->song_count;

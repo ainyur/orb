@@ -4,8 +4,8 @@ ifeq ($(OS),Windows_NT)
 CC       := gcc
 CFLAGS   := -std=c23 -D_WIN32_WINNT=0x0A00 -Wall -Wextra
 BACKEND  := -DORB_OS_GDI
-LIBS     := -lgdi32 -lole32
-TESTLIBS :=
+LIBS     := -lgdi32 -lole32 -lshell32
+TESTLIBS := -lshell32
 ORB      := bin/orb.exe
 LIB      := dll
 OBJ      := obj
@@ -25,8 +25,8 @@ endif
 
 $(WIN): CFLAGS   := -std=c23 -D_WIN32_WINNT=0x0A00 -Wall -Wextra
 $(WIN): BACKEND  := -DORB_OS_GDI
-$(WIN): LIBS     := -lgdi32 -lole32
-$(WIN): TESTLIBS :=
+$(WIN): LIBS     := -lgdi32 -lole32 -lshell32
+$(WIN): TESTLIBS := -lshell32
 $(WIN): LIB      := dll
 $(WIN): OBJ      := obj
 $(WIN): EXE      := .exe
@@ -73,8 +73,11 @@ test: $(TESTS)
 	@for t in $(TESTS); do echo "== $$t"; ./$$t || exit 1; done
 
 
+# The UTF-8 directory the test makes is checked from this side, since inside one
+# process a mangled name round-trips and looks fine.
 test-wine: build/wine/test_os.exe
-	@echo "== $<"; WINEDEBUG=-all wine $< || exit 1
+	@rm -rf build/scratch/héllo; echo "== $<"; LC_ALL=C.UTF-8 WINEDEBUG=-all wine $< héllo || exit 1
+	@test -f build/scratch/héllo/ü.bin || { echo "wine wrote a mangled path"; exit 1; }
 
 fixtures: build/wav$(EXE)
 	aseprite -b --script tests/fixtures/make.lua

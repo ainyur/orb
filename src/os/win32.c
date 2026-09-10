@@ -6,9 +6,13 @@
 #include <string.h>
 #include <windows.h>
 
+#include <shellapi.h> // after windows.h
+
 #ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
 #define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002
 #endif
+
+typedef wchar_t win32_wpath[ORB_PATH_MAX];
 
 static int win32_compare_names(const void* a, const void* b) {
     return strcmp(a, b);
@@ -20,12 +24,57 @@ static uint64_t win32_filetime_ns(FILETIME t) {
     return (uint64_t)u.QuadPart * 100u; // 100 ns ticks since 1601
 }
 
+// UTF-8 to UTF-16 for the W APIs. A string that does not fit becomes empty, so
+// the call fails on no name rather than succeeding on a truncated one.
+static const wchar_t* win32_wide(const char* utf8, wchar_t* out, int cap) {
+    if (!MultiByteToWideChar(CP_UTF8, 0, utf8, -1, out, cap)) out[0] = 0;
+
+    return out;
+}
+
+// UTF-16 back to UTF-8; the length including the NUL, or 0 when it does not fit.
+static int win32_narrow(const wchar_t* wide, char* out, int cap) {
+    return WideCharToMultiByte(CP_UTF8, 0, wide, -1, out, cap, nullptr, nullptr);
+}
+
+void orb_os_args(int* argc, char*** argv) {
+    static char* args[65]; // 64 and the NULL after them
+    static char text[4096];
+    int n;
+    wchar_t** wide = CommandLineToArgvW(GetCommandLineW(), &n);
+
+    if (!wide) return;
+    if (n > 64) orb_fatal("too many arguments");
+
+    size_t used = 0;
+
+    for (int i = 0; i < n; i++) {
+        int cap = (int)(sizeof text - used); // a cap of 0 would ask for the size, not fail
+        int len = cap > 0 ? win32_narrow(wide[i], text + used, cap) : 0;
+
+        if (len == 0) orb_fatal("command line too long");
+
+        args[i] = text + used;
+        used += (size_t)len;
+    }
+
+    args[n] = nullptr;
+    LocalFree(wide);
+    *argc = n;
+    *argv = args;
+}
+
 bool orb_os_copy_file(const char* from, const char* to) {
-    return CopyFileA(from, to, FALSE) != 0;
+    win32_wpath f, t;
+
+    return CopyFileW(win32_wide(from, f, ORB_PATH_MAX), win32_wide(to, t, ORB_PATH_MAX), FALSE) !=
+           0;
 }
 
 void* orb_os_dlopen(const char* path) {
-    return LoadLibraryA(path);
+    win32_wpath w;
+
+    return LoadLibraryW(win32_wide(path, w, ORB_PATH_MAX));
 }
 
 void orb_os_dlclose(void* lib) {
@@ -38,8 +87,10 @@ void* orb_os_dlsym(void* lib, const char* name) {
 
 uint64_t orb_os_file_mtime(const char* path) {
     WIN32_FILE_ATTRIBUTE_DATA info;
+    win32_wpath w;
 
-    if (!GetFileAttributesExA(path, GetFileExInfoStandard, &info)) return 0;
+    if (!GetFileAttributesExW(win32_wide(path, w, ORB_PATH_MAX), GetFileExInfoStandard, &info))
+        return 0;
 
     return win32_filetime_ns(info.ftLastWriteTime);
 }
@@ -49,8 +100,9 @@ int orb_os_list_dir(const char* dir, const char* suffix, orb_path* out, int max)
 
     orb_path_join(pattern, dir, "*");
 
-    WIN32_FIND_DATAA found;
-    HANDLE h = FindFirstFileA(pattern, &found);
+    WIN32_FIND_DATAW found;
+    win32_wpath w;
+    HANDLE h = FindFirstFileW(win32_wide(pattern, w, ORB_PATH_MAX), &found);
 
     if (h == INVALID_HANDLE_VALUE) return 0;
 
@@ -58,14 +110,18 @@ int orb_os_list_dir(const char* dir, const char* suffix, orb_path* out, int max)
     size_t suffix_len = strlen(suffix);
 
     do {
-        size_t n = strlen(found.cFileName);
+        orb_path name; // 255 characters can be 765 bytes; past a path's worth is skipped
 
-        if (n < suffix_len || strcmp(found.cFileName + n - suffix_len, suffix) != 0) continue;
+        if (!win32_narrow(found.cFileName, name, sizeof name)) continue;
 
-        snprintf(out[count], sizeof out[count], "%s/%s", dir, found.cFileName);
+        size_t n = strlen(name);
+
+        if (n < suffix_len || strcmp(name + n - suffix_len, suffix) != 0) continue;
+
+        orb_path_join(out[count], dir, name);
 
         if (orb_os_file_mtime(out[count]) != 0) count++;
-    } while (count < max && FindNextFileA(h, &found));
+    } while (count < max && FindNextFileW(h, &found));
 
     FindClose(h);
     qsort(out, (size_t)count, sizeof out[0], win32_compare_names);
@@ -74,20 +130,25 @@ int orb_os_list_dir(const char* dir, const char* suffix, orb_path* out, int max)
 }
 
 bool orb_os_make_dir(const char* path) {
-    return CreateDirectoryA(path, nullptr) || GetLastError() == ERROR_ALREADY_EXISTS;
+    win32_wpath w;
+
+    return CreateDirectoryW(win32_wide(path, w, ORB_PATH_MAX), nullptr) ||
+           GetLastError() == ERROR_ALREADY_EXISTS;
 }
 
 bool orb_os_read_file(const char* path, orb_arena* into, orb_span* out) {
     WIN32_FILE_ATTRIBUTE_DATA info;
+    win32_wpath w;
 
-    if (!GetFileAttributesExA(path, GetFileExInfoStandard, &info)) return false;
+    if (!GetFileAttributesExW(win32_wide(path, w, ORB_PATH_MAX), GetFileExInfoStandard, &info))
+        return false;
 
     size_t size = ((size_t)info.nFileSizeHigh << 32) | info.nFileSizeLow;
 
     // push before opening: an exhausted arena may longjmp out of here
     uint8_t* data = orb_arena_push(into, size + 1, 16);
 
-    FILE* f = fopen(path, "rb");
+    FILE* f = _wfopen(w, L"rb");
 
     if (!f) return false;
 
@@ -110,17 +171,20 @@ int orb_os_run(const char* command, void (*line)(const char* text)) {
 
     SetHandleInformation(read_end, HANDLE_FLAG_INHERIT, 0);
 
-    char cmdline[1100];
-    snprintf(cmdline, sizeof cmdline, "cmd.exe /c %s", command);
+    char utf8[1100];
+    wchar_t cmdline[1100];
 
-    STARTUPINFOA start = {
+    snprintf(utf8, sizeof utf8, "cmd.exe /c %s", command);
+    win32_wide(utf8, cmdline, 1100);
+
+    STARTUPINFOW start = {
         .cb = sizeof start,
         .dwFlags = STARTF_USESTDHANDLES,
         .hStdOutput = write_end,
         .hStdError = write_end,
     };
     PROCESS_INFORMATION proc;
-    BOOL started = CreateProcessA(
+    BOOL started = CreateProcessW(
         nullptr, cmdline, nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &start, &proc
     );
 
@@ -205,7 +269,8 @@ uint64_t orb_os_ticks(void) {
 }
 
 bool orb_os_write_file(const char* path, orb_span data) {
-    FILE* f = fopen(path, "wb");
+    win32_wpath w;
+    FILE* f = _wfopen(win32_wide(path, w, ORB_PATH_MAX), L"wb");
 
     if (!f) return false;
 

@@ -71,6 +71,15 @@ int main(void) {
     CHECK(at.seconds > 1023.0f / 48000 && at.seconds < 1025.0f / 48000);
     CHECK(at.beats > 1023.0f / 48000 * 2 && at.beats < 1025.0f / 48000 * 2);
 
+    // without a device the OS layers keep the clock running through orb_audio_idle
+    uint64_t rendered = 0;
+    orb_audio_idle(1000000000u, &rendered);
+    CHECK_EQ(rendered, 48000 / ORB_MIXER_CHUNK * ORB_MIXER_CHUNK);
+    orb_audio_idle(1000000000u, &rendered); // nothing more is owed for the same second
+    CHECK_EQ(rendered, 48000 / ORB_MIXER_CHUNK * ORB_MIXER_CHUNK);
+    at = api->song_position();
+    CHECK(at.seconds > 1 && at.seconds < 1 + 2000.0f / 48000);
+
     // the beep ends on its own inside 4800 frames and the song fades out in 100 ms
     api->song_stop(100);
     orb_audio_render(audio, 8192);

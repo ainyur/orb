@@ -258,6 +258,15 @@ const orb_api* orb_api_table(void) {
     return &api_table;
 }
 
+void orb_audio_idle(uint64_t elapsed_ns, uint64_t* rendered) {
+    static int16_t silence[ORB_MIXER_CHUNK * ORB_AUDIO_CHANNELS];
+    uint64_t owed = elapsed_ns / 1000000000u * ORB_AUDIO_RATE + // split so it never wraps
+                    elapsed_ns % 1000000000u * ORB_AUDIO_RATE / 1000000000u;
+
+    for (; *rendered + ORB_MIXER_CHUNK <= owed; *rendered += ORB_MIXER_CHUNK)
+        orb_mixer_render(&api_mixer, silence, ORB_MIXER_CHUNK);
+}
+
 void orb_audio_render(int16_t* out, int frames) {
     orb_mixer_render(&api_mixer, out, frames);
 }

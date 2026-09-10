@@ -95,7 +95,7 @@ static LRESULT CALLBACK gdi_proc(HWND window, UINT msg, WPARAM w, LPARAM l) {
         gdi_closed = true;
         return 0;
     default:
-        return DefWindowProcA(window, msg, w, l);
+        return DefWindowProcW(window, msg, w, l);
     }
 }
 
@@ -112,15 +112,15 @@ bool orb_os_open(const orb_os_config* cfg) {
     gdi_win_w = gdi_fb_w * scale;
     gdi_win_h = gdi_fb_h * scale;
 
-    WNDCLASSA wc = {
+    WNDCLASSW wc = {
         .lpfnWndProc = gdi_proc,
-        .hInstance = GetModuleHandleA(nullptr),
-        .hCursor = LoadCursor(nullptr, IDC_ARROW),
+        .hInstance = GetModuleHandleW(nullptr),
+        .hCursor = LoadCursorW(nullptr, (LPCWSTR)IDC_ARROW), // a resource atom, not a string
         .hbrBackground = GetStockObject(BLACK_BRUSH),
-        .lpszClassName = "orb",
+        .lpszClassName = L"orb",
     };
 
-    if (!RegisterClassA(&wc)) {
+    if (!RegisterClassW(&wc)) {
         orb_log("cannot register the window class");
         return false;
     }
@@ -133,9 +133,11 @@ bool orb_os_open(const orb_os_config* cfg) {
     int outer_w = frame.right - frame.left, outer_h = frame.bottom - frame.top;
     int x = (max_w - outer_w) / 2, y = (max_h - outer_h) / 2; // centered, not cascaded
 
-    gdi_window = CreateWindowA(
-        wc.lpszClassName, cfg->title, style, x, y, outer_w, outer_h, nullptr, nullptr, wc.hInstance,
-        nullptr
+    win32_wpath title;
+
+    gdi_window = CreateWindowW(
+        wc.lpszClassName, win32_wide(cfg->title, title, ORB_PATH_MAX), style, x, y, outer_w,
+        outer_h, nullptr, nullptr, wc.hInstance, nullptr
     );
 
     if (!gdi_window) {
@@ -154,7 +156,7 @@ void orb_os_close(void) {
     wasapi_close();
 
     DestroyWindow(gdi_window);
-    UnregisterClassA("orb", GetModuleHandleA(nullptr));
+    UnregisterClassW(L"orb", GetModuleHandleW(nullptr));
     gdi_window = nullptr;
     gdi_last = nullptr;
 }
@@ -168,9 +170,9 @@ void orb_os_present(const uint32_t* rgb) {
 }
 
 bool orb_os_pump(orb_input* out) {
-    for (MSG msg; PeekMessageA(&msg, nullptr, 0, 0, PM_REMOVE);) {
+    for (MSG msg; PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE);) {
         TranslateMessage(&msg);
-        DispatchMessageA(&msg);
+        DispatchMessageW(&msg);
     }
 
     memcpy(out->down, gdi_keys, sizeof gdi_keys);

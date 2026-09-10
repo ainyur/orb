@@ -107,19 +107,22 @@ int main(void) {
     wav_buffer b;
     orb_wav w;
     orb_error err;
+    int16_t* pcm = orb_arena_push_array(&a, int16_t, 96000 * 2); // room for loop.wav
 
     // 16-bit mono
     static const int16_t mono[4] = {0, 1000, -1000, 32767};
     put_header(&b);
     put_fmt(&b, 1, 1, 22050, 16, false);
     put_data16(&b, mono, 4);
-    CHECK(orb_wav_parse(&a, finish(&b), &w, &err));
+    CHECK(orb_wav_parse(finish(&b), &w, &err));
     CHECK_EQ(w.channels, 1);
     CHECK_EQ(w.rate, 22050);
+    CHECK_EQ(w.bits, 16);
     CHECK_EQ(w.count, 4);
-    CHECK_EQ(w.pcm[1], 1000);
-    CHECK_EQ(w.pcm[2], -1000);
-    CHECK_EQ(w.pcm[3], 32767);
+    orb_wav_decode(&w, pcm);
+    CHECK_EQ(pcm[1], 1000);
+    CHECK_EQ(pcm[2], -1000);
+    CHECK_EQ(pcm[3], 32767);
     CHECK(!w.has_loop);
 
     // 8-bit unsigned is widened: 128 is silence, 255 is near full scale
@@ -127,32 +130,35 @@ int main(void) {
     put_header(&b);
     put_fmt(&b, 1, 1, 8000, 8, false);
     put_data8(&b, eight, 3);
-    CHECK(orb_wav_parse(&a, finish(&b), &w, &err));
+    CHECK(orb_wav_parse(finish(&b), &w, &err));
     CHECK_EQ(w.count, 3);
-    CHECK_EQ(w.pcm[0], 0);
-    CHECK_EQ(w.pcm[1], 32512);
-    CHECK_EQ(w.pcm[2], -32768);
+    CHECK_EQ(w.bits, 8);
+    orb_wav_decode(&w, pcm);
+    CHECK_EQ(pcm[0], 0);
+    CHECK_EQ(pcm[1], 32512);
+    CHECK_EQ(pcm[2], -32768);
 
     // stereo, interleaved
     static const int16_t stereo[4] = {10, -10, 20, -20};
     put_header(&b);
     put_fmt(&b, 1, 2, 48000, 16, false);
     put_data16(&b, stereo, 4);
-    CHECK(orb_wav_parse(&a, finish(&b), &w, &err));
+    CHECK(orb_wav_parse(finish(&b), &w, &err));
     CHECK_EQ(w.channels, 2);
     CHECK_EQ(w.count, 2);
-    CHECK_EQ(w.pcm[3], -20);
+    orb_wav_decode(&w, pcm);
+    CHECK_EQ(pcm[3], -20);
 
     // extensible PCM is accepted, extensible float is not
     put_header(&b);
     put_fmt(&b, 1, 1, 44100, 16, true);
     put_data16(&b, mono, 4);
-    CHECK(orb_wav_parse(&a, finish(&b), &w, &err));
+    CHECK(orb_wav_parse(finish(&b), &w, &err));
     CHECK_EQ(w.rate, 44100);
     put_header(&b);
     put_fmt(&b, 3, 1, 44100, 16, true);
     put_data16(&b, mono, 4);
-    CHECK(!orb_wav_parse(&a, finish(&b), &w, &err));
+    CHECK(!orb_wav_parse(finish(&b), &w, &err));
     CHECK(strstr(err.text, "float") != nullptr);
 
     // a smpl loop: end is inclusive in the file, exclusive here, clamped to the data
@@ -161,7 +167,7 @@ int main(void) {
     put_fmt(&b, 1, 1, 48000, 16, false);
     put_smpl(&b, 2, 7); // before data, as some editors write it
     put_data16(&b, ten, 10);
-    CHECK(orb_wav_parse(&a, finish(&b), &w, &err));
+    CHECK(orb_wav_parse(finish(&b), &w, &err));
     CHECK(w.has_loop);
     CHECK_EQ(w.loop_start, 2);
     CHECK_EQ(w.loop_end, 8);
@@ -169,7 +175,7 @@ int main(void) {
     put_fmt(&b, 1, 1, 48000, 16, false);
     put_data16(&b, ten, 10);
     put_smpl(&b, 4, 500);
-    CHECK(orb_wav_parse(&a, finish(&b), &w, &err));
+    CHECK(orb_wav_parse(finish(&b), &w, &err));
     CHECK_EQ(w.loop_end, 10);
 
     // an unknown chunk of odd size is padded and skipped
@@ -182,62 +188,64 @@ int main(void) {
     put8(&b, 'c');
     put8(&b, 0); // pad
     put_data16(&b, mono, 4);
-    CHECK(orb_wav_parse(&a, finish(&b), &w, &err));
+    CHECK(orb_wav_parse(finish(&b), &w, &err));
     CHECK_EQ(w.count, 4);
 
     // rejected by name
     put_header(&b);
     put_fmt(&b, 1, 1, 48000, 24, false);
     put_data16(&b, mono, 4);
-    CHECK(!orb_wav_parse(&a, finish(&b), &w, &err));
+    CHECK(!orb_wav_parse(finish(&b), &w, &err));
     CHECK(strstr(err.text, "24-bit") != nullptr);
 
     put_header(&b);
     put_fmt(&b, 1, 3, 48000, 16, false);
     put_data16(&b, mono, 4);
-    CHECK(!orb_wav_parse(&a, finish(&b), &w, &err));
+    CHECK(!orb_wav_parse(finish(&b), &w, &err));
     CHECK(strstr(err.text, "channels") != nullptr);
 
     put_header(&b);
     put_fmt(&b, 1, 1, 0, 16, false);
     put_data16(&b, mono, 4);
-    CHECK(!orb_wav_parse(&a, finish(&b), &w, &err));
+    CHECK(!orb_wav_parse(finish(&b), &w, &err));
     CHECK(strstr(err.text, "rate") != nullptr);
 
     put_header(&b);
     put_fmt(&b, 1, 1, 48000, 16, false);
-    CHECK(!orb_wav_parse(&a, finish(&b), &w, &err));
+    CHECK(!orb_wav_parse(finish(&b), &w, &err));
     CHECK(strstr(err.text, "data") != nullptr);
 
     put_header(&b);
     put_fmt(&b, 1, 1, 48000, 16, false);
     put_data16(&b, mono, 4);
     b.bytes[b.len - 10] = 200; // data chunk claims more bytes than follow
-    CHECK(!orb_wav_parse(&a, finish(&b), &w, &err));
+    CHECK(!orb_wav_parse(finish(&b), &w, &err));
     CHECK(strstr(err.text, "past the end") != nullptr);
 
-    CHECK(!orb_wav_parse(&a, (orb_span) {(const uint8_t*)"not a wav file", 14}, &w, &err));
+    CHECK(!orb_wav_parse((orb_span) {(const uint8_t*)"not a wav file", 14}, &w, &err));
     CHECK(strstr(err.text, "RIFF") != nullptr);
 
     // the generated fixtures, as make fixtures writes them
     orb_span file;
     CHECK(orb_os_read_file("tests/fixtures/beep.wav", &a, &file));
-    CHECK(orb_wav_parse(&a, file, &w, &err));
+    CHECK(orb_wav_parse(file, &w, &err));
     CHECK_EQ(w.channels, 1);
     CHECK_EQ(w.rate, 48000);
     CHECK_EQ(w.count, 4800);
-    CHECK_EQ(w.pcm[0], -12000);
+    orb_wav_decode(&w, pcm);
+    CHECK_EQ(pcm[0], -12000);
     CHECK(!w.has_loop);
 
     CHECK(orb_os_read_file("tests/fixtures/loop.wav", &a, &file));
-    CHECK(orb_wav_parse(&a, file, &w, &err));
+    CHECK(orb_wav_parse(file, &w, &err));
     CHECK_EQ(w.channels, 2);
     CHECK_EQ(w.count, 96000);
     CHECK(w.has_loop);
     CHECK_EQ(w.loop_start, 0);
     CHECK_EQ(w.loop_end, 96000);
-    CHECK_EQ(w.pcm[0], 0); // faded in: the seam is silent
-    CHECK(w.pcm[2 * 6000] != 0);
+    orb_wav_decode(&w, pcm);
+    CHECK_EQ(pcm[0], 0); // faded in: the seam is silent
+    CHECK(pcm[2 * 6000] != 0);
 
     return 0;
 }

@@ -9,8 +9,14 @@ static void run_line(const char* line) {
     snprintf(run_lines[run_line_count++], 64, "%s", line);
 }
 
-int main(void) {
+int main(int argc, char** argv) {
     static uint8_t mem[1 << 16];
+
+    // test-wine passes a UTF-8 argument, which the ANSI argv would mangle
+    orb_os_args(&argc, &argv);
+
+    if (argc > 1) CHECK(strcmp(argv[1], "h\xc3\xa9llo") == 0);
+
     orb_arena a;
 
     orb_arena_init(&a, "test", mem, sizeof mem);
@@ -53,8 +59,37 @@ int main(void) {
     CHECK(!orb_os_copy_file("build/scratch/does-not-exist", "build/scratch/nope"));
     CHECK_EQ(orb_os_file_mtime("build/scratch/nope"), 0); // no half-made target
 
+    // paths are UTF-8 on every platform, including a directory a Windows user names in
+    // their own script; the Windows layer converts to UTF-16 rather than using the ANSI APIs
+    CHECK(orb_os_make_dir("build/scratch/h\xc3\xa9llo"));
+    CHECK(orb_os_write_file("build/scratch/h\xc3\xa9llo/\xc3\xbc.bin", (orb_span) {bytes, 3}));
+    CHECK(orb_os_read_file("build/scratch/h\xc3\xa9llo/\xc3\xbc.bin", &a, &back));
+    CHECK_EQ(back.len, 3);
+    CHECK(orb_os_file_mtime("build/scratch/h\xc3\xa9llo/\xc3\xbc.bin") > 0);
+    CHECK(orb_os_copy_file(
+        "build/scratch/h\xc3\xa9llo/\xc3\xbc.bin", "build/scratch/h\xc3\xa9llo/\xc3\xb6.bin"
+    ));
+
     // directory listing
     orb_path names[8];
+
+    CHECK_EQ(orb_os_list_dir("build/scratch/h\xc3\xa9llo", ".bin", names, 8), 2);
+    CHECK(strcmp(names[0], "build/scratch/h\xc3\xa9llo/\xc3\xb6.bin") == 0);
+    CHECK(strcmp(names[1], "build/scratch/h\xc3\xa9llo/\xc3\xbc.bin") == 0);
+
+#ifdef _WIN32
+    // a long non-ASCII name is listed; 120 of these are 240 bytes of UTF-8, the most a
+    // Wine test on Linux can create, where real Windows allows 255 characters
+    orb_path longname;
+    int at = snprintf(longname, sizeof longname, "build/scratch/h\xc3\xa9llo/");
+
+    for (int i = 0; i < 120; i++)
+        at += snprintf(longname + at, sizeof longname - (size_t)at, "\xc3\xa9");
+
+    snprintf(longname + at, sizeof longname - (size_t)at, ".bin");
+    CHECK(orb_os_write_file(longname, (orb_span) {bytes, 3}));
+    CHECK_EQ(orb_os_list_dir("build/scratch/h\xc3\xa9llo", ".bin", names, 8), 3);
+#endif
 
     CHECK_EQ(orb_os_list_dir("tests/fixtures", ".aseprite", names, 8), 2);
     CHECK(strcmp(names[0], "tests/fixtures/palette.aseprite") == 0);

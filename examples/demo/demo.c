@@ -31,7 +31,7 @@ typedef struct {
 
 static orb_config config(void) {
     return (orb_config) {
-        .arena_size = 96 << 20,
+        .arena_size = 64 << 20,
         .state_size = sizeof(game_state),
         .state_version = 1,
         .save_version = 1,

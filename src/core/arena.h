@@ -8,7 +8,8 @@ typedef struct orb_arena {
     const char* name;
     uint8_t* base;
     size_t size;
-    size_t used;
+    size_t used;      // a caller may save and restore it to drop what it pushed since
+    size_t peak;      // the most used has been; what asset_headroom has to cover
     jmp_buf* recover; // if set, exhaustion longjmps here instead of being fatal
     size_t overflow;  // bytes the failed push was short by, for the recovering caller
 } orb_arena;

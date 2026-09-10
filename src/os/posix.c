@@ -15,6 +15,9 @@ static int posix_compare_names(const void* a, const void* b) {
     return strcmp(a, b);
 }
 
+void orb_os_args(int*, char***) {
+}
+
 bool orb_os_copy_file(const char* from, const char* to) {
     FILE* in = fopen(from, "rb");
 

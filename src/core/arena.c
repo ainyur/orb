@@ -8,6 +8,7 @@ void orb_arena_init(orb_arena* a, const char* name, void* mem, size_t size) {
     a->base = mem;
     a->size = size;
     a->used = 0;
+    a->peak = 0;
     a->recover = nullptr;
     a->overflow = 0;
 }
@@ -28,6 +29,9 @@ void* orb_arena_push(orb_arena* a, size_t size, size_t align) {
     }
 
     a->used = start + size;
+
+    if (a->used > a->peak) a->peak = a->used;
+
     memset(a->base + start, 0, size);
     return a->base + start;
 }

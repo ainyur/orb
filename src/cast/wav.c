@@ -50,7 +50,15 @@ wav_format(orb_span chunk, uint16_t* channels, uint32_t* rate, uint16_t* bits, o
     return true;
 }
 
-bool orb_wav_parse(orb_arena* a, orb_span file, orb_wav* out, orb_error* err) {
+void orb_wav_decode(const orb_wav* w, int16_t* out) {
+    size_t total = (size_t)w->count * w->channels;
+
+    for (size_t i = 0; i < total; i++)
+        out[i] = w->bits == 8 ? (int16_t)((w->data.ptr[i] - 128) * 256)
+                              : (int16_t)wav_u16(w->data.ptr + i * 2);
+}
+
+bool orb_wav_parse(orb_span file, orb_wav* out, orb_error* err) {
     memset(out, 0, sizeof *out);
 
     if (file.len < 12 || memcmp(file.ptr, "RIFF", 4) != 0 || memcmp(file.ptr + 8, "WAVE", 4) != 0)
@@ -90,18 +98,11 @@ bool orb_wav_parse(orb_arena* a, orb_span file, orb_wav* out, orb_error* err) {
     if (!have_format) return wav_fail(err, "wav: no fmt chunk");
     if (!data.ptr) return wav_fail(err, "wav: no data chunk");
 
-    size_t frame_bytes = (size_t)channels * bits / 8;
-    size_t total = data.len / frame_bytes * channels;
-    int16_t* pcm = orb_arena_push_array(a, int16_t, total);
-
-    for (size_t i = 0; i < total; i++)
-        pcm[i] =
-            bits == 8 ? (int16_t)((data.ptr[i] - 128) * 256) : (int16_t)wav_u16(data.ptr + i * 2);
-
-    out->pcm = pcm;
-    out->count = (uint32_t)(data.len / frame_bytes);
+    out->data = data;
+    out->count = (uint32_t)(data.len / ((size_t)channels * bits / 8));
     out->rate = rate;
     out->channels = (uint8_t)channels;
+    out->bits = (uint8_t)bits;
 
     if (out->has_loop && out->loop_end > out->count) out->loop_end = out->count;
 

@@ -25,6 +25,16 @@ int main(void) {
     orb_arena_push(&sub, 64, 1);
     CHECK_EQ(sub.used, 64);
 
+    // restoring an earlier used hands the same bytes out again, zeroed; peak remembers
+    size_t mark = a.used;
+    uint8_t* r = orb_arena_push(&a, 8, 1);
+
+    r[0] = 7;
+    a.used = mark;
+    CHECK(orb_arena_push(&a, 8, 1) == r);
+    CHECK_EQ(r[0], 0);
+    CHECK_EQ(a.peak, mark + 8);
+
     orb_arena_reset(&a);
     CHECK_EQ(a.used, 0);
     return 0;

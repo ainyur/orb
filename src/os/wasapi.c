@@ -12,9 +12,7 @@
 constexpr REFERENCE_TIME WASAPI_BUFFER = 200000; // 20 ms in 100 ns units
 constexpr DWORD WASAPI_WAIT_MS = 100;  // a dead device may never signal, so the wait polls
 constexpr int WASAPI_STALL_WAITS = 10; // full-buffer timeouts before the device counts as dead
-constexpr DWORD WASAPI_TICK_MS = 20;   // the outage loop's period
-constexpr int WASAPI_TICK_FRAMES = ORB_AUDIO_RATE * (int)WASAPI_TICK_MS / 1000;
-constexpr int WASAPI_RETRY_TICKS = 1000 / (int)WASAPI_TICK_MS; // one reopen attempt a second
+constexpr DWORD WASAPI_TICK_MS = (DWORD)(ORB_AUDIO_TICK_NS / 1000000);
 constexpr DWORD WASAPI_JOIN_MS = 2000; // close gives up on a thread wedged inside a COM call
 
 // The main thread owns the event, the thread handle, and the stop flag; the
@@ -117,26 +115,20 @@ static HRESULT wasapi_fill(void) {
     return IAudioRenderClient_ReleaseBuffer(wasapi_render, frames, 0);
 }
 
-// No device: keep the mixer's clock running into silence, so sounds end, the ring
-// drains, and song_position advances, and try the device again once a second.
-// The frames owed come from the tick clock, since Sleep rounds to the scheduler
-// tick and a reopen attempt blocks; the wait is on the event so close wakes it.
-// The first retry waits a full second so an endpoint that opens but fails at once
+// No device: keep the mixer's clock running and try the device again once a
+// second. The clock is the tick clock, since Sleep rounds to the scheduler tick
+// and a reopen attempt blocks; the wait is on the event so close wakes it. The
+// first retry waits a full second so an endpoint that opens but fails at once
 // cannot spin the thread through open and release.
 static HRESULT wasapi_outage(void) {
-    static int16_t silence[WASAPI_TICK_FRAMES * ORB_AUDIO_CHANNELS];
     uint64_t start = orb_os_ticks(), rendered = 0;
     HRESULT hr = E_FAIL;
 
     for (int tick = 1; !atomic_load(&wasapi_stop); tick++) {
         WaitForSingleObject(wasapi_event, WASAPI_TICK_MS);
+        orb_audio_idle(orb_os_ticks() - start, &rendered);
 
-        uint64_t owed = (orb_os_ticks() - start) * ORB_AUDIO_RATE / 1000000000u;
-
-        for (; rendered + WASAPI_TICK_FRAMES <= owed; rendered += WASAPI_TICK_FRAMES)
-            orb_audio_render(silence, WASAPI_TICK_FRAMES);
-
-        if (tick % WASAPI_RETRY_TICKS == 0 && SUCCEEDED(hr = wasapi_start())) return hr;
+        if (tick % ORB_AUDIO_RETRY_TICKS == 0 && SUCCEEDED(hr = wasapi_start())) return hr;
     }
 
     return hr;
@@ -176,7 +168,7 @@ static DWORD WINAPI wasapi_run(void* arg) {
 }
 
 static void wasapi_open(void) {
-    wasapi_event = CreateEventA(nullptr, FALSE, FALSE, nullptr);
+    wasapi_event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     atomic_store(&wasapi_stop, false);
     wasapi_thread =
         wasapi_event ? CreateThread(nullptr, 0, wasapi_run, nullptr, 0, nullptr) : nullptr;
