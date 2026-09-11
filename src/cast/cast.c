@@ -405,8 +405,7 @@ static bool cast_body(
 
     // Sounds first, then each song's sample, so a song and a sound may share a stem.
     // Two passes, each file's bytes dropped after use: the first sizes the packed PCM,
-    // the second decodes into it, so scratch holds one file beside the pack instead of
-    // every file, its widened copy, and the pack.
+    // the second decodes into it, so scratch holds one file beside the pack.
     uint32_t wav_count = (uint32_t)(m->sound_count + m->song_count);
     orb_sample_desc* samples = orb_arena_push(scratch, sizeof(orb_sample_desc) * wav_count, 16);
     uint64_t* sample_ids = orb_arena_push(scratch, sizeof(uint64_t) * wav_count, 16);

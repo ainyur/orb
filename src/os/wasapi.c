@@ -168,7 +168,7 @@ static DWORD WINAPI wasapi_run(void* arg) {
 }
 
 static void wasapi_open(void) {
-    wasapi_event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    wasapi_event = CreateEvent(nullptr, FALSE, FALSE, nullptr);
     atomic_store(&wasapi_stop, false);
     wasapi_thread =
         wasapi_event ? CreateThread(nullptr, 0, wasapi_run, nullptr, 0, nullptr) : nullptr;

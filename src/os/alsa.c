@@ -15,8 +15,7 @@ static bool alsa_running;
 static atomic_bool alsa_stop;
 static pthread_t alsa_thread;
 
-// alsa-lib prints its own diagnostics to stderr on every failed open; orb logs
-// the error itself, once, so the library's go nowhere.
+// alsa-lib would print its own diagnostics on every failed open.
 static void alsa_quiet(const char*, int, const char*, int, const char*, ...) {
 }
 

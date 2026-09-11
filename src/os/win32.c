@@ -1,6 +1,6 @@
 #include "../core/log.h"
 #include "os.h"
-#define WIN32_LEAN_AND_MEAN
+#define UNICODE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,8 +24,8 @@ static uint64_t win32_filetime_ns(FILETIME t) {
     return (uint64_t)u.QuadPart * 100u; // 100 ns ticks since 1601
 }
 
-// UTF-8 to UTF-16 for the W APIs. A string that does not fit becomes empty, so
-// the call fails on no name rather than succeeding on a truncated one.
+// UTF-8 to UTF-16. A string that does not fit becomes empty, so the call fails
+// rather than acting on a truncated name.
 static const wchar_t* win32_wide(const char* utf8, wchar_t* out, int cap) {
     if (!MultiByteToWideChar(CP_UTF8, 0, utf8, -1, out, cap)) out[0] = 0;
 
@@ -41,7 +41,7 @@ void orb_os_args(int* argc, char*** argv) {
     static char* args[65]; // 64 and the NULL after them
     static char text[4096];
     int n;
-    wchar_t** wide = CommandLineToArgvW(GetCommandLineW(), &n);
+    wchar_t** wide = CommandLineToArgvW(GetCommandLine(), &n);
 
     if (!wide) return;
     if (n > 64) orb_fatal("too many arguments");
@@ -67,14 +67,13 @@ void orb_os_args(int* argc, char*** argv) {
 bool orb_os_copy_file(const char* from, const char* to) {
     win32_wpath f, t;
 
-    return CopyFileW(win32_wide(from, f, ORB_PATH_MAX), win32_wide(to, t, ORB_PATH_MAX), FALSE) !=
-           0;
+    return CopyFile(win32_wide(from, f, ORB_PATH_MAX), win32_wide(to, t, ORB_PATH_MAX), FALSE) != 0;
 }
 
 void* orb_os_dlopen(const char* path) {
     win32_wpath w;
 
-    return LoadLibraryW(win32_wide(path, w, ORB_PATH_MAX));
+    return LoadLibrary(win32_wide(path, w, ORB_PATH_MAX));
 }
 
 void orb_os_dlclose(void* lib) {
@@ -89,7 +88,7 @@ uint64_t orb_os_file_mtime(const char* path) {
     WIN32_FILE_ATTRIBUTE_DATA info;
     win32_wpath w;
 
-    if (!GetFileAttributesExW(win32_wide(path, w, ORB_PATH_MAX), GetFileExInfoStandard, &info))
+    if (!GetFileAttributesEx(win32_wide(path, w, ORB_PATH_MAX), GetFileExInfoStandard, &info))
         return 0;
 
     return win32_filetime_ns(info.ftLastWriteTime);
@@ -100,9 +99,9 @@ int orb_os_list_dir(const char* dir, const char* suffix, orb_path* out, int max)
 
     orb_path_join(pattern, dir, "*");
 
-    WIN32_FIND_DATAW found;
+    WIN32_FIND_DATA found;
     win32_wpath w;
-    HANDLE h = FindFirstFileW(win32_wide(pattern, w, ORB_PATH_MAX), &found);
+    HANDLE h = FindFirstFile(win32_wide(pattern, w, ORB_PATH_MAX), &found);
 
     if (h == INVALID_HANDLE_VALUE) return 0;
 
@@ -121,7 +120,7 @@ int orb_os_list_dir(const char* dir, const char* suffix, orb_path* out, int max)
         orb_path_join(out[count], dir, name);
 
         if (orb_os_file_mtime(out[count]) != 0) count++;
-    } while (count < max && FindNextFileW(h, &found));
+    } while (count < max && FindNextFile(h, &found));
 
     FindClose(h);
     qsort(out, (size_t)count, sizeof out[0], win32_compare_names);
@@ -132,7 +131,7 @@ int orb_os_list_dir(const char* dir, const char* suffix, orb_path* out, int max)
 bool orb_os_make_dir(const char* path) {
     win32_wpath w;
 
-    return CreateDirectoryW(win32_wide(path, w, ORB_PATH_MAX), nullptr) ||
+    return CreateDirectory(win32_wide(path, w, ORB_PATH_MAX), nullptr) ||
            GetLastError() == ERROR_ALREADY_EXISTS;
 }
 
@@ -140,7 +139,7 @@ bool orb_os_read_file(const char* path, orb_arena* into, orb_span* out) {
     WIN32_FILE_ATTRIBUTE_DATA info;
     win32_wpath w;
 
-    if (!GetFileAttributesExW(win32_wide(path, w, ORB_PATH_MAX), GetFileExInfoStandard, &info))
+    if (!GetFileAttributesEx(win32_wide(path, w, ORB_PATH_MAX), GetFileExInfoStandard, &info))
         return false;
 
     size_t size = ((size_t)info.nFileSizeHigh << 32) | info.nFileSizeLow;
@@ -177,14 +176,14 @@ int orb_os_run(const char* command, void (*line)(const char* text)) {
     snprintf(utf8, sizeof utf8, "cmd.exe /c %s", command);
     win32_wide(utf8, cmdline, 1100);
 
-    STARTUPINFOW start = {
+    STARTUPINFO start = {
         .cb = sizeof start,
         .dwFlags = STARTF_USESTDHANDLES,
         .hStdOutput = write_end,
         .hStdError = write_end,
     };
     PROCESS_INFORMATION proc;
-    BOOL started = CreateProcessW(
+    BOOL started = CreateProcess(
         nullptr, cmdline, nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &start, &proc
     );
 
@@ -239,12 +238,12 @@ void orb_os_sleep(uint64_t ns) {
     static HANDLE timer;
 
     if (!timer) {
-        timer = CreateWaitableTimerExW(
+        timer = CreateWaitableTimerEx(
             nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS
         );
     }
 
-    if (!timer) timer = CreateWaitableTimerExW(nullptr, nullptr, 0, TIMER_ALL_ACCESS);
+    if (!timer) timer = CreateWaitableTimerEx(nullptr, nullptr, 0, TIMER_ALL_ACCESS);
 
     if (!timer) {
         Sleep((DWORD)((ns + 999999u) / 1000000u));

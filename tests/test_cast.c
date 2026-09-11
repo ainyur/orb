@@ -91,8 +91,7 @@ int main(void) {
     CHECK(as.sample_ids[1] == orb_asset_id("loop", "song"));
     CHECK(as.song_ids[0] == orb_asset_id("LOOP", ""));
 
-    // scratch peaks at the packed PCM plus the largest file (here nearly the PCM again)
-    // plus the art, where the old three copies of the audio put it past twice the PCM
+    // scratch peaks at the packed PCM plus the largest file plus the art
     CHECK(scratch.peak < 2 * as.pcm_count * sizeof(int16_t) + (100 << 10));
 
     // a song that is not a wav is refused by name

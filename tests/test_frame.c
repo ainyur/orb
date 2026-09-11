@@ -71,7 +71,7 @@ int main(void) {
     CHECK(at.seconds > 1023.0f / 48000 && at.seconds < 1025.0f / 48000);
     CHECK(at.beats > 1023.0f / 48000 * 2 && at.beats < 1025.0f / 48000 * 2);
 
-    // without a device the OS layers keep the clock running through orb_audio_idle
+    // idle rendering covers the elapsed time
     uint64_t rendered = 0;
     orb_audio_idle(1000000000u, &rendered);
     CHECK_EQ(rendered, 48000 / ORB_MIXER_CHUNK * ORB_MIXER_CHUNK);

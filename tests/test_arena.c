@@ -25,7 +25,7 @@ int main(void) {
     orb_arena_push(&sub, 64, 1);
     CHECK_EQ(sub.used, 64);
 
-    // restoring an earlier used hands the same bytes out again, zeroed; peak remembers
+    // restoring used hands the same bytes out again, zeroed; peak keeps the high-water mark
     size_t mark = a.used;
     uint8_t* r = orb_arena_push(&a, 8, 1);
 

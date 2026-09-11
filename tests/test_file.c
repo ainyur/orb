@@ -116,8 +116,7 @@ int main(void) {
     CHECK(strstr(err.text, "channels") != nullptr);
     samples[1].channels = 2;
 
-    // a sample rate or a song tempo the mixer would divide by is refused; song_position
-    // derives from both, and a sealed file is the only source of truth in release
+    // a rate or bpm out of range is refused
     samples[1].rate = 0;
     file = orb_file_write(&a, &in);
     CHECK(!orb_file_load(file, &out, &err));

@@ -7,6 +7,7 @@
 #include <string.h>
 
 static HWND gdi_window;
+static ATOM gdi_class;
 static int gdi_fb_w, gdi_fb_h, gdi_win_w, gdi_win_h;
 static bool gdi_keys[ORB_BTN_COUNT];
 static bool gdi_closed;
@@ -95,7 +96,7 @@ static LRESULT CALLBACK gdi_proc(HWND window, UINT msg, WPARAM w, LPARAM l) {
         gdi_closed = true;
         return 0;
     default:
-        return DefWindowProcW(window, msg, w, l);
+        return DefWindowProc(window, msg, w, l);
     }
 }
 
@@ -112,15 +113,17 @@ bool orb_os_open(const orb_os_config* cfg) {
     gdi_win_w = gdi_fb_w * scale;
     gdi_win_h = gdi_fb_h * scale;
 
-    WNDCLASSW wc = {
+    WNDCLASS wc = {
         .lpfnWndProc = gdi_proc,
-        .hInstance = GetModuleHandleW(nullptr),
-        .hCursor = LoadCursorW(nullptr, (LPCWSTR)IDC_ARROW), // a resource atom, not a string
+        .hInstance = GetModuleHandle(nullptr),
+        .hCursor = LoadCursor(nullptr, IDC_ARROW),
         .hbrBackground = GetStockObject(BLACK_BRUSH),
         .lpszClassName = L"orb",
     };
 
-    if (!RegisterClassW(&wc)) {
+    gdi_class = RegisterClass(&wc);
+
+    if (!gdi_class) {
         orb_log("cannot register the window class");
         return false;
     }
@@ -135,9 +138,9 @@ bool orb_os_open(const orb_os_config* cfg) {
 
     win32_wpath title;
 
-    gdi_window = CreateWindowW(
-        wc.lpszClassName, win32_wide(cfg->title, title, ORB_PATH_MAX), style, x, y, outer_w,
-        outer_h, nullptr, nullptr, wc.hInstance, nullptr
+    gdi_window = CreateWindowEx(
+        0, MAKEINTATOM(gdi_class), win32_wide(cfg->title, title, ORB_PATH_MAX), style, x, y,
+        outer_w, outer_h, nullptr, nullptr, wc.hInstance, nullptr
     );
 
     if (!gdi_window) {
@@ -156,8 +159,9 @@ void orb_os_close(void) {
     wasapi_close();
 
     DestroyWindow(gdi_window);
-    UnregisterClassW(L"orb", GetModuleHandleW(nullptr));
+    UnregisterClass(MAKEINTATOM(gdi_class), GetModuleHandle(nullptr));
     gdi_window = nullptr;
+    gdi_class = 0;
     gdi_last = nullptr;
 }
 
@@ -170,9 +174,9 @@ void orb_os_present(const uint32_t* rgb) {
 }
 
 bool orb_os_pump(orb_input* out) {
-    for (MSG msg; PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE);) {
+    for (MSG msg; PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE);) {
         TranslateMessage(&msg);
-        DispatchMessageW(&msg);
+        DispatchMessage(&msg);
     }
 
     memcpy(out->down, gdi_keys, sizeof gdi_keys);
