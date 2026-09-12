@@ -4,8 +4,6 @@
 #include "../core/log.h"
 #include "../orb.h"
 
-#include <stdbool.h>
-
 typedef struct orb_ase_tag {
     const char* name;
     uint16_t from, to;

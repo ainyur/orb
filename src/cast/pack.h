@@ -17,8 +17,7 @@ typedef struct orb_pack {
     uint8_t* pixels;
     orb_pack_rect* rects;
     uint32_t rect_count;
-    orb_pack_frame* frames;
-    uint32_t frame_count;
+    orb_pack_frame* frames; // one per frame passed in
 } orb_pack;
 
 void orb_pack_frames(

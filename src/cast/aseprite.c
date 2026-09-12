@@ -1,7 +1,7 @@
 #include "aseprite.h"
+#include "../core/bytes.h"
 #include "inflate.h"
 
-#include <stdalign.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -20,14 +20,6 @@ typedef struct {
     uint8_t opacity;
 } ase_layer;
 
-static uint16_t ase_u16(const uint8_t* p) {
-    return (uint16_t)(p[0] | p[1] << 8);
-}
-
-static uint32_t ase_u32(const uint8_t* p) {
-    return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
-}
-
 static bool ase_fail(orb_error* err, const char* msg) {
     return orb_error_set(err, "aseprite: %s", msg);
 }
@@ -36,16 +28,17 @@ bool orb_ase_parse(orb_arena* a, orb_span file, orb_ase* out, orb_error* err) {
     const uint8_t* p = file.ptr;
     const uint8_t* end = file.ptr + file.len;
 
-    if (file.len < 128 || ase_u16(p + 4) != 0xA5E0) return ase_fail(err, "not an aseprite file");
-    if (ase_u16(p + 12) != 8) return ase_fail(err, "not in indexed color mode");
+    if (file.len < 128 || orb_bytes_u16(p + 4) != 0xA5E0)
+        return ase_fail(err, "not an aseprite file");
+    if (orb_bytes_u16(p + 12) != 8) return ase_fail(err, "not in indexed color mode");
 
     memset(out, 0, sizeof *out);
 
-    out->frame_count = ase_u16(p + 6);
-    out->w = ase_u16(p + 8);
-    out->h = ase_u16(p + 10);
-    out->transparent = p[28];
-    out->color_count = ase_u16(p + 32);
+    out->frame_count = orb_bytes_u16(p + 6);
+    out->w = orb_bytes_u16(p + 8);
+    out->h = orb_bytes_u16(p + 10);
+    out->transparent = orb_bytes_u8(p + 28);
+    out->color_count = orb_bytes_u16(p + 32);
 
     if (out->color_count == 0) out->color_count = 256;
 
@@ -60,29 +53,29 @@ bool orb_ase_parse(orb_arena* a, orb_span file, orb_ase* out, orb_error* err) {
     for (int f = 0; f < out->frame_count; f++) {
         if (p + 16 > end) return ase_fail(err, "truncated frame");
 
-        const uint8_t* frame_end = p + ase_u32(p);
+        const uint8_t* frame_end = p + orb_bytes_u32(p);
 
-        if (ase_u16(p + 4) != 0xF1FA || frame_end > end) return ase_fail(err, "bad frame");
+        if (orb_bytes_u16(p + 4) != 0xF1FA || frame_end > end) return ase_fail(err, "bad frame");
 
-        uint32_t chunk_count = ase_u16(p + 6);
+        uint32_t chunk_count = orb_bytes_u16(p + 6);
 
-        if (chunk_count == 0xFFFF) chunk_count = ase_u32(p + 12);
+        if (chunk_count == 0xFFFF) chunk_count = orb_bytes_u32(p + 12);
 
-        out->durations[f] = ase_u16(p + 8);
+        out->durations[f] = orb_bytes_u16(p + 8);
         p += 16;
 
         for (uint32_t c = 0; c < chunk_count; c++) {
             if (p + 6 > frame_end) return ase_fail(err, "truncated chunk");
 
-            uint32_t size = ase_u32(p);
-            uint16_t type = ase_u16(p + 4);
+            uint32_t size = orb_bytes_u32(p);
+            uint16_t type = orb_bytes_u16(p + 4);
             const uint8_t* d = p + 6;
             const uint8_t* chunk_end = p + size;
 
             if (size < 6 || chunk_end > frame_end) return ase_fail(err, "bad chunk size");
 
             if (type == 0x0004) {
-                int packets = ase_u16(d);
+                int packets = orb_bytes_u16(d);
                 const uint8_t* q = d + 2;
                 int index = 0;
 
@@ -98,46 +91,46 @@ bool orb_ase_parse(orb_arena* a, orb_span file, orb_ase* out, orb_error* err) {
                     }
                 }
             } else if (type == 0x2019) { // new palette
-                uint32_t first = ase_u32(d + 4), last = ase_u32(d + 8);
+                uint32_t first = orb_bytes_u32(d + 4), last = orb_bytes_u32(d + 8);
                 const uint8_t* q = d + 20;
 
                 for (uint32_t i = first; i <= last && i < 256; i++) {
-                    uint16_t flags = ase_u16(q);
+                    uint16_t flags = orb_bytes_u16(q);
 
                     out->rgb[i][0] = q[2];
                     out->rgb[i][1] = q[3];
                     out->rgb[i][2] = q[4];
                     q += 6;
 
-                    if (flags & 1) q += 2 + ase_u16(q);
+                    if (flags & 1) q += 2 + orb_bytes_u16(q);
                 }
             } else if (type == 0x2004) { // layer
                 if (layer_count >= ASE_MAX_LAYERS) return ase_fail(err, "too many layers");
 
                 ase_layer* layer = &layers[layer_count++];
 
-                layer->flags = ase_u16(d);
-                layer->type = ase_u16(d + 2);
-                layer->blend = ase_u16(d + 10);
-                layer->opacity = d[12];
+                layer->flags = orb_bytes_u16(d);
+                layer->type = orb_bytes_u16(d + 2);
+                layer->blend = orb_bytes_u16(d + 10);
+                layer->opacity = orb_bytes_u8(d + 12);
             } else if (type == 0x2005) { // cel
-                uint16_t layer = ase_u16(d);
-                uint16_t cel_type = ase_u16(d + 7);
+                uint16_t layer = orb_bytes_u16(d);
+                uint16_t cel_type = orb_bytes_u16(d + 7);
 
                 if (layer >= ASE_MAX_LAYERS) return ase_fail(err, "cel layer out of range");
                 if (cel_type != 2) return ase_fail(err, "only compressed image cels are supported");
 
                 ase_cel* cel = &cels[f * ASE_MAX_LAYERS + layer];
 
-                cel->x = (int16_t)ase_u16(d + 2);
-                cel->y = (int16_t)ase_u16(d + 4);
-                cel->w = ase_u16(d + 16);
-                cel->h = ase_u16(d + 18);
+                cel->x = orb_bytes_i16(d + 2);
+                cel->y = orb_bytes_i16(d + 4);
+                cel->w = orb_bytes_u16(d + 16);
+                cel->h = orb_bytes_u16(d + 18);
                 cel->zdata = d + 20;
                 cel->zlen = (uint32_t)(chunk_end - cel->zdata);
                 cel->present = true;
             } else if (type == 0x2018) { // tags
-                out->tag_count = ase_u16(d);
+                out->tag_count = orb_bytes_u16(d);
                 out->tags = orb_arena_push_array(a, orb_ase_tag, out->tag_count);
 
                 const uint8_t* q = d + 10;
@@ -145,11 +138,11 @@ bool orb_ase_parse(orb_arena* a, orb_span file, orb_ase* out, orb_error* err) {
                 for (int t = 0; t < out->tag_count; t++) {
                     orb_ase_tag* tag = &out->tags[t];
 
-                    tag->from = ase_u16(q);
-                    tag->to = ase_u16(q + 2);
-                    tag->direction = q[4];
+                    tag->from = orb_bytes_u16(q);
+                    tag->to = orb_bytes_u16(q + 2);
+                    tag->direction = orb_bytes_u8(q + 4);
 
-                    uint16_t name_len = ase_u16(q + 17);
+                    uint16_t name_len = orb_bytes_u16(q + 17);
                     char* name = orb_arena_push(a, name_len + 1, 1);
 
                     memcpy(name, q + 19, name_len);

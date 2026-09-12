@@ -86,7 +86,14 @@ FILE* orb_os_fopen(const char* path, const char* mode) {
     return _wfopen(win32_wide(path, w, ORB_PATH_MAX), mode[0] == 'r' ? L"rb" : L"wb");
 }
 
-int orb_os_list_dir(const char* dir, const char* suffix, orb_path* out, int max) {
+bool orb_os_make_dir(const char* path) {
+    win32_wpath w;
+
+    return CreateDirectory(win32_wide(path, w, ORB_PATH_MAX), nullptr) ||
+           GetLastError() == ERROR_ALREADY_EXISTS;
+}
+
+int orb_os_read_dir(const char* dir, orb_os_entry* out, int max) {
     orb_path pattern;
 
     orb_path_join(pattern, dir, "*");
@@ -100,29 +107,18 @@ int orb_os_list_dir(const char* dir, const char* suffix, orb_path* out, int max)
     int count = 0;
 
     do {
-        orb_path name; // 255 characters can be 765 bytes; past a path's worth is skipped
+        orb_os_entry* e = &out[count];
 
-        if (!win32_narrow(found.cFileName, name, sizeof name)) continue;
+        // 255 characters can be 765 bytes; a name past a path's worth is skipped.
+        if (!win32_narrow(found.cFileName, e->name, sizeof e->name)) continue;
+        if (strcmp(e->name, ".") == 0 || strcmp(e->name, "..") == 0) continue;
 
-        if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) continue;
-        if (!orb_has_suffix(name, suffix)) continue;
-
-        orb_path_join(out[count], dir, name);
-
-        if (orb_os_file_mtime(out[count]) != 0) count++;
+        e->dir = found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY;
+        count++;
     } while (count < max && FindNextFile(h, &found));
 
     FindClose(h);
-    qsort(out, (size_t)count, sizeof out[0], orb_os_compare_paths);
-
     return count;
-}
-
-bool orb_os_make_dir(const char* path) {
-    win32_wpath w;
-
-    return CreateDirectory(win32_wide(path, w, ORB_PATH_MAX), nullptr) ||
-           GetLastError() == ERROR_ALREADY_EXISTS;
 }
 
 bool orb_os_stat(const char* path, orb_os_info* out) {
@@ -250,14 +246,6 @@ uint64_t orb_os_ticks(void) {
     uint64_t c = (uint64_t)count.QuadPart;
 
     return c / f * 1000000000u + c % f * 1000000000u / f;
-}
-
-void orb_path_join(orb_path out, const char* dir, const char* rel) {
-    bool absolute = rel[0] == '/' || rel[0] == '\\' || (rel[0] && rel[1] == ':');
-    int n = absolute ? snprintf(out, ORB_PATH_MAX, "%s", rel)
-                     : snprintf(out, ORB_PATH_MAX, "%s/%s", dir, rel);
-
-    if (n >= ORB_PATH_MAX) orb_fatal("path too long: %s/%s", dir, rel);
 }
 
 #include "stdio.c"

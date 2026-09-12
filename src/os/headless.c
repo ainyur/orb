@@ -12,7 +12,7 @@ static uint32_t* headless_frame;
 static size_t headless_pixels;
 
 bool orb_os_open(const orb_os_config* cfg) {
-    headless_pixels = (size_t)cfg->size_w * cfg->size_h;
+    headless_pixels = (size_t)cfg->size.w * cfg->size.h;
     headless_frame = calloc(headless_pixels, sizeof *headless_frame);
 
     return headless_frame != nullptr;

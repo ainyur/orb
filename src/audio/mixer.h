@@ -5,10 +5,10 @@
 
 #include <stdatomic.h>
 
-constexpr int ORB_VOICE_COUNT = 32;
-constexpr int ORB_SONG_VOICE = 0;        // voices 0..15 belong to the sequencer; 0 streams the song
-constexpr int ORB_GAME_VOICE_FIRST = 16; // voices 16..31 belong to the game
+constexpr int ORB_SONG_VOICE = 0; // streams the song
+constexpr int ORB_GAME_VOICE_FIRST = 1;
 constexpr int ORB_GAME_VOICE_COUNT = 16;
+constexpr int ORB_VOICE_COUNT = ORB_GAME_VOICE_FIRST + ORB_GAME_VOICE_COUNT;
 constexpr int ORB_MIXER_RING = 256;
 constexpr int ORB_MIXER_CHUNK = 512;
 
@@ -72,11 +72,14 @@ typedef struct orb_mixer {
     orb_volumes volumes;                     // the audio thread's copy
 } orb_mixer;
 
-// The defaults. api.c's static mixer starts from it too, since assets are
-// published before orb_api_init runs.
+// The defaults, as an initializer: api.c's mixer is a static, and assets are
+// published to it before anything else runs.
 #define ORB_MIXER_INIT {.song_position = {-1, -1}, .volumes = {1, 1, 1}}
 
-void orb_mixer_init(orb_mixer* m);
+// With no device: renders silence in chunks until *rendered frames cover
+// elapsed_ns, so sounds end, the ring drains, and song_position keeps real time.
+// True once a second, when the OS layer should try its device again.
+bool orb_mixer_idle(orb_mixer* m, uint64_t elapsed_ns, uint64_t* rendered);
 void orb_mixer_render(orb_mixer* m, int16_t* out, int frames); // the audio thread; the rest is main
 bool orb_mixer_rendered(const orb_mixer* m, uint32_t render);
 uint32_t orb_mixer_set_assets(

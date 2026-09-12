@@ -53,7 +53,7 @@ int main(void) {
     orb_sound_params full = {.volume = 1};
     orb_voice v;
 
-    orb_mixer_init(&mixer);
+    mixer = (orb_mixer)ORB_MIXER_INIT;
     CHECK(mixer.volumes.master == 1 && mixer.volumes.song == 1 && mixer.volumes.sound == 1);
     CHECK(orb_mixer_song_position(&mixer).seconds == -1); // before any render
     CHECK(atomic_is_lock_free(&mixer.song_position));     // the main thread reads it with one load
@@ -69,7 +69,7 @@ int main(void) {
 
     // a one-shot plays its 8 frames at full scale on both sides, then frees its voice
     v = orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), full, 0);
-    CHECK_EQ(MIXER_VOICE_INDEX(v), 16);
+    CHECK_EQ(MIXER_VOICE_INDEX(v), ORB_GAME_VOICE_FIRST);
     CHECK_EQ(MIXER_VOICE_GENERATION(v), 1);
     CHECK_EQ(playing_count(), 1);
     render(8);
@@ -134,11 +134,11 @@ int main(void) {
     CHECK_EQ(playing_count(), 16);
     CHECK_EQ(orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), full, 3).v, ORB_NO_VOICE.v);
     v = orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), full, 5);
-    CHECK_EQ(MIXER_VOICE_INDEX(v), 16); // the oldest priority-5 voice
+    CHECK_EQ(MIXER_VOICE_INDEX(v), ORB_GAME_VOICE_FIRST); // the oldest priority-5 voice
     CHECK_EQ(MIXER_VOICE_GENERATION(v), MIXER_VOICE_GENERATION(held[0]) + 1);
     v = orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), full, 9);
-    CHECK_EQ(MIXER_VOICE_INDEX(v), 17);    // priority 5 goes before 9, and 16 is now the newest
-    orb_mixer_sound_stop(&mixer, held[0]); // stale: voice 16 belongs to a newer claim
+    CHECK_EQ(MIXER_VOICE_INDEX(v), ORB_GAME_VOICE_FIRST + 1); // 5 before 9; the first is newest now
+    orb_mixer_sound_stop(&mixer, held[0]); // stale: the first voice belongs to a newer claim
     render(1);
     CHECK_EQ(playing_count(), 16);
     render(20);
@@ -152,10 +152,12 @@ int main(void) {
         orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), full, 0);
 
     orb_voice w =
-        orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), full, 0); // steals 16; play still queued
-    CHECK_EQ(MIXER_VOICE_INDEX(w), 16);
-    mixer_voice_end(&mixer.voices[16]); // the old sound ends before the play is consumed
-    CHECK_EQ(atomic_load(&mixer.voices[16].playing), MIXER_VOICE_GENERATION(w));
+        orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), full, 0); // steals the first; play still queued
+    orb_voice_state* first = &mixer.voices[ORB_GAME_VOICE_FIRST];
+
+    CHECK_EQ(MIXER_VOICE_INDEX(w), ORB_GAME_VOICE_FIRST);
+    mixer_voice_end(first); // the old sound ends before the play is consumed
+    CHECK_EQ(atomic_load(&first->playing), MIXER_VOICE_GENERATION(w));
     render(1);
     CHECK_EQ(out[0], 16000); // all sixteen at their first frame
     render(20);

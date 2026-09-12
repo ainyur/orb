@@ -41,6 +41,8 @@ static const api_kind api_kinds[] = {
     API_KIND(song, ORB_MAX_SPRITES + ORB_MAX_ANIMATIONS + ORB_MAX_SAMPLES),
 };
 
+constexpr int API_KIND_COUNT = sizeof api_kinds / sizeof *api_kinds;
+
 static const uint64_t* api_ids_of(const orb_assets* as, const api_kind* k) {
     return *(const uint64_t* const*)((const char*)as + k->ids);
 }
@@ -50,7 +52,7 @@ static uint32_t api_count_of(const orb_assets* as, const api_kind* k) {
 }
 
 // The handle at the index whose id matches, carrying that index's current
-// generation; 0xffffff (the null handle) on a miss.
+// generation; ORB_NO_INDEX (the null handle) on a miss.
 static uint32_t api_find(int kind, uint64_t id) {
     const api_kind* k = &api_kinds[kind];
     const uint64_t* ids = api_ids_of(&api_assets, k);
@@ -59,7 +61,7 @@ static uint32_t api_find(int kind, uint64_t id) {
     for (uint32_t i = 0; i < count; i++)
         if (ids[i] == id) return i | (uint32_t)k->table[i] << 24;
 
-    return 0xffffffu;
+    return ORB_NO_INDEX;
 }
 
 // Hand the mixer a stable copy of the assets, then wait out any render still
@@ -79,7 +81,7 @@ static void api_publish(void) {
 static orb_animation api_animation_find(const char* stem, const char* tag) {
     uint32_t v = api_find(API_ANIMATION, orb_asset_id(stem, tag));
 
-    if (v == 0xffffffu) orb_log("no animation \"%s\" in %s", tag, stem);
+    if (v == ORB_NO_INDEX) orb_log("no animation \"%s\" in %s", tag, stem);
 
     return ORB_ANIMATION(v);
 }
@@ -111,7 +113,7 @@ static void api_palette_set(int i, uint8_t r, uint8_t g, uint8_t b) {
 static orb_sample api_sample_find(const char* stem) {
     uint32_t v = api_find(API_SAMPLE, orb_asset_id(stem, ""));
 
-    if (v == 0xffffffu) orb_log("no sound \"%s\"", stem);
+    if (v == ORB_NO_INDEX) orb_log("no sound \"%s\"", stem);
 
     return ORB_SAMPLE(v);
 }
@@ -119,7 +121,7 @@ static orb_sample api_sample_find(const char* stem) {
 static orb_song api_song_find(const char* stem) {
     uint32_t v = api_find(API_SONG, orb_asset_id(stem, ""));
 
-    if (v == 0xffffffu) orb_log("no song \"%s\"", stem);
+    if (v == ORB_NO_INDEX) orb_log("no song \"%s\"", stem);
 
     return ORB_SONG(v);
 }
@@ -161,13 +163,9 @@ static void api_sprite_draw(orb_sprite s, orb_vec2 at, uint32_t flags, const uin
 }
 
 static orb_sprite api_sprite_find(const char* stem, int frame) {
-    char suffix[16];
+    uint32_t v = api_find(API_SPRITE, orb_sprite_id(stem, frame));
 
-    snprintf(suffix, sizeof suffix, "%d", frame);
-
-    uint32_t v = api_find(API_SPRITE, orb_asset_id(stem, suffix));
-
-    if (v == 0xffffffu) orb_log("no frame %d in %s", frame, stem);
+    if (v == ORB_NO_INDEX) orb_log("no frame %d in %s", frame, stem);
 
     return ORB_SPRITE(v);
 }
@@ -230,7 +228,7 @@ void orb_api_resolve(uint32_t* rgb) {
 // A recast that lands a different source at an index bumps that index, so a
 // handle found before it fails closed until reload finds the name again.
 void orb_api_set_assets(const orb_assets* assets) {
-    for (int kind = 0; kind < 4; kind++) {
+    for (int kind = 0; kind < API_KIND_COUNT; kind++) {
         const api_kind* k = &api_kinds[kind];
         const uint64_t *old = api_ids_of(&api_assets, k), *new = api_ids_of(assets, k);
         uint32_t n = orb_min(api_count_of(&api_assets, k), api_count_of(assets, k));
@@ -241,7 +239,7 @@ void orb_api_set_assets(const orb_assets* assets) {
 
     api_assets = *assets;
 
-    for (int kind = 0; kind < 4; kind++)
+    for (int kind = 0; kind < API_KIND_COUNT; kind++)
         *(const uint8_t**)((char*)&api_assets + api_kinds[kind].generations) =
             api_kinds[kind].table;
 
@@ -254,15 +252,7 @@ const orb_api* orb_api_table(void) {
 }
 
 bool orb_audio_idle(uint64_t elapsed_ns, uint64_t* rendered) {
-    static int16_t silence[ORB_MIXER_CHUNK * ORB_AUDIO_CHANNELS];
-    uint64_t owed = elapsed_ns / 1000000000u * ORB_AUDIO_RATE + // split so it never wraps
-                    elapsed_ns % 1000000000u * ORB_AUDIO_RATE / 1000000000u;
-    uint64_t before = *rendered;
-
-    for (; *rendered + ORB_MIXER_CHUNK <= owed; *rendered += ORB_MIXER_CHUNK)
-        orb_mixer_render(&api_mixer, silence, ORB_MIXER_CHUNK);
-
-    return before / ORB_AUDIO_RATE != *rendered / ORB_AUDIO_RATE;
+    return orb_mixer_idle(&api_mixer, elapsed_ns, rendered);
 }
 
 void orb_audio_render(int16_t* out, int frames) {

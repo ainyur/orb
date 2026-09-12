@@ -29,13 +29,11 @@ int main(void) {
     orb_cast_result r;
     CHECK(orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
     CHECK(strcmp(m.id, "fixture") == 0);
-    CHECK_EQ(m.size_w, 64);
-    CHECK_EQ(m.size_h, 32);
+    CHECK_EQ(m.size.w, 64);
+    CHECK_EQ(m.size.h, 32);
     CHECK_EQ(m.asset_headroom, 1048576);
     CHECK_EQ(m.song_count, 1);
     CHECK(r.file.ptr >= out_mem && r.file.ptr < out_mem + sizeof out_mem);
-    CHECK_EQ(r.sprite_count, 2);
-    CHECK_EQ(r.animation_count, 1);
 
     // every file and directory the cast read, once each: what scry watches, so a
     // file added to a directory recasts without touching orb.json
@@ -61,8 +59,8 @@ int main(void) {
     const orb_sprite_desc* sp = &as.sprites[0];
     CHECK_EQ(as.pixels[sh->pixels + sp->y * sh->w + sp->x], 2);
 
-    CHECK_EQ(r.sample_count, 2);
-    CHECK_EQ(r.song_count, 1);
+    CHECK_EQ(as.sample_count, 2);
+    CHECK_EQ(as.song_count, 1);
 
     CHECK_EQ(as.animation_count, 1);
     CHECK_EQ(as.animations[0].first_sprite, 0);
@@ -115,8 +113,9 @@ int main(void) {
         " \"asset_headroom\": 1048576, \"palette\": \"" ART "art/palette.aseprite\"}\n";
     CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)nested, strlen(nested)}));
     CHECK(orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
-    CHECK_EQ(r.sprite_count, 2);
-    CHECK_EQ(r.sample_count, 0); // no sfx or music directory is no error, and both are watched
+    CHECK(orb_file_load(r.file, &as, &err));
+    CHECK_EQ(as.sprite_count, 2);
+    CHECK_EQ(as.sample_count, 0); // no sfx or music directory is no error, and both are watched
     CHECK_EQ(r.read_count, 7);
     CHECK(strcmp(r.reads[2], "art") == 0);
     CHECK(strcmp(r.reads[3], "art/sub") == 0);

@@ -51,7 +51,7 @@ static int cast_once(const char* dir, bool seal, const char* out_path) {
     orb_manifest m;
 
     if (!orb_manifest_load(&boot, dir, &m, &err)) {
-        fprintf(stderr, "orb: %s\n", err.text);
+        orb_log("orb: %s", err.text);
         return 1;
     }
 
@@ -61,9 +61,11 @@ static int cast_once(const char* dir, bool seal, const char* out_path) {
     orb_arena_init(&out, "asset", malloc(m.asset_headroom), m.asset_headroom);
 
     orb_cast_result result;
+    orb_assets as;
 
-    if (!orb_cast_game(&scratch, &out, dir, &m, &result, &err)) {
-        fprintf(stderr, "orb: %s\n", err.text);
+    if (!orb_cast_game(&scratch, &out, dir, &m, &result, &err) ||
+        !orb_file_load(result.file, &as, &err)) {
+        orb_log("orb: %s", err.text);
         return 1;
     }
 
@@ -73,7 +75,7 @@ static int cast_once(const char* dir, bool seal, const char* out_path) {
         orb_path_join(bin, dir, "bin");
 
         if (!orb_os_make_dir(bin)) {
-            fprintf(stderr, "orb: cannot create %s\n", bin);
+            orb_log("orb: cannot create %s", bin);
             return 1;
         }
 
@@ -83,15 +85,15 @@ static int cast_once(const char* dir, bool seal, const char* out_path) {
     }
 
     if (out_path && !orb_os_write_file(out_path, result.file)) {
-        fprintf(stderr, "orb: cannot write %s\n", out_path);
+        orb_log("orb: cannot write %s", out_path);
         return 1;
     }
 
     printf(
         "%s %u sprites, %u animations, %u samples, %u songs (%zu bytes; scratch peaked at %zu "
         "of the %zu asset_headroom)\n",
-        out_path ? "sealed" : "cast", result.sprite_count, result.animation_count,
-        result.sample_count, result.song_count, result.file.len, scratch.peak, scratch.size
+        out_path ? "sealed" : "cast", as.sprite_count, as.animation_count, as.sample_count,
+        as.song_count, result.file.len, scratch.peak, scratch.size
     );
 
     return 0;
@@ -119,7 +121,7 @@ int main(int argc, char** argv) {
     if (strcmp(verb, "seal") == 0 && argc <= 4)
         return cast_once(dir, true, argc == 4 ? argv[3] : nullptr);
 
-    fprintf(stderr, "orb: unknown verb or arguments\n");
+    orb_log("orb: unknown verb or arguments");
 
     return usage(stderr);
 }

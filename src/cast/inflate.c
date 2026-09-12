@@ -1,4 +1,5 @@
 #include "inflate.h"
+#include "../core/bytes.h"
 
 #include <string.h>
 
@@ -135,8 +136,7 @@ static int inflate_stored(inflate_state* s) {
 
     if (s->inpos + 4 > s->inlen) return -1;
 
-    unsigned len = s->in[s->inpos] | (unsigned)s->in[s->inpos + 1] << 8;
-    unsigned nlen = s->in[s->inpos + 2] | (unsigned)s->in[s->inpos + 3] << 8;
+    unsigned len = orb_bytes_u16(s->in + s->inpos), nlen = orb_bytes_u16(s->in + s->inpos + 2);
 
     s->inpos += 4;
 

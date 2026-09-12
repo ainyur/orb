@@ -164,16 +164,19 @@ static void debug_watch_depfile(orb_span text) {
 }
 
 static bool debug_watch_sources(void) {
-    static orb_path depfiles[DEBUG_MAX_WATCHES];
+    static orb_os_entry entries[DEBUG_MAX_WATCHES];
     orb_path build;
     orb_arena a;
 
     orb_path_join(build, debug_dir, "build");
     orb_arena_init(&a, "depfile", debug_depfile_mem, sizeof debug_depfile_mem);
 
-    int files = orb_os_list_dir(build, ".d", depfiles, DEBUG_MAX_WATCHES);
+    int n = orb_os_list_dir(build, entries, DEBUG_MAX_WATCHES), depfiles = 0;
 
-    if (files <= 0) {
+    for (int i = 0; i < n; i++)
+        depfiles += orb_has_suffix(entries[i].name, ".d");
+
+    if (!depfiles) {
         orb_log(
             "scry: no build/*.d files; compile with -MMD so scry can watch what the build reads"
         );
@@ -182,12 +185,16 @@ static bool debug_watch_sources(void) {
 
     debug_sources.count = 0;
 
-    for (int i = 0; i < files; i++) {
+    for (int i = 0; i < n; i++) {
+        orb_path path;
         orb_span text;
 
+        if (!orb_has_suffix(entries[i].name, ".d")) continue;
+
+        orb_path_join(path, build, entries[i].name);
         orb_arena_reset(&a);
 
-        if (!orb_os_read_file(depfiles[i], &a, &text)) orb_fatal("cannot read %s", depfiles[i]);
+        if (!orb_os_read_file(path, &a, &text)) orb_fatal("cannot read %s", path);
 
         debug_watch_depfile(text);
     }

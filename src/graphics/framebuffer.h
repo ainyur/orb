@@ -3,8 +3,6 @@
 #include "../core/arena.h"
 #include "../orb.h"
 
-#include <stdbool.h>
-
 typedef struct orb_framebuffer {
     int w, h;
     uint8_t* px;

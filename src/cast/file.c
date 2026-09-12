@@ -24,6 +24,13 @@ uint64_t orb_asset_id(const char* stem, const char* suffix) {
     return asset_hash(h, suffix);
 }
 
+uint64_t orb_sprite_id(const char* stem, int frame) {
+    char suffix[16];
+
+    snprintf(suffix, sizeof suffix, "%d", frame);
+    return orb_asset_id(stem, suffix);
+}
+
 // One row per section: where its bytes and count live in orb_assets. A row with
 // no count field is one element. An id section holds one id per element of its
 // desc section, so it must be at least that long rather than setting a count.
@@ -182,7 +189,7 @@ bool orb_file_load(orb_span file, orb_assets* out, orb_error* err) {
         if (end > out->pcm_count)
             return orb_error_set(err, "orb file: sample %u runs past the PCM section", i);
 
-        if (d->rate < 1 || d->rate > 192000)
+        if (d->rate < 1 || d->rate > ORB_MAX_RATE)
             return orb_error_set(err, "orb file: sample %u has a bad rate %u", i, d->rate);
 
         if (d->loop_end != 0 && (d->loop_end > d->count || d->loop_start >= d->loop_end))
@@ -199,7 +206,7 @@ bool orb_file_load(orb_span file, orb_assets* out, orb_error* err) {
                 out->sample_count
             );
 
-        if (!(out->songs[i].bpm > 0 && out->songs[i].bpm <= 1000)) { // also refuses NaN
+        if (!(out->songs[i].bpm > 0 && out->songs[i].bpm <= ORB_MAX_BPM)) { // also refuses NaN
             return orb_error_set(
                 err, "orb file: song %u has a bad bpm %g", i, (double)out->songs[i].bpm
             );

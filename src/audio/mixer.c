@@ -17,8 +17,13 @@ static orb_sound_params mixer_clamp_params(orb_sound_params p) {
     };
 }
 
+// An index still holds the asset a command or voice named, by id.
+static bool mixer_id_valid(const uint64_t* ids, uint32_t count, uint32_t index, uint64_t id) {
+    return index < count && ids[index] == id;
+}
+
 static bool mixer_sample_valid(const orb_assets* assets, uint32_t sample, uint64_t id) {
-    return assets && sample < assets->sample_count && assets->sample_ids[sample] == id;
+    return assets && mixer_id_valid(assets->sample_ids, assets->sample_count, sample, id);
 }
 
 static uint64_t mixer_step(uint32_t rate, int pitch_cents) {
@@ -122,7 +127,8 @@ static void mixer_apply(orb_mixer* m, const orb_assets* assets, const orb_mixer_
 
         break;
     case ORB_MIXER_SONG_PLAY: {
-        if (!assets || c->index >= assets->song_count || assets->song_ids[c->index] != c->id) break;
+        if (!assets || !mixer_id_valid(assets->song_ids, assets->song_count, c->index, c->id))
+            break;
 
         uint32_t sample = assets->songs[c->index].sample;
 
@@ -250,7 +256,7 @@ static void mixer_revalidate(orb_mixer* m, const orb_assets* assets) {
         bool ok = mixer_sample_valid(assets, v->sample, v->sample_id);
 
         if (ok && i == ORB_SONG_VOICE)
-            ok = v->song < assets->song_count && assets->song_ids[v->song] == v->song_id;
+            ok = mixer_id_valid(assets->song_ids, assets->song_count, v->song, v->song_id);
 
         if (!ok) mixer_voice_end(v);
     }
@@ -302,6 +308,20 @@ static orb_voice_state* mixer_held(orb_mixer* m, orb_voice handle) {
     return &m->voices[index];
 }
 
+// Main thread: a set or stop for a voice the handle still holds.
+static void mixer_push_voice(orb_mixer* m, orb_voice v, uint8_t kind, orb_sound_params p) {
+    if (!mixer_held(m, v)) return;
+
+    mixer_push(
+        m, (orb_mixer_command) {
+               .kind = kind,
+               .voice = (uint8_t)MIXER_VOICE_INDEX(v),
+               .generation = (uint16_t)MIXER_VOICE_GENERATION(v),
+               .params = p
+           }
+    );
+}
+
 // The song voice's frame as seconds and beats, one atomic store so the main
 // thread never sees one without the other. -1 for both when no song plays.
 static void mixer_publish_position(orb_mixer* m, const orb_assets* assets) {
@@ -316,8 +336,16 @@ static void mixer_publish_position(orb_mixer* m, const orb_assets* assets) {
     atomic_store_explicit(&m->song_position, p, memory_order_relaxed);
 }
 
-void orb_mixer_init(orb_mixer* m) {
-    *m = (orb_mixer)ORB_MIXER_INIT;
+bool orb_mixer_idle(orb_mixer* m, uint64_t elapsed_ns, uint64_t* rendered) {
+    static int16_t silence[ORB_MIXER_CHUNK * ORB_AUDIO_CHANNELS];
+    uint64_t owed = elapsed_ns / 1000000000u * ORB_AUDIO_RATE + // split so it never wraps
+                    elapsed_ns % 1000000000u * ORB_AUDIO_RATE / 1000000000u;
+    uint64_t before = *rendered;
+
+    for (; *rendered + ORB_MIXER_CHUNK <= owed; *rendered += ORB_MIXER_CHUNK)
+        orb_mixer_render(m, silence, ORB_MIXER_CHUNK);
+
+    return before / ORB_AUDIO_RATE != *rendered / ORB_AUDIO_RATE;
 }
 
 void orb_mixer_render(orb_mixer* m, int16_t* out, int frames) {
@@ -336,7 +364,7 @@ void orb_mixer_render(orb_mixer* m, int16_t* out, int frames) {
         mixer_apply(m, assets, &c);
 
     while (frames > 0) {
-        int n = frames < ORB_MIXER_CHUNK ? frames : ORB_MIXER_CHUNK;
+        int n = orb_min(frames, ORB_MIXER_CHUNK);
         float acc[ORB_MIXER_CHUNK * 2];
 
         memset(acc, 0, sizeof(float) * n * 2);
@@ -381,7 +409,7 @@ void orb_mixer_song_play(orb_mixer* m, orb_song s, bool loop) {
 
     uint32_t index = orb_handle_index(assets->song_generations, assets->song_count, s.v);
 
-    if (index == 0xffffffu) return;
+    if (index == ORB_NO_INDEX) return;
 
     mixer_push(
         m,
@@ -409,7 +437,7 @@ orb_voice orb_mixer_sound_play(orb_mixer* m, orb_sample s, orb_sound_params p, i
 
     uint32_t index = orb_handle_index(assets->sample_generations, assets->sample_count, s.v);
 
-    if (index == 0xffffffu) return ORB_NO_VOICE;
+    if (index == ORB_NO_INDEX) return ORB_NO_VOICE;
 
     if (!mixer_room(m)) { // checked before the claim, so a refused play leaves no voice claimed
         m->dropped++;
@@ -436,28 +464,11 @@ orb_voice orb_mixer_sound_play(orb_mixer* m, orb_sample s, orb_sound_params p, i
 }
 
 void orb_mixer_sound_set(orb_mixer* m, orb_voice v, orb_sound_params p) {
-    if (!mixer_held(m, v)) return;
-
-    mixer_push(
-        m, (orb_mixer_command) {
-               .kind = ORB_MIXER_SET,
-               .voice = (uint8_t)MIXER_VOICE_INDEX(v),
-               .generation = (uint16_t)MIXER_VOICE_GENERATION(v),
-               .params = mixer_clamp_params(p)
-           }
-    );
+    mixer_push_voice(m, v, ORB_MIXER_SET, mixer_clamp_params(p));
 }
 
 void orb_mixer_sound_stop(orb_mixer* m, orb_voice v) {
-    if (!mixer_held(m, v)) return;
-
-    mixer_push(
-        m, (orb_mixer_command) {
-               .kind = ORB_MIXER_STOP,
-               .voice = (uint8_t)MIXER_VOICE_INDEX(v),
-               .generation = (uint16_t)MIXER_VOICE_GENERATION(v)
-           }
-    );
+    mixer_push_voice(m, v, ORB_MIXER_STOP, (orb_sound_params) {});
 }
 
 void orb_mixer_volume_set(orb_mixer* m, orb_volumes v) {

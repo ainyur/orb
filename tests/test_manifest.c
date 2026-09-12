@@ -61,7 +61,11 @@ int main(void) {
     // a file added to the art directory is picked up by a recast without touching orb.json
     CHECK(copy_player(DIR "/zed.aseprite"));
     CHECK(orb_run_recast(&err));
-    CHECK_EQ(orb_run_cast_result()->sprite_count, 4); // two frames from each of two files
+
+    orb_assets as;
+
+    CHECK(orb_file_load(orb_run_cast_result()->file, &as, &err));
+    CHECK_EQ(as.sprite_count, 4); // two frames from each of two files
     api->clear(0);
     api->sprite_draw(ORB_SPRITE(2), (orb_vec2) {0, 0}, 0, nullptr);
     CHECK_EQ(orb_api_framebuffer()->px[4 * 64 + 4], 2);

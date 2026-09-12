@@ -26,10 +26,12 @@ static bool run_load(orb_span file, orb_error* err) {
 }
 
 static bool run_open(orb_error* err) {
-    orb_api_init(&run_arena, (orb_size) {run_info.w, run_info.h});
-    run_rgb = orb_arena_push_array(&run_arena, uint32_t, (size_t)run_info.w* run_info.h);
+    orb_size size = {run_info.w, run_info.h};
 
-    orb_os_config cfg = {.title = run_info.name, .size_w = run_info.w, .size_h = run_info.h};
+    orb_api_init(&run_arena, size);
+    run_rgb = orb_arena_push_array(&run_arena, uint32_t, (size_t)size.w* size.h);
+
+    orb_os_config cfg = {.title = run_info.name, .size = size};
 
     if (!orb_os_open(&cfg)) return orb_error_set(err, "cannot open a window");
 
@@ -63,7 +65,7 @@ static bool run_cast(int half, orb_error* err) {
     if (!orb_cast_game(&run_scratch, &run_assets[half], run_dir, &m, &result, err)) return false;
 
     // The regions and the window were sized at boot from the first manifest.
-    if (m.size_w != run_info.w || m.size_h != run_info.h || m.asset_headroom != run_assets[0].size)
+    if (m.size.w != run_info.w || m.size.h != run_info.h || m.asset_headroom != run_assets[0].size)
         return orb_error_set(
             err, "orb.json: size or asset_headroom changed; restart orb to apply it"
         );
@@ -81,7 +83,7 @@ static bool run_boot_sources(const char* game_dir, orb_error* err) {
     if (!orb_manifest_load(&run_arena, game_dir, &m, err)) return false;
 
     run_dir = game_dir;
-    run_info = (orb_info_desc) {.w = (uint16_t)m.size_w, .h = (uint16_t)m.size_h};
+    run_info = (orb_info_desc) {.w = (uint16_t)m.size.w, .h = (uint16_t)m.size.h};
     run_assets[0] = orb_arena_carve(&run_arena, "asset half A", m.asset_headroom);
     run_assets[1] = orb_arena_carve(&run_arena, "asset half B", m.asset_headroom);
     run_scratch = orb_arena_carve(&run_arena, "cast scratch", m.asset_headroom);
@@ -137,7 +139,7 @@ void orb_run_draw(void) {
 }
 
 void orb_run_loop(void (*poll)(void)) {
-    const uint64_t step = 1000000000u / 60;
+    const uint64_t step = 1000000000u / ORB_TICK_RATE;
     uint64_t previous = orb_os_ticks(), accumulator = 0;
 
     for (;;) {

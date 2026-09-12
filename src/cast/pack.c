@@ -1,6 +1,5 @@
 #include "pack.h"
 
-#include <stdalign.h>
 #include <string.h>
 
 typedef struct {
@@ -48,7 +47,6 @@ void orb_pack_frames(
 
     out->frames = orb_arena_push_array(a, orb_pack_frame, frame_count);
     out->rects = orb_arena_push_array(a, orb_pack_rect, frame_count);
-    out->frame_count = frame_count;
     out->rect_count = 0;
 
     for (uint32_t f = 0; f < frame_count; f++) {

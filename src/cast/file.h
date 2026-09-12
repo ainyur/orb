@@ -4,9 +4,6 @@
 #include "../core/log.h"
 #include "../orb.h"
 
-#include <assert.h>
-#include <stdbool.h>
-
 constexpr uint32_t ORB_FILE_MAGIC = 0x0042524F;
 constexpr uint32_t ORB_FILE_VERSION = 1;
 
@@ -34,10 +31,15 @@ constexpr uint32_t ORB_MAX_ANIMATIONS = 1 << 12;
 constexpr uint32_t ORB_MAX_SAMPLES = 1 << 10;
 constexpr uint32_t ORB_MAX_SONGS = 1 << 10;
 
+// What the caster refuses and the loader checks again, since a file is untrusted.
+constexpr uint32_t ORB_MAX_RATE = 192000; // Hz
+constexpr float ORB_MAX_BPM = 1000;
+
 // The id of an asset: a hash of its file stem and frame number or tag name,
 // case-insensitive. Cast stores one per entry; find hashes the request the
-// same way and scans for it.
+// same way and scans for it. A sprite's suffix is its frame number.
 uint64_t orb_asset_id(const char* stem, const char* suffix);
+uint64_t orb_sprite_id(const char* stem, int frame);
 
 typedef struct orb_file_header {
     uint32_t magic, version, section_count, pad;
@@ -66,7 +68,7 @@ typedef struct orb_sprite_desc {
 typedef struct orb_animation_desc {
     uint32_t first_sprite, first_duration;
     uint16_t count;
-    uint8_t direction, pad[5];
+    uint8_t pad[6];
 } orb_animation_desc;
 
 typedef struct orb_sample_desc {
@@ -126,11 +128,11 @@ typedef struct orb_assets {
 } orb_assets;
 
 // The index a handle addresses when it is current: within count and carrying
-// the generation the table holds for it, or 0 with no table. Else 0xffffff.
+// the generation the table holds for it, or 0 with no table. Else ORB_NO_INDEX.
 static inline uint32_t orb_handle_index(const uint8_t* generations, uint32_t count, uint32_t v) {
-    uint32_t index = v & 0xffffffu, generation = v >> 24;
+    uint32_t index = v & ORB_NO_INDEX, generation = v >> 24;
 
-    if (index >= count || (generations ? generations[index] : 0) != generation) return 0xffffffu;
+    if (index >= count || (generations ? generations[index] : 0) != generation) return ORB_NO_INDEX;
 
     return index;
 }

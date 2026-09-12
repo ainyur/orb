@@ -14,35 +14,16 @@ static bool gdi_keys[ORB_BTN_COUNT];
 static bool gdi_closed;
 static const uint32_t* gdi_last; // the frame most recently presented, for WM_PAINT
 
+// The key for each button, in ORB_BTN order.
+static const WPARAM gdi_keymap[ORB_BTN_COUNT] = {VK_UP, VK_DOWN, VK_LEFT,   VK_RIGHT,
+                                                 'Z',   'X',     'A',       'S',
+                                                 'Q',   'W',     VK_RETURN, VK_TAB};
+
 static int gdi_button(WPARAM key) {
-    switch (key) {
-    case VK_UP:
-        return ORB_BTN_UP;
-    case VK_DOWN:
-        return ORB_BTN_DOWN;
-    case VK_LEFT:
-        return ORB_BTN_LEFT;
-    case VK_RIGHT:
-        return ORB_BTN_RIGHT;
-    case 'Z':
-        return ORB_BTN_A;
-    case 'X':
-        return ORB_BTN_B;
-    case 'A':
-        return ORB_BTN_X;
-    case 'S':
-        return ORB_BTN_Y;
-    case 'Q':
-        return ORB_BTN_L;
-    case 'W':
-        return ORB_BTN_R;
-    case VK_RETURN:
-        return ORB_BTN_START;
-    case VK_TAB:
-        return ORB_BTN_SELECT;
-    default:
-        return -1;
-    }
+    for (int b = 0; b < ORB_BTN_COUNT; b++)
+        if (gdi_keymap[b] == key) return b;
+
+    return -1;
 }
 
 // Integer-scale the frame into the client area, centered, borders left to the
@@ -99,14 +80,11 @@ static LRESULT CALLBACK gdi_proc(HWND window, UINT msg, WPARAM w, LPARAM l) {
 }
 
 bool orb_os_open(const orb_os_config* cfg) {
-    gdi_fb_w = cfg->size_w;
-    gdi_fb_h = cfg->size_h;
+    gdi_fb_w = cfg->size.w;
+    gdi_fb_h = cfg->size.h;
 
     int max_w = GetSystemMetrics(SM_CXSCREEN), max_h = GetSystemMetrics(SM_CYSCREEN);
-    int scale = 3;
-
-    while (scale > 1 && (gdi_fb_w * scale > max_w || gdi_fb_h * scale > max_h))
-        scale--;
+    int scale = orb_os_open_scale(cfg->size, (orb_size) {max_w, max_h});
 
     gdi_win_w = gdi_fb_w * scale;
     gdi_win_h = gdi_fb_h * scale;

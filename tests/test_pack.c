@@ -20,7 +20,6 @@ int main(void) {
     orb_pack pack;
 
     orb_pack_frames(&a, frames, 3, (orb_size) {8, 8}, &pack);
-    CHECK_EQ(pack.frame_count, 3);
     CHECK_EQ(pack.rect_count, 2);
     CHECK_EQ(pack.frames[0].rect, 0);
     CHECK_EQ(pack.frames[1].rect, 0);

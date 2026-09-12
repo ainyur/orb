@@ -58,7 +58,12 @@ FILE* orb_os_fopen(const char* path, const char* mode) {
     return fopen(path, mode);
 }
 
-int orb_os_list_dir(const char* dir, const char* suffix, orb_path* out, int max) {
+bool orb_os_make_dir(const char* path) {
+    return mkdir(path, 0777) == 0 || errno == EEXIST;
+}
+
+// Strict POSIX hides d_type, so each entry is stat'd; one that fails is skipped.
+int orb_os_read_dir(const char* dir, orb_os_entry* out, int max) {
     DIR* d = opendir(dir);
 
     if (!d) return 0;
@@ -66,22 +71,21 @@ int orb_os_list_dir(const char* dir, const char* suffix, orb_path* out, int max)
     int count = 0;
 
     for (struct dirent* e; (e = readdir(d)) && count < max;) {
+        orb_path path;
+        orb_os_info info;
+
         if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0) continue;
-        if (!orb_has_suffix(e->d_name, suffix)) continue;
 
-        snprintf(out[count], sizeof out[count], "%s/%s", dir, e->d_name);
+        orb_path_join(path, dir, e->d_name);
 
-        if (orb_os_file_mtime(out[count]) != 0) count++;
+        if (!orb_os_stat(path, &info)) continue;
+
+        snprintf(out[count].name, ORB_PATH_MAX, "%s", e->d_name);
+        out[count++].dir = info.dir;
     }
 
     closedir(d);
-    qsort(out, (size_t)count, sizeof out[0], orb_os_compare_paths);
-
     return count;
-}
-
-bool orb_os_make_dir(const char* path) {
-    return mkdir(path, 0777) == 0 || errno == EEXIST;
 }
 
 int orb_os_run(const char* command, void (*line)(const char* text)) {
@@ -130,13 +134,6 @@ bool orb_os_stat(const char* path, orb_os_info* out) {
         .dir = S_ISDIR(st.st_mode)
     };
     return true;
-}
-
-void orb_path_join(orb_path out, const char* dir, const char* rel) {
-    int n = rel[0] == '/' ? snprintf(out, ORB_PATH_MAX, "%s", rel)
-                          : snprintf(out, ORB_PATH_MAX, "%s/%s", dir, rel);
-
-    if (n >= ORB_PATH_MAX) orb_fatal("path too long: %s/%s", dir, rel);
 }
 
 #include "stdio.c"

@@ -1,6 +1,5 @@
 #pragma once
 
-#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -63,11 +62,15 @@ typedef struct {
     uint32_t v;
 } orb_sprite;
 
+// The index of every kind's null handle: what a find that misses returns. It
+// draws and plays nothing.
+constexpr uint32_t ORB_NO_INDEX = 0xffffffu;
+
 #define ORB_ANIMATION(i) ((orb_animation) {(uint32_t)(i)})
 #define ORB_SPRITE(i) ((orb_sprite) {(uint32_t)(i)})
-#define ORB_NO_ANIMATION ORB_ANIMATION(0xffffffu) // what a find that misses returns; plays nothing
-#define ORB_NO_SPRITE ORB_SPRITE(0xffffffu)       // draws nothing
-#define ORB_HANDLE_INDEX(h) ((h).v & 0xffffffu)   // v = handle index (24 bits) | generation << 24
+#define ORB_NO_ANIMATION ORB_ANIMATION(ORB_NO_INDEX)
+#define ORB_NO_SPRITE ORB_SPRITE(ORB_NO_INDEX)
+#define ORB_HANDLE_INDEX(h) ((h).v & ORB_NO_INDEX) // v = handle index (24 bits) | generation << 24
 #define ORB_HANDLE_GENERATION(h) ((h).v >> 24)
 
 typedef struct {
@@ -85,14 +88,15 @@ typedef struct {
 
 #define ORB_SAMPLE(i) ((orb_sample) {(uint32_t)(i)})
 #define ORB_SONG(i) ((orb_song) {(uint32_t)(i)})
-#define ORB_NO_SAMPLE ORB_SAMPLE(0xffffffu) // what a find that misses returns; plays nothing
-#define ORB_NO_SONG ORB_SONG(0xffffffu)
+#define ORB_NO_SAMPLE ORB_SAMPLE(ORB_NO_INDEX)
+#define ORB_NO_SONG ORB_SONG(ORB_NO_INDEX)
 #define ORB_NO_VOICE                                                                               \
     ((orb_voice) {0xffffu}) // what a play that fails returns; set and stop ignore it
 
 #define ORB_FLIP_X 1u
 #define ORB_FLIP_Y 2u
-#define ORB_TICK_SECONDS (1.0f / 60)
+constexpr int ORB_TICK_RATE = 60; // update calls per second
+#define ORB_TICK_SECONDS (1.0f / ORB_TICK_RATE)
 
 constexpr int ORB_AUDIO_RATE = 48000;
 constexpr int ORB_AUDIO_CHANNELS = 2;

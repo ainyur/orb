@@ -2,7 +2,6 @@
 
 #include "../os/os.h"
 
-#include <stdbool.h>
 #include <stdint.h>
 
 typedef struct orb_watch {

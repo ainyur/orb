@@ -22,35 +22,16 @@ static Atom x11_wm_delete;
 static bool x11_keys[ORB_BTN_COUNT];
 static bool x11_resized;
 
+// The key for each button, in ORB_BTN order.
+static const KeySym x11_keymap[ORB_BTN_COUNT] = {XK_Up, XK_Down, XK_Left,   XK_Right,
+                                                 XK_z,  XK_x,    XK_a,      XK_s,
+                                                 XK_q,  XK_w,    XK_Return, XK_Tab};
+
 static int x11_button(KeySym key) {
-    switch (key) {
-    case XK_Up:
-        return ORB_BTN_UP;
-    case XK_Down:
-        return ORB_BTN_DOWN;
-    case XK_Left:
-        return ORB_BTN_LEFT;
-    case XK_Right:
-        return ORB_BTN_RIGHT;
-    case XK_z:
-        return ORB_BTN_A;
-    case XK_x:
-        return ORB_BTN_B;
-    case XK_a:
-        return ORB_BTN_X;
-    case XK_s:
-        return ORB_BTN_Y;
-    case XK_q:
-        return ORB_BTN_L;
-    case XK_w:
-        return ORB_BTN_R;
-    case XK_Return:
-        return ORB_BTN_START;
-    case XK_Tab:
-        return ORB_BTN_SELECT;
-    default:
-        return -1;
-    }
+    for (int b = 0; b < ORB_BTN_COUNT; b++)
+        if (x11_keymap[b] == key) return b;
+
+    return -1;
 }
 
 bool orb_os_open(const orb_os_config* cfg) {
@@ -65,13 +46,10 @@ bool orb_os_open(const orb_os_config* cfg) {
 
     x11_max_w = DisplayWidth(x11_display, screen);
     x11_max_h = DisplayHeight(x11_display, screen);
-    x11_fb_w = cfg->size_w;
-    x11_fb_h = cfg->size_h;
+    x11_fb_w = cfg->size.w;
+    x11_fb_h = cfg->size.h;
 
-    int scale = 3;
-
-    while (scale > 1 && (x11_fb_w * scale > x11_max_w || x11_fb_h * scale > x11_max_h))
-        scale--;
+    int scale = orb_os_open_scale(cfg->size, (orb_size) {x11_max_w, x11_max_h});
 
     x11_win_w = x11_fb_w * scale;
     x11_win_h = x11_fb_h * scale;

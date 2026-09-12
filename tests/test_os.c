@@ -69,42 +69,39 @@ int main(int argc, char** argv) {
         "build/scratch/h\xc3\xa9llo/\xc3\xbc.bin", "build/scratch/h\xc3\xa9llo/\xc3\xb6.bin"
     ));
 
-    // directory listing
-    orb_path names[8];
+    // directory listing: names sorted, dot entries skipped, subdirectories flagged
+    orb_os_entry names[8];
 
-    CHECK_EQ(orb_os_list_dir("build/scratch/h\xc3\xa9llo", ".bin", names, 8), 2);
-    CHECK(strcmp(names[0], "build/scratch/h\xc3\xa9llo/\xc3\xb6.bin") == 0);
-    CHECK(strcmp(names[1], "build/scratch/h\xc3\xa9llo/\xc3\xbc.bin") == 0);
+    CHECK_EQ(orb_os_list_dir("build/scratch/h\xc3\xa9llo", names, 8), 2);
+    CHECK(strcmp(names[0].name, "\xc3\xb6.bin") == 0);
+    CHECK(strcmp(names[1].name, "\xc3\xbc.bin") == 0);
+    CHECK(!names[0].dir);
 
 #ifdef _WIN32
     orb_path longname;
-    int at = snprintf(longname, sizeof longname, "build/scratch/h\xc3\xa9llo/long/");
+    int at = snprintf(longname, sizeof longname, "build/scratch/long/");
 
-    CHECK(orb_os_make_dir("build/scratch/h\xc3\xa9llo/long"));
+    CHECK(orb_os_make_dir("build/scratch/long"));
 
     for (int i = 0; i < 120; i++)
         at += snprintf(longname + at, sizeof longname - (size_t)at, "\xc3\xa9");
 
     snprintf(longname + at, sizeof longname - (size_t)at, ".bin");
     CHECK(orb_os_write_file(longname, (orb_span) {bytes, 3}));
-    CHECK_EQ(orb_os_list_dir("build/scratch/h\xc3\xa9llo/long", ".bin", names, 8), 1);
+    CHECK_EQ(orb_os_list_dir("build/scratch/long", names, 8), 1);
 #endif
 
-    CHECK_EQ(orb_os_list_dir("tests/fixtures/art", ".aseprite", names, 8), 2);
-    CHECK(strcmp(names[0], "tests/fixtures/art/palette.aseprite") == 0);
-    CHECK(strcmp(names[1], "tests/fixtures/art/player.aseprite") == 0);
-    CHECK_EQ(orb_os_list_dir("build/scratch/does-not-exist", ".c", names, 8), 0);
+    CHECK_EQ(orb_os_list_dir("tests/fixtures/art", names, 8), 2);
+    CHECK(strcmp(names[0].name, "palette.aseprite") == 0);
+    CHECK(strcmp(names[1].name, "player.aseprite") == 0);
+    CHECK_EQ(orb_os_list_dir("build/scratch/does-not-exist", names, 8), 0);
 
-    // an empty suffix lists every entry but the dot ones, subdirectories included
     CHECK(orb_os_make_dir("build/scratch/walk"));
     CHECK(orb_os_make_dir("build/scratch/walk/dir"));
     CHECK(orb_os_write_file("build/scratch/walk/a.txt", (orb_span) {bytes, 3}));
-    CHECK_EQ(orb_os_list_dir("build/scratch/walk", "", names, 8), 2);
-    CHECK(strcmp(names[0], "build/scratch/walk/a.txt") == 0);
-    CHECK(strcmp(names[1], "build/scratch/walk/dir") == 0);
-    CHECK(orb_os_is_dir("build/scratch/walk/dir"));
-    CHECK(!orb_os_is_dir("build/scratch/walk/a.txt"));
-    CHECK(!orb_os_is_dir("build/scratch/does-not-exist"));
+    CHECK_EQ(orb_os_list_dir("build/scratch/walk", names, 8), 2);
+    CHECK(strcmp(names[0].name, "a.txt") == 0 && !names[0].dir);
+    CHECK(strcmp(names[1].name, "dir") == 0 && names[1].dir);
 
     // clock
     uint64_t t0 = orb_os_ticks();
@@ -113,7 +110,7 @@ int main(int argc, char** argv) {
     CHECK(orb_os_ticks() - t0 >= 2000000);
 
     // headless window
-    orb_os_config cfg = {.title = "test", .size_w = 4, .size_h = 2};
+    orb_os_config cfg = {.title = "test", .size = {4, 2}};
     CHECK(orb_os_open(&cfg));
     orb_input scripted = {0};
 

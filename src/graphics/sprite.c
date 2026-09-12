@@ -10,7 +10,7 @@ orb_sprite orb_animation_step(const orb_assets* assets, orb_animation_state* st)
     uint32_t index =
         orb_handle_index(assets->animation_generations, assets->animation_count, st->animation.v);
 
-    if (index == 0xffffffu) return ORB_SPRITE(0xffffffu);
+    if (index == ORB_NO_INDEX) return ORB_NO_SPRITE;
 
     const orb_animation_desc* d = &assets->animations[index];
 
@@ -39,7 +39,7 @@ void orb_sprite_draw(
 ) {
     uint32_t index = orb_handle_index(assets->sprite_generations, assets->sprite_count, s.v);
 
-    if (index == 0xffffffu) return;
+    if (index == ORB_NO_INDEX) return;
 
     const orb_sprite_desc* d = &assets->sprites[index];
 

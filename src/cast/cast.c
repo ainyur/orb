@@ -6,8 +6,6 @@
 #include "pack.h"
 #include "wav.h"
 
-#include <ctype.h>
-#include <stdalign.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -48,9 +46,10 @@ static bool cast_song_map(orb_arena* a, const orb_json* root, orb_manifest* m, o
     orb_manifest_song* songs = orb_arena_push_array(a, orb_manifest_song, map->count);
 
     for (const orb_json* s = map->first; s; s = s->next) {
-        if (s->kind != ORB_JSON_NUMBER || !(s->num > 0 && s->num <= 1000))
+        if (s->kind != ORB_JSON_NUMBER || !(s->num > 0 && s->num <= ORB_MAX_BPM))
             return orb_error_set(
-                err, "orb.json: songs: \"%s\" must be a bpm within 0..1000", s->key
+                err, "orb.json: songs: \"%s\" must be a bpm within 0..%g", s->key,
+                (double)ORB_MAX_BPM
             );
 
         songs[m->song_count++] = (orb_manifest_song) {.bpm = (float)s->num, .stem = s->key};
@@ -77,10 +76,9 @@ bool orb_manifest_load(orb_arena* a, const char* game_dir, orb_manifest* m, orb_
     if (!size || size->kind != ORB_JSON_ARRAY || size->count != 2)
         return orb_error_set(err, "orb.json: \"size\" must be [width, height]");
 
-    m->size_w = (int)size->first->num;
-    m->size_h = (int)size->first->next->num;
+    m->size = (orb_size) {(int)size->first->num, (int)size->first->next->num};
 
-    if (m->size_w < 1 || m->size_w > 4096 || m->size_h < 1 || m->size_h > 4096)
+    if (m->size.w < 1 || m->size.w > 4096 || m->size.h < 1 || m->size.h > 4096)
         return orb_error_set(err, "orb.json: \"size\" must be within 1..4096");
 
     const orb_json* headroom = orb_json_get(root, "asset_headroom");
@@ -135,18 +133,14 @@ static bool cast_read(cast* c, const char* rel, orb_span* out) {
     return true;
 }
 
-// "art/player.aseprite" -> "PLAYER"
+// "art/player.aseprite" -> "player"; orb_asset_id folds the case.
 static const char* cast_stem(orb_arena* a, const char* path) {
     const char* slash = strrchr(path, '/');
     const char* start = slash ? slash + 1 : path;
     const char* dot = strrchr(start, '.');
     size_t n = dot ? (size_t)(dot - start) : strlen(start);
-    char* s = orb_arena_push(a, n + 1, 1);
 
-    for (size_t i = 0; i < n; i++)
-        s[i] = isalnum((unsigned char)start[i]) ? (char)toupper((unsigned char)start[i]) : '_';
-
-    return s;
+    return memcpy(orb_arena_push(a, n + 1, 1), start, n);
 }
 
 typedef struct cast_files {
@@ -166,12 +160,12 @@ static bool cast_walk_into(
     const char* skip,
     cast_files* files
 ) {
-    static orb_path entries[ORB_CAST_MAX_READS];
+    static orb_os_entry entries[ORB_CAST_MAX_READS];
 
     if (!cast_note(c, rel)) return false;
 
     const char* dir = cast_path(c->scratch, c->game_dir, rel);
-    int n = orb_os_list_dir(dir, "", entries, ORB_CAST_MAX_READS);
+    int n = orb_os_list_dir(dir, entries, ORB_CAST_MAX_READS);
 
     if (n == ORB_CAST_MAX_READS)
         return orb_error_set(c->err, "%s: more than %d entries in one directory", rel, n - 1);
@@ -180,8 +174,8 @@ static bool cast_walk_into(
     bool* dirs = orb_arena_push_array(c->scratch, bool, n);
 
     for (int i = 0; i < n; i++) {
-        names[i] = cast_path(c->scratch, rel, strrchr(entries[i], '/') + 1);
-        dirs[i] = orb_os_is_dir(entries[i]);
+        names[i] = cast_path(c->scratch, rel, entries[i].name);
+        dirs[i] = entries[i].dir;
     }
 
     for (int i = 0; i < n; i++) {
@@ -373,10 +367,7 @@ static bool cast_art(cast* c, const orb_ase* master, orb_assets* as) {
                 .fh = ase->h
             };
 
-            char suffix[16];
-
-            snprintf(suffix, sizeof suffix, "%u", f);
-            sprite_ids[sprite_count++] = orb_asset_id(stem, suffix);
+            sprite_ids[sprite_count++] = orb_sprite_id(stem, (int)f);
         }
 
         for (int t = 0; t < ase->tag_count; t++) {
@@ -395,7 +386,7 @@ static bool cast_art(cast* c, const orb_ase* master, orb_assets* as) {
             };
 
             for (int f = tag->from; f <= tag->to; f++) {
-                uint32_t ticks = (ase->durations[f] * 60u + 500u) / 1000u;
+                uint32_t ticks = (ase->durations[f] * ORB_TICK_RATE + 500u) / 1000u;
 
                 durations[duration_count++] = (uint16_t)(ticks ? ticks : 1);
             }
@@ -496,17 +487,17 @@ static bool cast_audio(cast* c, orb_assets* as) {
 
         scratch->used = mark; // the header is all this pass needs
 
-        bool loop = w.has_loop && w.loop_end > w.loop_start;
-
         if (!song && w.channels != 1)
             return orb_error_set(
                 c->err,
                 "%s: sounds must be mono, since pan positions them; only songs may be stereo", rel
             );
 
-        if (w.has_loop && !loop) orb_log("%s: loop points ignored, the loop is empty", rel);
-
         samples[i] = cast_sample_desc(&w, pcm_total);
+
+        if (w.has_loop && !samples[i].loop_end)
+            orb_log("%s: loop points ignored, the loop is empty", rel);
+
         sample_ids[i] = orb_asset_id(wavs.stems[i], song ? "song" : "");
         pcm_total += w.count * w.channels;
     }
@@ -546,7 +537,7 @@ static bool cast_audio(cast* c, orb_assets* as) {
 static bool cast_body(cast* c) {
     orb_ase master;
     orb_assets as = {};
-    orb_info_desc info = {.w = (uint16_t)c->m->size_w, .h = (uint16_t)c->m->size_h};
+    orb_info_desc info = {.w = (uint16_t)c->m->size.w, .h = (uint16_t)c->m->size.h};
 
     snprintf(info.name, sizeof info.name, "%s", c->m->name);
     as.info = &info;
@@ -554,10 +545,6 @@ static bool cast_body(cast* c) {
     if (!cast_palette(c, &master, &as) || !cast_art(c, &master, &as) || !cast_audio(c, &as))
         return false;
 
-    c->r->sprite_count = as.sprite_count;
-    c->r->animation_count = as.animation_count;
-    c->r->sample_count = as.sample_count;
-    c->r->song_count = as.song_count;
     c->r->file = orb_file_write(c->out, &as);
     return true;
 }

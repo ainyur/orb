@@ -19,10 +19,14 @@ typedef char orb_path[ORB_PATH_MAX];
 
 typedef struct orb_os_config {
     const char* title;
-    int size_w, size_h;
+    orb_size size;
 } orb_os_config;
 
-void orb_path_join(orb_path out, const char* dir, const char* rel);
+// One entry of a directory: its name alone, and whether it is a directory.
+typedef struct orb_os_entry {
+    orb_path name;
+    bool dir;
+} orb_os_entry;
 
 static inline bool orb_has_suffix(const char* path, const char* suffix) {
     size_t n = strlen(path), m = strlen(suffix);
@@ -30,8 +34,14 @@ static inline bool orb_has_suffix(const char* path, const char* suffix) {
     return n >= m && strcmp(path + n - m, suffix) == 0;
 }
 
-static inline int orb_os_compare_paths(const void* a, const void* b) {
-    return strcmp(a, b);
+// The scale a window opens at: 3, or what fits the screen, down to 1.
+static inline int orb_os_open_scale(orb_size fb, orb_size screen) {
+    int scale = 3;
+
+    while (scale > 1 && (fb.w * scale > screen.w || fb.h * scale > screen.h))
+        scale--;
+
+    return scale;
 }
 
 // Paths are UTF-8 on every platform. On Windows this replaces main's ANSI argv
@@ -48,7 +58,6 @@ void orb_os_dlclose(void* lib);
 void* orb_os_dlsym(void* lib, const char* name);
 bool orb_os_copy_file(const char* from, const char* to);
 bool orb_os_make_dir(const char* path);
-int orb_os_list_dir(const char* dir, const char* suffix, orb_path* out, int max);
 int orb_os_run(const char* command, void (*line)(const char* text));
 void orb_os_sleep(uint64_t ns);
 uint64_t orb_os_ticks(void);
@@ -60,13 +69,16 @@ typedef struct orb_os_info {
 } orb_os_info;
 
 bool orb_os_stat(const char* path, orb_os_info* out);
-FILE* orb_os_fopen(const char* path, const char* mode); // "rb" or "wb"
+FILE* orb_os_fopen(const char* path, const char* mode);           // "rb" or "wb"
+int orb_os_read_dir(const char* dir, orb_os_entry* out, int max); // unsorted, no dot entries
 
-// os/stdio.c, over the two above.
+// os/stdio.c, over the three above. A listing is sorted by name; a missing
+// directory is empty.
 uint64_t orb_os_file_mtime(const char* path);
-bool orb_os_is_dir(const char* path);
+int orb_os_list_dir(const char* dir, orb_os_entry* out, int max);
 bool orb_os_read_file(const char* path, orb_arena* into, orb_span* out);
 bool orb_os_write_file(const char* path, orb_span data);
+void orb_path_join(orb_path out, const char* dir, const char* rel);
 
 // orb implements this in core/api.c; the OS audio thread calls it for every
 // buffer it needs: frames * ORB_AUDIO_CHANNELS interleaved int16 at ORB_AUDIO_RATE.
