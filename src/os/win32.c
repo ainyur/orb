@@ -257,12 +257,19 @@ void orb_os_sleep(uint64_t ns) {
 }
 
 uint64_t orb_os_ticks(void) {
-    LARGE_INTEGER count, freq;
+    static uint64_t f;
+    LARGE_INTEGER count;
+
+    if (!f) {
+        LARGE_INTEGER freq;
+
+        QueryPerformanceFrequency(&freq);
+        f = (uint64_t)freq.QuadPart;
+    }
 
     QueryPerformanceCounter(&count);
-    QueryPerformanceFrequency(&freq);
 
-    uint64_t c = (uint64_t)count.QuadPart, f = (uint64_t)freq.QuadPart;
+    uint64_t c = (uint64_t)count.QuadPart;
 
     return c / f * 1000000000u + c % f * 1000000000u / f;
 }
