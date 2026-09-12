@@ -73,8 +73,11 @@ static int inflate_decode(inflate_state* s, const inflate_huffman* h) {
     return -1;
 }
 
-static int
-inflate_codes(inflate_state* s, const inflate_huffman* lencode, const inflate_huffman* distcode) {
+static int inflate_codes(
+    inflate_state* s,
+    const inflate_huffman* lencode,
+    const inflate_huffman* distcode
+) {
     static const uint16_t lbase[29] = {3,  4,  5,  6,   7,   8,   9,   10,  11, 13,
                                        15, 17, 19, 23,  27,  31,  35,  43,  51, 59,
                                        67, 83, 99, 115, 131, 163, 195, 227, 258};

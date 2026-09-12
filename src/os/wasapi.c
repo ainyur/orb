@@ -124,11 +124,11 @@ static HRESULT wasapi_outage(void) {
     uint64_t start = orb_os_ticks(), rendered = 0;
     HRESULT hr = E_FAIL;
 
-    for (int tick = 1; !atomic_load(&wasapi_stop); tick++) {
+    while (!atomic_load(&wasapi_stop)) {
         WaitForSingleObject(wasapi_event, WASAPI_TICK_MS);
-        orb_audio_idle(orb_os_ticks() - start, &rendered);
 
-        if (tick % ORB_AUDIO_RETRY_TICKS == 0 && SUCCEEDED(hr = wasapi_start())) return hr;
+        if (orb_audio_idle(orb_os_ticks() - start, &rendered) && SUCCEEDED(hr = wasapi_start()))
+            return hr;
     }
 
     return hr;

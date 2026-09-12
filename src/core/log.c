@@ -4,12 +4,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-void orb_error_set(orb_error* e, const char* fmt, ...) {
+bool orb_error_set(orb_error* e, const char* fmt, ...) {
     va_list ap;
 
     va_start(ap, fmt);
     vsnprintf(e->text, sizeof e->text, fmt, ap);
     va_end(ap);
+    return false;
 }
 
 // Formats into a local buffer and writes it with one fputs, so a line from the

@@ -15,12 +15,13 @@ int main(void) {
     orb_error err;
     CHECK(orb_os_make_dir(DIR));
 
+    // the directories are overridden to point at the checked-in fixtures; a game
+    // that keeps the conventional layout names none of them
     const char* manifest =
         "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
-        " \"asset_headroom\": 1048576, \"palette\": \"" ART "palette.aseprite\",\n"
-        " \"sprites\": [\"" ART "player.aseprite\"],\n"
-        " \"sounds\": [\"" ART "beep.wav\"],\n"
-        " \"songs\": [{\"bpm\": 120, \"path\": \"" ART "loop.wav\"}]}\n";
+        " \"asset_headroom\": 1048576, \"palette\": \"" ART "art/palette.aseprite\",\n"
+        " \"art\": \"" ART "art\", \"sfx\": \"" ART "sfx\", \"music\": \"" ART "music\",\n"
+        " \"songs\": {\"loop\": 120}}\n";
 
     CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)manifest, strlen(manifest)}));
 
@@ -31,10 +32,19 @@ int main(void) {
     CHECK_EQ(m.size_w, 64);
     CHECK_EQ(m.size_h, 32);
     CHECK_EQ(m.asset_headroom, 1048576);
-    CHECK_EQ(m.sprite_count, 1);
+    CHECK_EQ(m.song_count, 1);
     CHECK(r.file.ptr >= out_mem && r.file.ptr < out_mem + sizeof out_mem);
     CHECK_EQ(r.sprite_count, 2);
     CHECK_EQ(r.animation_count, 1);
+
+    // every file and directory the cast read, once each: what scry watches, so a
+    // file added to a directory recasts without touching orb.json
+    CHECK_EQ(r.read_count, 8);
+    CHECK(strcmp(r.reads[0], "orb.json") == 0);
+    CHECK(strcmp(r.reads[1], ART "art/palette.aseprite") == 0);
+    CHECK(strcmp(r.reads[2], ART "art") == 0);
+    CHECK(strcmp(r.reads[3], ART "art/player.aseprite") == 0);
+    CHECK(strcmp(r.reads[7], ART "music/loop.wav") == 0);
 
     orb_assets as;
     CHECK(orb_file_load(r.file, &as, &err));
@@ -51,8 +61,6 @@ int main(void) {
     const orb_sprite_desc* sp = &as.sprites[0];
     CHECK_EQ(as.pixels[sh->pixels + sp->y * sh->w + sp->x], 2);
 
-    CHECK_EQ(m.sound_count, 1);
-    CHECK_EQ(m.song_count, 1);
     CHECK_EQ(r.sample_count, 2);
     CHECK_EQ(r.song_count, 1);
 
@@ -94,20 +102,68 @@ int main(void) {
     // scratch peaks at the packed PCM plus the largest file plus the art
     CHECK(scratch.peak < 2 * as.pcm_count * sizeof(int16_t) + (100 << 10));
 
-    // a song that is not a wav is refused by name
-    const char* tracker =
-        "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
-        " \"asset_headroom\": 1048576, \"palette\": \"" ART "palette.aseprite\",\n"
-        " \"sprites\": [], \"songs\": [{\"bpm\": 120, \"path\": \"music/title.fur\"}]}\n";
-    CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)tracker, strlen(tracker)}));
-    CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
-    CHECK(strstr(err.text, "title.fur") != nullptr);
-    CHECK(strstr(err.text, ".wav") != nullptr);
+    // the art directory is walked recursively; a stem must be unique within a kind
+    orb_span player;
+    CHECK(orb_os_read_file("tests/fixtures/art/player.aseprite", &scratch, &player));
+    CHECK(orb_os_make_dir(DIR "/art"));
+    CHECK(orb_os_make_dir(DIR "/art/sub"));
+    CHECK(orb_os_write_file(DIR "/art/sub/hero.aseprite", player));
+    remove(DIR "/art/hero.aseprite");
 
-    // a song is an object with a path and a positive bpm; a bare path and a bad bpm are refused
-    const char* bare = "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
-                       " \"asset_headroom\": 1048576, \"palette\": \"" ART "palette.aseprite\",\n"
-                       " \"sprites\": [], \"songs\": [\"" ART "loop.wav\"]}\n";
+    const char* nested =
+        "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
+        " \"asset_headroom\": 1048576, \"palette\": \"" ART "art/palette.aseprite\"}\n";
+    CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)nested, strlen(nested)}));
+    CHECK(orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
+    CHECK_EQ(r.sprite_count, 2);
+    CHECK_EQ(r.sample_count, 0); // no sfx or music directory is no error, and both are watched
+    CHECK_EQ(r.read_count, 7);
+    CHECK(strcmp(r.reads[2], "art") == 0);
+    CHECK(strcmp(r.reads[3], "art/sub") == 0);
+    CHECK(strcmp(r.reads[4], "art/sub/hero.aseprite") == 0);
+    CHECK(strcmp(r.reads[5], "sfx") == 0);
+    CHECK(strcmp(r.reads[6], "music") == 0);
+    CHECK(orb_os_write_file(DIR "/art/hero.aseprite", player));
+    CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
+    CHECK(strstr(err.text, "art/hero.aseprite") != nullptr);
+    CHECK(strstr(err.text, "art/sub/hero.aseprite") != nullptr);
+    remove(DIR "/art/hero.aseprite");
+
+    // every key but id, name, and size has a default
+    const char* plain = "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32]}\n";
+    CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)plain, strlen(plain)}));
+    CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err)); // no art/palette.aseprite here
+    CHECK(strstr(err.text, "art/palette.aseprite") != nullptr);
+    CHECK_EQ(m.asset_headroom, 16 << 20);
+    CHECK(strcmp(m.art, "art") == 0);
+    CHECK(strcmp(m.sfx, "sfx") == 0);
+    CHECK(strcmp(m.music, "music") == 0);
+
+    // a song names its tempo in orb.json, since a rendered file carries none; a
+    // song without one and a tempo without a song are both refused
+    const char* silent =
+        "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
+        " \"asset_headroom\": 1048576, \"palette\": \"" ART "art/palette.aseprite\",\n"
+        " \"music\": \"" ART "music\"}\n";
+    CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)silent, strlen(silent)}));
+    CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
+    CHECK(strstr(err.text, "loop.wav") != nullptr);
+    CHECK(strstr(err.text, "bpm") != nullptr);
+
+    const char* phantom =
+        "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
+        " \"asset_headroom\": 1048576, \"palette\": \"" ART "art/palette.aseprite\",\n"
+        " \"songs\": {\"title\": 120}}\n";
+    CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)phantom, strlen(phantom)}));
+    CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
+    CHECK(strstr(err.text, "title") != nullptr);
+    CHECK(strstr(err.text, "music") != nullptr);
+
+    // songs is an object of stem to bpm within 0..1000
+    const char* bare =
+        "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
+        " \"asset_headroom\": 1048576, \"palette\": \"" ART "art/palette.aseprite\",\n"
+        " \"songs\": [\"loop\"]}\n";
     CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)bare, strlen(bare)}));
     CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
     CHECK(strstr(err.text, "songs") != nullptr);
@@ -115,33 +171,33 @@ int main(void) {
 
     const char* slow =
         "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
-        " \"asset_headroom\": 1048576, \"palette\": \"" ART "palette.aseprite\",\n"
-        " \"sprites\": [], \"songs\": [{\"bpm\": 0, \"path\": \"" ART "loop.wav\"}]}\n";
+        " \"asset_headroom\": 1048576, \"palette\": \"" ART "art/palette.aseprite\",\n"
+        " \"songs\": {\"loop\": 0}}\n";
     CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)slow, strlen(slow)}));
     CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
-    CHECK(strstr(err.text, "loop.wav") != nullptr);
+    CHECK(strstr(err.text, "loop") != nullptr);
     CHECK(strstr(err.text, "bpm") != nullptr);
 
     const char* fast =
         "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
-        " \"asset_headroom\": 1048576, \"palette\": \"" ART "palette.aseprite\",\n"
-        " \"sprites\": [], \"songs\": [{\"bpm\": 1e999, \"path\": \"" ART "loop.wav\"}]}\n";
+        " \"asset_headroom\": 1048576, \"palette\": \"" ART "art/palette.aseprite\",\n"
+        " \"songs\": {\"loop\": 1e999}}\n";
     CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)fast, strlen(fast)}));
     CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
     CHECK(strstr(err.text, "bpm") != nullptr);
 
     // a sound must be mono, since pan positions it; only a song may be stereo
-    const char* stereo = "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
-                         " \"asset_headroom\": 1048576, \"palette\": \"" ART "palette.aseprite\",\n"
-                         " \"sprites\": [], \"sounds\": [\"" ART "loop.wav\"]}\n";
+    const char* stereo =
+        "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
+        " \"asset_headroom\": 1048576, \"palette\": \"" ART "art/palette.aseprite\",\n"
+        " \"sfx\": \"" ART "music\"}\n";
     CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)stereo, strlen(stereo)}));
     CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
     CHECK(strstr(err.text, "loop.wav") != nullptr);
     CHECK(strstr(err.text, "mono") != nullptr);
     CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)manifest, strlen(manifest)}));
 
-    CHECK(strcmp(orb_seal_path(&scratch, DIR, &m), DIR "/bin/fixture.orb") == 0);
-    CHECK(!orb_cast_game(&scratch, &out, "build/scratch", &m, &r, &err));
+    CHECK(!orb_manifest_load(&scratch, "build/scratch", &m, &err));
     CHECK(strstr(err.text, "orb.json") != nullptr);
 
     static alignas(16) uint8_t tiny_mem[4096];

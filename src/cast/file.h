@@ -125,5 +125,15 @@ typedef struct orb_assets {
     const uint8_t* song_generations;
 } orb_assets;
 
+// The index a handle addresses when it is current: within count and carrying
+// the generation the table holds for it, or 0 with no table. Else 0xffffff.
+static inline uint32_t orb_handle_index(const uint8_t* generations, uint32_t count, uint32_t v) {
+    uint32_t index = v & 0xffffffu, generation = v >> 24;
+
+    if (index >= count || (generations ? generations[index] : 0) != generation) return 0xffffffu;
+
+    return index;
+}
+
 bool orb_file_load(orb_span file, orb_assets* out, orb_error* err);
 orb_span orb_file_write(orb_arena* a, const orb_assets* in);

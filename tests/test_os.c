@@ -90,10 +90,21 @@ int main(int argc, char** argv) {
     CHECK_EQ(orb_os_list_dir("build/scratch/h\xc3\xa9llo/long", ".bin", names, 8), 1);
 #endif
 
-    CHECK_EQ(orb_os_list_dir("tests/fixtures", ".aseprite", names, 8), 2);
-    CHECK(strcmp(names[0], "tests/fixtures/palette.aseprite") == 0);
-    CHECK(strcmp(names[1], "tests/fixtures/player.aseprite") == 0);
+    CHECK_EQ(orb_os_list_dir("tests/fixtures/art", ".aseprite", names, 8), 2);
+    CHECK(strcmp(names[0], "tests/fixtures/art/palette.aseprite") == 0);
+    CHECK(strcmp(names[1], "tests/fixtures/art/player.aseprite") == 0);
     CHECK_EQ(orb_os_list_dir("build/scratch/does-not-exist", ".c", names, 8), 0);
+
+    // an empty suffix lists every entry but the dot ones, subdirectories included
+    CHECK(orb_os_make_dir("build/scratch/walk"));
+    CHECK(orb_os_make_dir("build/scratch/walk/dir"));
+    CHECK(orb_os_write_file("build/scratch/walk/a.txt", (orb_span) {bytes, 3}));
+    CHECK_EQ(orb_os_list_dir("build/scratch/walk", "", names, 8), 2);
+    CHECK(strcmp(names[0], "build/scratch/walk/a.txt") == 0);
+    CHECK(strcmp(names[1], "build/scratch/walk/dir") == 0);
+    CHECK(orb_os_is_dir("build/scratch/walk/dir"));
+    CHECK(!orb_os_is_dir("build/scratch/walk/a.txt"));
+    CHECK(!orb_os_is_dir("build/scratch/does-not-exist"));
 
     // clock
     uint64_t t0 = orb_os_ticks();

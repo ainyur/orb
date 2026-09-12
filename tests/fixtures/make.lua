@@ -1,6 +1,6 @@
 -- Run with: aseprite -b --script tests/fixtures/make.lua
 -- Produces the fixture art next to this script.
-local dir = "tests/fixtures/"
+local dir = "tests/fixtures/art/"
 
 local function palette_file()
     local spr = Sprite(1, 1, ColorMode.INDEXED)

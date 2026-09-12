@@ -1,4 +1,5 @@
 #include "../core/log.h"
+#include "../core/macros.h"
 #include "os.h"
 #include "win32.c"
 
@@ -47,10 +48,7 @@ static int gdi_button(WPARAM key) {
 // Integer-scale the frame into the client area, centered, borders left to the
 // class background brush.
 static void gdi_blit(HDC dc, const uint32_t* rgb) {
-    int scale = gdi_win_w / gdi_fb_w;
-
-    if (gdi_win_h / gdi_fb_h < scale) scale = gdi_win_h / gdi_fb_h;
-    if (scale < 1) scale = 1;
+    int scale = orb_max(1, orb_min(gdi_win_w / gdi_fb_w, gdi_win_h / gdi_fb_h));
 
     int w = gdi_fb_w * scale, h = gdi_fb_h * scale;
     int ox = (gdi_win_w - w) / 2, oy = (gdi_win_h - h) / 2;

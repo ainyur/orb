@@ -1,17 +1,7 @@
 #include "wav.h"
 
-#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
-
-static bool wav_fail(orb_error* err, const char* fmt, ...) {
-    va_list ap;
-
-    va_start(ap, fmt);
-    vsnprintf(err->text, sizeof err->text, fmt, ap);
-    va_end(ap);
-    return false;
-}
 
 static uint16_t wav_u16(const uint8_t* p) {
     return (uint16_t)(p[0] | p[1] << 8);
@@ -23,30 +13,32 @@ static uint32_t wav_u32(const uint8_t* p) {
 
 // The fmt chunk: format tag, channels, rate, and bit depth, with an extensible
 // tag resolved to its subformat, whose GUID starts with the plain format tag.
-static bool
-wav_format(orb_span chunk, uint16_t* channels, uint32_t* rate, uint16_t* bits, orb_error* err) {
-    if (chunk.len < 16) return wav_fail(err, "wav: fmt chunk too short");
+static bool wav_format(orb_span chunk, orb_wav* out, orb_error* err) {
+    if (chunk.len < 16) return orb_error_set(err, "wav: fmt chunk too short");
 
     uint16_t format = wav_u16(chunk.ptr);
+    uint16_t channels = wav_u16(chunk.ptr + 2), bits = wav_u16(chunk.ptr + 14);
 
-    *channels = wav_u16(chunk.ptr + 2);
-    *rate = wav_u32(chunk.ptr + 4);
-    *bits = wav_u16(chunk.ptr + 14);
+    out->rate = wav_u32(chunk.ptr + 4);
 
     if (format == 0xFFFE) {
-        if (chunk.len < 40) return wav_fail(err, "wav: extensible fmt chunk too short");
+        if (chunk.len < 40) return orb_error_set(err, "wav: extensible fmt chunk too short");
 
         format = wav_u16(chunk.ptr + 24);
     }
 
-    if (format == 3) return wav_fail(err, "wav: float samples are not accepted, use 16-bit PCM");
-    if (format != 1) return wav_fail(err, "wav: format %u is not PCM", format);
-    if (*bits != 8 && *bits != 16) return wav_fail(err, "wav: %u-bit samples, use 8 or 16", *bits);
-    if (*channels != 1 && *channels != 2)
-        return wav_fail(err, "wav: %u channels, at most 2", *channels);
-    if (*rate < 1 || *rate > 192000)
-        return wav_fail(err, "wav: rate %u, must be 1 to 192000", *rate);
+    if (format == 3)
+        return orb_error_set(err, "wav: float samples are not accepted, use 16-bit PCM");
+    if (format != 1) return orb_error_set(err, "wav: format %u is not PCM", format);
+    if (bits != 8 && bits != 16)
+        return orb_error_set(err, "wav: %u-bit samples, use 8 or 16", bits);
+    if (channels != 1 && channels != 2)
+        return orb_error_set(err, "wav: %u channels, at most 2", channels);
+    if (out->rate < 1 || out->rate > 192000)
+        return orb_error_set(err, "wav: rate %u, must be 1 to 192000", out->rate);
 
+    out->channels = (uint8_t)channels;
+    out->bits = (uint8_t)bits;
     return true;
 }
 
@@ -62,10 +54,8 @@ bool orb_wav_parse(orb_span file, orb_wav* out, orb_error* err) {
     memset(out, 0, sizeof *out);
 
     if (file.len < 12 || memcmp(file.ptr, "RIFF", 4) != 0 || memcmp(file.ptr + 8, "WAVE", 4) != 0)
-        return wav_fail(err, "wav: not a RIFF WAVE file");
+        return orb_error_set(err, "wav: not a RIFF WAVE file");
 
-    uint16_t channels = 0, bits = 0;
-    uint32_t rate = 0;
     orb_span data = {};
     bool have_format = false;
 
@@ -75,12 +65,12 @@ bool orb_wav_parse(orb_span file, orb_wav* out, orb_error* err) {
         orb_span chunk = {head + 8, size};
 
         if (size > file.len - at - 8)
-            return wav_fail(
+            return orb_error_set(
                 err, "wav: chunk \"%.4s\" runs past the end of the file", (const char*)head
             );
 
         if (memcmp(head, "fmt ", 4) == 0) {
-            if (!wav_format(chunk, &channels, &rate, &bits, err)) return false;
+            if (!wav_format(chunk, out, err)) return false;
 
             have_format = true;
         } else if (memcmp(head, "data", 4) == 0) {
@@ -95,14 +85,11 @@ bool orb_wav_parse(orb_span file, orb_wav* out, orb_error* err) {
         at += 8 + size + (size & 1);
     }
 
-    if (!have_format) return wav_fail(err, "wav: no fmt chunk");
-    if (!data.ptr) return wav_fail(err, "wav: no data chunk");
+    if (!have_format) return orb_error_set(err, "wav: no fmt chunk");
+    if (!data.ptr) return orb_error_set(err, "wav: no data chunk");
 
     out->data = data;
-    out->count = (uint32_t)(data.len / ((size_t)channels * bits / 8));
-    out->rate = rate;
-    out->channels = (uint8_t)channels;
-    out->bits = (uint8_t)bits;
+    out->count = (uint32_t)(data.len / ((size_t)out->channels * out->bits / 8));
 
     if (out->has_loop && out->loop_end > out->count) out->loop_end = out->count;
 

@@ -3,8 +3,5 @@
   "name": "Demo",
   "size": [320, 180],
   "asset_headroom": 16777216,
-  "palette": "art/palette.aseprite",
-  "sprites": ["art/player.aseprite"],
-  "sounds": ["sfx/bounce.wav"],
-  "songs": [{"bpm": 120, "path": "music/song.wav"}]
+  "songs": {"song": 120}
 }

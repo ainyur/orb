@@ -15,21 +15,35 @@ static void test_noop(void* state, const orb_api* orb) {
 
 static const orb_game test_game = {test_config, test_noop, test_noop, test_noop, test_noop};
 
-static bool write_manifest(const char* size, const char* sprites) {
+static bool write_manifest(const char* size) {
     char text[512];
     int n = snprintf(
         text, sizeof text,
         "{\"id\": \"m\", \"name\": \"m\", \"size\": %s, \"asset_headroom\": 1048576,\n"
-        " \"palette\": " ART "palette.aseprite\", \"sprites\": [%s]}\n",
-        size, sprites
+        " \"palette\": " ART "art/palette.aseprite\", \"art\": \".\"}\n",
+        size
     );
 
     return orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)text, (size_t)n});
 }
 
+static bool copy_player(const char* to) {
+    static alignas(16) uint8_t copy_mem[1 << 16];
+    orb_arena copy;
+    orb_span player;
+
+    orb_arena_init(&copy, "copy", copy_mem, sizeof copy_mem);
+
+    return orb_os_read_file("tests/fixtures/art/player.aseprite", &copy, &player) &&
+           orb_os_write_file(to, player);
+}
+
 int main(void) {
     CHECK(orb_os_make_dir(DIR));
-    CHECK(write_manifest("[64, 32]", ART "player.aseprite\""));
+    remove(DIR "/hero.aseprite");
+    remove(DIR "/zed.aseprite");
+    CHECK(copy_player(DIR "/player.aseprite"));
+    CHECK(write_manifest("[64, 32]"));
 
     orb_error err;
 
@@ -44,22 +58,17 @@ int main(void) {
     api->sprite_draw(ORB_SPRITE(2), (orb_vec2) {0, 0}, 0, nullptr);
     CHECK_EQ(orb_api_framebuffer()->px[4 * 64 + 4], 0);
 
-    // adding a sprite to orb.json and recasting picks it up without a restart
-    CHECK(write_manifest("[64, 32]", ART "player.aseprite\", " ART "player.aseprite\""));
+    // a file added to the art directory is picked up by a recast without touching orb.json
+    CHECK(copy_player(DIR "/zed.aseprite"));
     CHECK(orb_run_recast(&err));
-    CHECK_EQ(orb_run_manifest()->sprite_count, 2);
+    CHECK_EQ(orb_run_cast_result()->sprite_count, 4); // two frames from each of two files
     api->clear(0);
     api->sprite_draw(ORB_SPRITE(2), (orb_vec2) {0, 0}, 0, nullptr);
     CHECK_EQ(orb_api_framebuffer()->px[4 * 64 + 4], 2);
 
-    orb_span player;
-    static alignas(16) uint8_t copy_mem[1 << 16];
-    orb_arena copy;
-    orb_arena_init(&copy, "copy", copy_mem, sizeof copy_mem);
-
-    CHECK(orb_os_read_file("tests/fixtures/player.aseprite", &copy, &player));
-    CHECK(orb_os_write_file(DIR "/hero.aseprite", player));
-    CHECK(write_manifest("[64, 32]", "\"hero.aseprite\""));
+    remove(DIR "/player.aseprite");
+    remove(DIR "/zed.aseprite");
+    CHECK(copy_player(DIR "/hero.aseprite"));
     CHECK(orb_run_recast(&err));
 
     api->clear(0);
@@ -74,7 +83,7 @@ int main(void) {
 
     CHECK_EQ(orb_api_framebuffer()->px[4 * 64 + 4], 2);
 
-    CHECK(write_manifest("[128, 32]", ART "player.aseprite\""));
+    CHECK(write_manifest("[128, 32]"));
     CHECK(!orb_run_recast(&err));
     CHECK(strstr(err.text, "restart") != nullptr);
 

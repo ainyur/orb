@@ -7,6 +7,7 @@
         typeof(y) orb_max_y_ = (y);                                                                \
         orb_max_x_ > orb_max_y_ ? orb_max_x_ : orb_max_y_;                                         \
     })
+#define orb_clamp(v, lo, hi) orb_min(orb_max(v, lo), hi)
 #define orb_min(x, y)                                                                              \
     ({                                                                                             \
         typeof(x) orb_min_x_ = (x);                                                                \

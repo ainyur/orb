@@ -4,6 +4,7 @@
 #include "api.h"
 #include "input.h"
 #include "log.h"
+#include "macros.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -13,14 +14,6 @@ static orb_config run_config;
 static orb_info_desc run_info;
 static orb_arena run_arena, run_state;
 static uint32_t* run_rgb;
-
-// The state region keeps room to grow, so adding a field to the game state struct
-// across a code reload does not end the session.
-static size_t run_state_reserve(size_t state_size) {
-    size_t reserve = state_size * 2;
-
-    return reserve < (256u << 10) ? (256u << 10) : reserve;
-}
 
 static bool run_load(orb_span file, orb_error* err) {
     orb_assets assets;
@@ -38,10 +31,7 @@ static bool run_open(orb_error* err) {
 
     orb_os_config cfg = {.title = run_info.name, .size_w = run_info.w, .size_h = run_info.h};
 
-    if (!orb_os_open(&cfg)) {
-        orb_error_set(err, "cannot open a window");
-        return false;
-    }
+    if (!orb_os_open(&cfg)) return orb_error_set(err, "cannot open a window");
 
     run_game->init(run_state.base, orb_api_table());
     run_game->reload(run_state.base, orb_api_table());
@@ -49,12 +39,10 @@ static bool run_open(orb_error* err) {
 }
 
 #ifndef ORB_RELEASE
-static orb_manifest run_manifest;      // from the last successful cast; valid until the next one
-static orb_manifest run_boot_manifest; // what the regions and window were sized from
+static orb_cast_result run_result; // from the last successful cast; valid until the next one
 static const char* run_dir;
 static orb_arena run_assets[2], run_scratch;
 static int run_live;
-static uint8_t run_boot_mem[1 << 18];
 
 // Zero the state and start over: the layout the running code expects changed.
 // init sets the state up, then reload binds names, as it does after any recast.
@@ -74,35 +62,29 @@ static bool run_cast(int half, orb_error* err) {
 
     if (!orb_cast_game(&run_scratch, &run_assets[half], run_dir, &m, &result, err)) return false;
 
-    if (m.size_w != run_boot_manifest.size_w || m.size_h != run_boot_manifest.size_h) {
-        orb_error_set(err, "orb.json: size changed; restart orb to apply it");
-        return false;
-    }
-
-    if (m.asset_headroom != run_boot_manifest.asset_headroom) {
-        orb_error_set(err, "orb.json: asset_headroom changed; restart orb to apply it");
-        return false;
-    }
+    // The regions and the window were sized at boot from the first manifest.
+    if (m.size_w != run_info.w || m.size_h != run_info.h || m.asset_headroom != run_assets[0].size)
+        return orb_error_set(
+            err, "orb.json: size or asset_headroom changed; restart orb to apply it"
+        );
 
     if (!run_load(result.file, err)) return false;
 
     run_live = half;
-    run_manifest = m;
+    run_result = result;
     return true;
 }
 
 static bool run_boot_sources(const char* game_dir, orb_error* err) {
-    orb_arena boot;
+    orb_manifest m;
 
-    orb_arena_init(&boot, "boot", run_boot_mem, sizeof run_boot_mem);
+    if (!orb_manifest_load(&run_arena, game_dir, &m, err)) return false;
 
-    if (!orb_manifest_load(&boot, game_dir, &run_manifest, err)) return false;
-
-    run_boot_manifest = run_manifest;
     run_dir = game_dir;
-    run_assets[0] = orb_arena_carve(&run_arena, "asset half A", run_manifest.asset_headroom);
-    run_assets[1] = orb_arena_carve(&run_arena, "asset half B", run_manifest.asset_headroom);
-    run_scratch = orb_arena_carve(&run_arena, "cast scratch", run_manifest.asset_headroom);
+    run_info = (orb_info_desc) {.w = (uint16_t)m.size_w, .h = (uint16_t)m.size_h};
+    run_assets[0] = orb_arena_carve(&run_arena, "asset half A", m.asset_headroom);
+    run_assets[1] = orb_arena_carve(&run_arena, "asset half B", m.asset_headroom);
+    run_scratch = orb_arena_carve(&run_arena, "cast scratch", m.asset_headroom);
 
     return run_cast(0, err);
 }
@@ -121,13 +103,14 @@ bool orb_run_boot(
 
     uint8_t* mem = malloc(run_config.arena_size);
 
-    if (!mem) {
-        orb_error_set(err, "cannot allocate %zu bytes for the arena", run_config.arena_size);
-        return false;
-    }
+    if (!mem)
+        return orb_error_set(err, "cannot allocate %zu bytes for the arena", run_config.arena_size);
 
     orb_arena_init(&run_arena, "arena", mem, run_config.arena_size);
-    run_state = orb_arena_carve(&run_arena, "game state", run_state_reserve(run_config.state_size));
+    // Twice the struct, so a field added across a code reload does not end the session.
+    size_t reserve = orb_max(run_config.state_size * 2, (size_t)256 << 10);
+
+    run_state = orb_arena_carve(&run_arena, "game state", reserve);
 
 #ifndef ORB_RELEASE
     if (!sealed.len) return run_boot_sources(game_dir, err) && run_open(err);
@@ -198,20 +181,19 @@ void orb_run_set_game(const orb_game* game) {
             "the game's state struct grew past its %zu byte region; restart orb", run_state.size
         );
 
-    if (next.state_version != run_config.state_version) {
+    if (next.state_version != run_config.state_version ||
+        next.state_size != run_config.state_size) {
         orb_log(
-            "state version %u -> %u: state reset", run_config.state_version, next.state_version
+            "state version %u -> %u, size %zu -> %zu: state reset", run_config.state_version,
+            next.state_version, run_config.state_size, next.state_size
         );
-        run_state_reset(next);
-    } else if (next.state_size != run_config.state_size) {
-        orb_log("state size %zu -> %zu: state reset", run_config.state_size, next.state_size);
         run_state_reset(next);
     } else {
         run_game->reload(run_state.base, orb_api_table());
     }
 }
 
-const orb_manifest* orb_run_manifest(void) {
-    return &run_manifest;
+const orb_cast_result* orb_run_cast_result(void) {
+    return &run_result;
 }
 #endif

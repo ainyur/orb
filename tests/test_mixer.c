@@ -48,6 +48,8 @@ static bool song_playing(void) {
 }
 
 int main(void) {
+    CHECK_EQ(sizeof(orb_mixer_command), 32); // the ring holds 256 of them
+
     orb_sound_params full = {.volume = 1};
     orb_voice v;
 

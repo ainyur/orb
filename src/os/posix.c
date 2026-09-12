@@ -11,10 +11,6 @@
 #include <sys/wait.h>
 #include <time.h>
 
-static int posix_compare_names(const void* a, const void* b) {
-    return strcmp(a, b);
-}
-
 void orb_os_args(int*, char***) {
 }
 
@@ -58,12 +54,8 @@ void* orb_os_dlsym(void* lib, const char* name) {
     return dlsym(lib, name);
 }
 
-uint64_t orb_os_file_mtime(const char* path) {
-    struct stat st;
-
-    if (stat(path, &st) != 0) return 0;
-
-    return (uint64_t)st.st_mtim.tv_sec * 1000000000u + (uint64_t)st.st_mtim.tv_nsec;
+FILE* orb_os_fopen(const char* path, const char* mode) {
+    return fopen(path, mode);
 }
 
 int orb_os_list_dir(const char* dir, const char* suffix, orb_path* out, int max) {
@@ -72,12 +64,10 @@ int orb_os_list_dir(const char* dir, const char* suffix, orb_path* out, int max)
     if (!d) return 0;
 
     int count = 0;
-    size_t suffix_len = strlen(suffix);
 
     for (struct dirent* e; (e = readdir(d)) && count < max;) {
-        size_t n = strlen(e->d_name);
-
-        if (n < suffix_len || strcmp(e->d_name + n - suffix_len, suffix) != 0) continue;
+        if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0) continue;
+        if (!orb_has_suffix(e->d_name, suffix)) continue;
 
         snprintf(out[count], sizeof out[count], "%s/%s", dir, e->d_name);
 
@@ -85,34 +75,13 @@ int orb_os_list_dir(const char* dir, const char* suffix, orb_path* out, int max)
     }
 
     closedir(d);
-    qsort(out, (size_t)count, sizeof out[0], posix_compare_names);
+    qsort(out, (size_t)count, sizeof out[0], orb_os_compare_paths);
 
     return count;
 }
 
 bool orb_os_make_dir(const char* path) {
     return mkdir(path, 0777) == 0 || errno == EEXIST;
-}
-
-bool orb_os_read_file(const char* path, orb_arena* into, orb_span* out) {
-    struct stat st;
-
-    if (stat(path, &st) != 0) return false;
-
-    // push before opening: an exhausted arena may longjmp out of here
-    uint8_t* data = orb_arena_push(into, (size_t)st.st_size + 1, 16);
-
-    FILE* f = fopen(path, "rb");
-
-    if (!f) return false;
-
-    out->len = fread(data, 1, (size_t)st.st_size, f);
-    data[out->len] = 0;
-    out->ptr = data;
-
-    fclose(f);
-
-    return out->len == (size_t)st.st_size;
 }
 
 int orb_os_run(const char* command, void (*line)(const char* text)) {
@@ -150,14 +119,17 @@ uint64_t orb_os_ticks(void) {
     return (uint64_t)ts.tv_sec * 1000000000u + (uint64_t)ts.tv_nsec;
 }
 
-bool orb_os_write_file(const char* path, orb_span data) {
-    FILE* f = fopen(path, "wb");
+bool orb_os_stat(const char* path, orb_os_info* out) {
+    struct stat st;
 
-    if (!f) return false;
+    if (stat(path, &st) != 0) return false;
 
-    bool ok = fwrite(data.ptr, 1, data.len, f) == data.len;
-
-    return fclose(f) == 0 && ok;
+    *out = (orb_os_info) {
+        .size = (uint64_t)st.st_size,
+        .mtime = (uint64_t)st.st_mtim.tv_sec * 1000000000u + (uint64_t)st.st_mtim.tv_nsec,
+        .dir = S_ISDIR(st.st_mode)
+    };
+    return true;
 }
 
 void orb_path_join(orb_path out, const char* dir, const char* rel) {
@@ -166,3 +138,5 @@ void orb_path_join(orb_path out, const char* dir, const char* rel) {
 
     if (n >= ORB_PATH_MAX) orb_fatal("path too long: %s/%s", dir, rel);
 }
+
+#include "stdio.c"

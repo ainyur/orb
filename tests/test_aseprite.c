@@ -3,10 +3,10 @@
 #include "../src/orb.c"
 
 static const uint8_t player_ase[] = {
-#embed "fixtures/player.aseprite"
+#embed "fixtures/art/player.aseprite"
 };
 static const uint8_t palette_ase[] = {
-#embed "fixtures/palette.aseprite"
+#embed "fixtures/art/palette.aseprite"
 };
 
 int main(void) {

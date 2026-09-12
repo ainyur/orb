@@ -102,11 +102,10 @@ static int alsa_outage(void) {
     uint64_t start = orb_os_ticks(), rendered = 0;
     int err = -ENODEV;
 
-    for (int tick = 1; !atomic_load(&alsa_stop); tick++) {
+    while (!atomic_load(&alsa_stop)) {
         orb_os_sleep(ORB_AUDIO_TICK_NS);
-        orb_audio_idle(orb_os_ticks() - start, &rendered);
 
-        if (tick % ORB_AUDIO_RETRY_TICKS || atomic_load(&alsa_stop)) continue;
+        if (!orb_audio_idle(orb_os_ticks() - start, &rendered) || atomic_load(&alsa_stop)) continue;
         if ((err = alsa_start()) == 0) return 0;
     }
 

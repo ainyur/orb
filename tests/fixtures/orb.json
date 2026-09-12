@@ -3,8 +3,5 @@
   "name": "Fixture",
   "size": [64, 32],
   "asset_headroom": 2097152,
-  "palette": "palette.aseprite",
-  "sprites": ["player.aseprite"],
-  "sounds": ["beep.wav"],
-  "songs": [{"bpm": 120, "path": "loop.wav"}]
+  "songs": {"loop": 120}
 }

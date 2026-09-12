@@ -1,4 +1,5 @@
 #include "mixer.h"
+#include "../core/macros.h"
 
 #include <math.h>
 #include <string.h>
@@ -8,24 +9,12 @@
 #define MIXER_VOICE_INDEX(h) ((h).v & 0xffffu)
 #define MIXER_VOICE_GENERATION(h) ((h).v >> 16)
 
-static float mixer_clamp(float v, float lo, float hi) {
-    return v < lo ? lo : v > hi ? hi : v;
-}
-
 static orb_sound_params mixer_clamp_params(orb_sound_params p) {
     return (orb_sound_params) {
-        .volume = mixer_clamp(p.volume, 0, 1),
-        .pan = mixer_clamp(p.pan, -1, 1),
-        .pitch_cents = p.pitch_cents < -2400  ? -2400
-                       : p.pitch_cents > 2400 ? 2400
-                                              : p.pitch_cents
+        .volume = orb_clamp(p.volume, 0.0f, 1.0f),
+        .pan = orb_clamp(p.pan, -1.0f, 1.0f),
+        .pitch_cents = orb_clamp(p.pitch_cents, -2400, 2400)
     };
-}
-
-// A handle is current when it carries the generation the table holds for its
-// index; a table of nullptr means everything is at generation 0.
-static bool mixer_current(const uint8_t* generations, uint32_t index, uint32_t generation) {
-    return generations ? generations[index] == generation : generation == 0;
 }
 
 static bool mixer_sample_valid(const orb_assets* assets, uint32_t sample, uint64_t id) {
@@ -112,8 +101,8 @@ static void mixer_apply(orb_mixer* m, const orb_assets* assets, const orb_mixer_
     case ORB_MIXER_PLAY:
         v->generation = c->generation;
 
-        if (mixer_sample_valid(assets, c->sample, c->sample_id))
-            mixer_voice_start(v, assets, c->generation, c->sample, c->params);
+        if (mixer_sample_valid(assets, c->index, c->id))
+            mixer_voice_start(v, assets, c->generation, c->index, c->params);
         else
             mixer_voice_end(v); // the sample went away since the claim: release the voice
 
@@ -133,16 +122,15 @@ static void mixer_apply(orb_mixer* m, const orb_assets* assets, const orb_mixer_
 
         break;
     case ORB_MIXER_SONG_PLAY: {
-        if (!assets || c->song >= assets->song_count || assets->song_ids[c->song] != c->song_id)
-            break;
+        if (!assets || c->index >= assets->song_count || assets->song_ids[c->index] != c->id) break;
 
-        uint32_t sample = assets->songs[c->song].sample;
+        uint32_t sample = assets->songs[c->index].sample;
 
         if (sample >= assets->sample_count) break;
 
         mixer_voice_start(v, assets, 1, sample, (orb_sound_params) {.volume = 1});
-        v->song = c->song;
-        v->song_id = c->song_id;
+        v->song = c->index;
+        v->song_id = c->id;
         v->loop = c->loop;
         atomic_store_explicit(&v->playing, 1, memory_order_release);
         break;
@@ -178,8 +166,13 @@ static void mixer_wrap(orb_voice_state* v, uint32_t loop_start, uint32_t end) {
 
 // One voice into the float accumulator: linear interpolation, pan as a pair of
 // gains, the group volume, and the fade. Ends the voice when its sample runs out.
-static void
-mixer_render_voice(orb_mixer* m, const orb_assets* assets, int index, float* acc, int frames) {
+static void mixer_render_voice(
+    orb_mixer* m,
+    const orb_assets* assets,
+    int index,
+    float* acc,
+    int frames
+) {
     orb_voice_state* v = &m->voices[index];
 
     if (v->paused) return;
@@ -355,7 +348,7 @@ void orb_mixer_render(orb_mixer* m, int16_t* out, int frames) {
         for (int i = 0; i < n * 2; i++) {
             float s = acc[i] * m->volumes.master;
 
-            out[i] = (int16_t)(s > 32767 ? 32767 : s < -32768 ? -32768 : s);
+            out[i] = (int16_t)orb_clamp(s, -32768.0f, 32767.0f);
         }
 
         out += n * 2;
@@ -384,18 +377,17 @@ void orb_mixer_song_pause(orb_mixer* m) {
 
 void orb_mixer_song_play(orb_mixer* m, orb_song s, bool loop) {
     const orb_assets* assets = atomic_load(&m->assets);
-    uint32_t index = ORB_HANDLE_INDEX(s);
+    if (!assets) return;
 
-    if (!assets || index >= assets->song_count) return;
-    if (!mixer_current(assets->song_generations, index, ORB_HANDLE_GENERATION(s))) return;
+    uint32_t index = orb_handle_index(assets->song_generations, assets->song_count, s.v);
+
+    if (index == 0xffffffu) return;
 
     mixer_push(
-        m, (orb_mixer_command) {
-               .kind = ORB_MIXER_SONG_PLAY,
-               .song = index,
-               .song_id = assets->song_ids[index],
-               .loop = loop
-           }
+        m,
+        (orb_mixer_command) {
+            .kind = ORB_MIXER_SONG_PLAY, .index = index, .id = assets->song_ids[index], .loop = loop
+        }
     );
 }
 
@@ -413,18 +405,18 @@ void orb_mixer_song_stop(orb_mixer* m, int fade_ms) {
 
 orb_voice orb_mixer_sound_play(orb_mixer* m, orb_sample s, orb_sound_params p, int priority) {
     const orb_assets* assets = atomic_load(&m->assets);
-    uint32_t index = ORB_HANDLE_INDEX(s);
+    if (!assets) return ORB_NO_VOICE;
 
-    if (!assets || index >= assets->sample_count) return ORB_NO_VOICE;
-    if (!mixer_current(assets->sample_generations, index, ORB_HANDLE_GENERATION(s)))
-        return ORB_NO_VOICE;
+    uint32_t index = orb_handle_index(assets->sample_generations, assets->sample_count, s.v);
+
+    if (index == 0xffffffu) return ORB_NO_VOICE;
 
     if (!mixer_room(m)) { // checked before the claim, so a refused play leaves no voice claimed
         m->dropped++;
         return ORB_NO_VOICE;
     }
 
-    int slot = mixer_claim(m, (uint8_t)(priority < 0 ? 0 : priority > 255 ? 255 : priority));
+    int slot = mixer_claim(m, (uint8_t)orb_clamp(priority, 0, 255));
 
     if (slot < 0) return ORB_NO_VOICE;
 
@@ -435,8 +427,8 @@ orb_voice orb_mixer_sound_play(orb_mixer* m, orb_sample s, orb_sound_params p, i
                .kind = ORB_MIXER_PLAY,
                .voice = voice,
                .generation = m->issued[slot],
-               .sample = index,
-               .sample_id = assets->sample_ids[index],
+               .index = index,
+               .id = assets->sample_ids[index],
                .params = mixer_clamp_params(p)
            }
     );
@@ -470,11 +462,12 @@ void orb_mixer_sound_stop(orb_mixer* m, orb_voice v) {
 
 void orb_mixer_volume_set(orb_mixer* m, orb_volumes v) {
     mixer_push(
-        m, (
-               orb_mixer_command
-           ) {.kind = ORB_MIXER_VOLUMES,
-              .volumes = {
-                  mixer_clamp(v.master, 0, 1), mixer_clamp(v.song, 0, 1), mixer_clamp(v.sound, 0, 1)
-              }}
+        m, (orb_mixer_command) {
+               .kind = ORB_MIXER_VOLUMES,
+               .volumes = {
+                   orb_clamp(v.master, 0.0f, 1.0f), orb_clamp(v.song, 0.0f, 1.0f),
+                   orb_clamp(v.sound, 0.0f, 1.0f)
+               }
+           }
     );
 }

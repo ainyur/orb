@@ -20,6 +20,7 @@ static uint32_t* x11_pixels;
 static int x11_max_w, x11_max_h, x11_win_w, x11_win_h, x11_fb_w, x11_fb_h;
 static Atom x11_wm_delete;
 static bool x11_keys[ORB_BTN_COUNT];
+static bool x11_resized;
 
 static int x11_button(KeySym key) {
     switch (key) {
@@ -114,30 +115,29 @@ void orb_os_close(void) {
 void orb_os_present(const uint32_t* rgb) {
     int w = orb_min(x11_win_w, x11_max_w);
     int h = orb_min(x11_win_h, x11_max_h);
-    int scale = w / x11_fb_w;
+    int scale = orb_max(1, orb_min(w / x11_fb_w, h / x11_fb_h));
 
-    if (h / x11_fb_h < scale) scale = h / x11_fb_h;
-    if (scale < 1) scale = 1;
+    // A window smaller than the frame shows its top-left corner.
+    int cols = orb_min(x11_fb_w, w / scale), rows = orb_min(x11_fb_h, h / scale);
+    int ox = (w - cols * scale) / 2, oy = (h - rows * scale) / 2;
 
-    int ox = (w - x11_fb_w * scale) / 2, oy = (h - x11_fb_h * scale) / 2;
+    // The frame overwrites its own area every time; only the borders need clearing,
+    // and only when they move.
+    if (x11_resized) {
+        memset(x11_pixels, 0, (size_t)x11_max_w * x11_max_h * sizeof *x11_pixels);
+        x11_resized = false;
+    }
 
-    memset(x11_pixels, 0, (size_t)x11_max_w * h * sizeof *x11_pixels);
+    for (int y = 0; y < rows; y++) {
+        const uint32_t* src = rgb + y * x11_fb_w;
+        uint32_t* dst = x11_pixels + (oy + y * scale) * x11_max_w + ox;
 
-    for (int y = 0; y < x11_fb_h * scale; y++) {
-        int wy = oy + y;
+        for (int x = 0; x < cols; x++)
+            for (int k = 0; k < scale; k++)
+                dst[x * scale + k] = src[x];
 
-        if (wy < 0 || wy >= h) continue;
-
-        const uint32_t* src = rgb + (y / scale) * x11_fb_w;
-        uint32_t* dst = x11_pixels + wy * x11_max_w;
-
-        for (int x = 0; x < x11_fb_w * scale; x++) {
-            int wx = ox + x;
-
-            if (wx < 0 || wx >= w) continue;
-
-            dst[wx] = src[x / scale];
-        }
+        for (int k = 1; k < scale; k++)
+            memcpy(dst + k * x11_max_w, dst, (size_t)cols * scale * sizeof *dst);
     }
 
     XPutImage(x11_display, x11_window, x11_gc, x11_image, 0, 0, 0, 0, (unsigned)w, (unsigned)h);
@@ -157,6 +157,7 @@ bool orb_os_pump(orb_input* out) {
         } else if (ev.type == ConfigureNotify) {
             x11_win_w = ev.xconfigure.width;
             x11_win_h = ev.xconfigure.height;
+            x11_resized = true;
         } else if (ev.type == ClientMessage && (Atom)ev.xclient.data.l[0] == x11_wm_delete) {
             return false;
         }

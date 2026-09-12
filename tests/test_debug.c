@@ -58,6 +58,15 @@ int main(void) {
     CHECK(strstr(debug_copy_path, ORB_OS_LIB_SUFFIX) != nullptr);
     CHECK(orb_os_file_mtime(debug_copy_path) != 0);
 
+    // the asset watch is what the cast read: the manifest, then every file and
+    // directory it opened, so a file added to a directory recasts too
+    debug_watch_assets();
+    CHECK_EQ(debug_assets.count, 8);
+    CHECK(strcmp(debug_assets.at[0].path, "examples/demo/orb.json") == 0);
+    CHECK(strcmp(debug_assets.at[1].path, "examples/demo/art/palette.aseprite") == 0);
+    CHECK(strcmp(debug_assets.at[2].path, "examples/demo/art") == 0);
+    CHECK(strcmp(debug_assets.at[7].path, "examples/demo/music/song.wav") == 0);
+
     debug_finish();
 
     CHECK_EQ(orb_os_file_mtime(debug_copy_path), 0);
@@ -87,10 +96,10 @@ int main(void) {
     CHECK(orb_os_write_file("build/scratch/deps/build/a.d", span(a_d)));
     CHECK(orb_os_write_file("build/scratch/deps/build/b.d", span(b_d)));
     CHECK(debug_watch_sources());
-    CHECK_EQ(debug_source_count, 3);
-    CHECK(strcmp(debug_source_watches[0].path, "build/scratch/deps/a.c") == 0);
-    CHECK(strcmp(debug_source_watches[1].path, "build/scratch/deps/../inc/h.h") == 0);
-    CHECK(strcmp(debug_source_watches[2].path, "build/scratch/deps/b.c") == 0);
+    CHECK_EQ(debug_sources.count, 3);
+    CHECK(strcmp(debug_sources.at[0].path, "build/scratch/deps/a.c") == 0);
+    CHECK(strcmp(debug_sources.at[1].path, "build/scratch/deps/../inc/h.h") == 0);
+    CHECK(strcmp(debug_sources.at[2].path, "build/scratch/deps/b.c") == 0);
 
     const char* text = "build/demo.o: demo.c ../../src/orb.h \\\n"
                        " ../../src/core/api.h with\\ space.h\n"
@@ -99,23 +108,23 @@ int main(void) {
                        "build/other.o: other.c ../../src/orb.h /abs/x.h\n";
 
     snprintf(debug_dir, sizeof debug_dir, "%s", "game");
-    debug_source_count = 0;
+    debug_sources.count = 0;
     debug_watch_depfile(span(text));
 
-    CHECK_EQ(debug_source_count, 6);
-    CHECK(strcmp(debug_source_watches[0].path, "game/demo.c") == 0);
-    CHECK(strcmp(debug_source_watches[1].path, "game/../../src/orb.h") == 0);
-    CHECK(strcmp(debug_source_watches[2].path, "game/../../src/core/api.h") == 0);
-    CHECK(strcmp(debug_source_watches[3].path, "game/with space.h") == 0);
-    CHECK(strcmp(debug_source_watches[4].path, "game/other.c") == 0);
-    CHECK(strcmp(debug_source_watches[5].path, "/abs/x.h") == 0);
+    CHECK_EQ(debug_sources.count, 6);
+    CHECK(strcmp(debug_sources.at[0].path, "game/demo.c") == 0);
+    CHECK(strcmp(debug_sources.at[1].path, "game/../../src/orb.h") == 0);
+    CHECK(strcmp(debug_sources.at[2].path, "game/../../src/core/api.h") == 0);
+    CHECK(strcmp(debug_sources.at[3].path, "game/with space.h") == 0);
+    CHECK(strcmp(debug_sources.at[4].path, "game/other.c") == 0);
+    CHECK(strcmp(debug_sources.at[5].path, "/abs/x.h") == 0);
 
     debug_watch_depfile(span("build/z.o: other.c z.c\n"));
-    CHECK_EQ(debug_source_count, 7);
-    CHECK(strcmp(debug_source_watches[6].path, "game/z.c") == 0);
+    CHECK_EQ(debug_sources.count, 7);
+    CHECK(strcmp(debug_sources.at[6].path, "game/z.c") == 0);
 
     debug_watch_depfile(span("  \n\n"));
-    CHECK_EQ(debug_source_count, 7);
+    CHECK_EQ(debug_sources.count, 7);
 
     return 0;
 }

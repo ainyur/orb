@@ -1,4 +1,5 @@
 #include "framebuffer.h"
+#include "../core/macros.h"
 
 #include <string.h>
 
@@ -11,26 +12,19 @@ void orb_framebuffer_blit(
     uint32_t flags,
     const uint8_t* remap
 ) {
-    for (int y = 0; y < size.h; y++) {
-        int fy = at.y + y;
+    int x0 = orb_max(0, -at.x), x1 = orb_min(size.w, fb->w - at.x);
+    int y0 = orb_max(0, -at.y), y1 = orb_min(size.h, fb->h - at.y);
 
-        if (fy < 0 || fy >= fb->h) continue;
+    for (int y = y0; y < y1; y++) {
+        const uint8_t* row = src + (flags & ORB_FLIP_Y ? size.h - 1 - y : y) * stride;
+        uint8_t* dst = fb->px + (at.y + y) * fb->w + at.x;
 
-        int sy = flags & ORB_FLIP_Y ? size.h - 1 - y : y;
-
-        for (int x = 0; x < size.w; x++) {
-            int fx = at.x + x;
-
-            if (fx < 0 || fx >= fb->w) continue;
-
-            int sx = flags & ORB_FLIP_X ? size.w - 1 - x : x;
-            uint8_t index = src[sy * stride + sx];
+        for (int x = x0; x < x1; x++) {
+            uint8_t index = row[flags & ORB_FLIP_X ? size.w - 1 - x : x];
 
             if (index == 0) continue;
 
-            if (remap) index = remap[index];
-
-            fb->px[fy * fb->w + fx] = index;
+            dst[x] = remap ? remap[index] : index;
         }
     }
 }

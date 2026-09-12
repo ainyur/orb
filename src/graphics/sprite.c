@@ -1,11 +1,5 @@
 #include "sprite.h"
 
-// A handle is current when it carries the generation the table holds for its
-// index; a table of nullptr means everything is at generation 0.
-static bool sprite_current(const uint8_t* generations, uint32_t index, uint32_t generation) {
-    return generations ? generations[index] == generation : generation == 0;
-}
-
 void orb_animation_start(orb_animation_state* st, orb_animation a) {
     st->animation = a;
     st->frame = 0;
@@ -13,11 +7,10 @@ void orb_animation_start(orb_animation_state* st, orb_animation a) {
 }
 
 orb_sprite orb_animation_step(const orb_assets* assets, orb_animation_state* st) {
-    uint32_t index = ORB_HANDLE_INDEX(st->animation);
+    uint32_t index =
+        orb_handle_index(assets->animation_generations, assets->animation_count, st->animation.v);
 
-    if (index >= assets->animation_count) return ORB_SPRITE(0xffffffu);
-    if (!sprite_current(assets->animation_generations, index, ORB_HANDLE_GENERATION(st->animation)))
-        return ORB_SPRITE(0xffffffu);
+    if (index == 0xffffffu) return ORB_SPRITE(0xffffffu);
 
     const orb_animation_desc* d = &assets->animations[index];
 
@@ -44,10 +37,9 @@ void orb_sprite_draw(
     uint32_t flags,
     const uint8_t* remap
 ) {
-    uint32_t index = ORB_HANDLE_INDEX(s);
+    uint32_t index = orb_handle_index(assets->sprite_generations, assets->sprite_count, s.v);
 
-    if (index >= assets->sprite_count) return;
-    if (!sprite_current(assets->sprite_generations, index, ORB_HANDLE_GENERATION(s))) return;
+    if (index == 0xffffffu) return;
 
     const orb_sprite_desc* d = &assets->sprites[index];
 

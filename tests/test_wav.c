@@ -34,8 +34,14 @@ static void put_header(wav_buffer* b) {
 }
 
 // format 1 is PCM, 3 is float; extensible wraps either in a 40-byte fmt chunk
-static void
-put_fmt(wav_buffer* b, uint16_t format, uint16_t channels, uint32_t rate, uint16_t bits, bool ext) {
+static void put_fmt(
+    wav_buffer* b,
+    uint16_t format,
+    uint16_t channels,
+    uint32_t rate,
+    uint16_t bits,
+    bool ext
+) {
     put_tag(b, "fmt ");
     put32(b, ext ? 40 : 16);
     put16(b, ext ? 0xFFFE : format);
@@ -227,7 +233,7 @@ int main(void) {
 
     // the generated fixtures, as make fixtures writes them
     orb_span file;
-    CHECK(orb_os_read_file("tests/fixtures/beep.wav", &a, &file));
+    CHECK(orb_os_read_file("tests/fixtures/sfx/beep.wav", &a, &file));
     CHECK(orb_wav_parse(file, &w, &err));
     CHECK_EQ(w.channels, 1);
     CHECK_EQ(w.rate, 48000);
@@ -236,7 +242,7 @@ int main(void) {
     CHECK_EQ(pcm[0], -12000);
     CHECK(!w.has_loop);
 
-    CHECK(orb_os_read_file("tests/fixtures/loop.wav", &a, &file));
+    CHECK(orb_os_read_file("tests/fixtures/music/loop.wav", &a, &file));
     CHECK(orb_wav_parse(file, &w, &err));
     CHECK_EQ(w.channels, 2);
     CHECK_EQ(w.count, 96000);

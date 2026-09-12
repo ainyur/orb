@@ -7,6 +7,7 @@
 #include "log.h"
 #include "macros.h"
 
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -14,36 +15,49 @@ static orb_assets api_assets;
 static orb_framebuffer api_framebuffer;
 static orb_vec2f api_camera;
 static orb_palette api_palette;
-static uint8_t api_sprite_generations[ORB_MAX_SPRITES];
-static uint8_t api_animation_generations[ORB_MAX_ANIMATIONS];
-static uint8_t api_sample_generations[ORB_MAX_SAMPLES];
-static uint8_t api_song_generations[ORB_MAX_SONGS];
+static uint8_t
+    api_generations[ORB_MAX_SPRITES + ORB_MAX_ANIMATIONS + ORB_MAX_SAMPLES + ORB_MAX_SONGS];
 static orb_mixer api_mixer = ORB_MIXER_INIT;
 static orb_assets api_views[2]; // the mixer reads one; a publish fills the other and swaps
 static int api_view;
 
-// A recast that lands a different source at an index bumps that index, so a
-// handle found before it fails closed until reload finds the name again.
-typedef struct api_ids {
-    const uint64_t* ids;
-    uint32_t count;
-} api_ids;
+// One row per handle kind: where its ids, count, and generation table live in
+// orb_assets, and this runtime's generations for it.
+typedef struct api_kind {
+    uint16_t ids, count, generations; // offsetof
+    uint8_t* table;
+} api_kind;
 
-static void api_bump_changed(uint8_t* generations, api_ids old, api_ids new) {
-    if (!old.ids || !new.ids) return;
+enum { API_SPRITE, API_ANIMATION, API_SAMPLE, API_SONG };
 
-    uint32_t n = orb_min(old.count, new.count);
+#define API_KIND(kind, at)                                                                         \
+    {offsetof(orb_assets, kind##_ids), offsetof(orb_assets, kind##_count),                         \
+     offsetof(orb_assets, kind##_generations), api_generations + (at)}
 
-    for (uint32_t i = 0; i < n; i++)
-        if (old.ids[i] != new.ids[i]) generations[i]++;
+static const api_kind api_kinds[] = {
+    API_KIND(sprite, 0),
+    API_KIND(animation, ORB_MAX_SPRITES),
+    API_KIND(sample, ORB_MAX_SPRITES + ORB_MAX_ANIMATIONS),
+    API_KIND(song, ORB_MAX_SPRITES + ORB_MAX_ANIMATIONS + ORB_MAX_SAMPLES),
+};
+
+static const uint64_t* api_ids_of(const orb_assets* as, const api_kind* k) {
+    return *(const uint64_t* const*)((const char*)as + k->ids);
+}
+
+static uint32_t api_count_of(const orb_assets* as, const api_kind* k) {
+    return *(const uint32_t*)((const char*)as + k->count);
 }
 
 // The handle at the index whose id matches, carrying that index's current
 // generation; 0xffffff (the null handle) on a miss.
-static uint32_t
-api_find(const uint64_t* ids, uint32_t count, const uint8_t* generations, uint64_t id) {
+static uint32_t api_find(int kind, uint64_t id) {
+    const api_kind* k = &api_kinds[kind];
+    const uint64_t* ids = api_ids_of(&api_assets, k);
+    uint32_t count = api_count_of(&api_assets, k);
+
     for (uint32_t i = 0; i < count; i++)
-        if (ids[i] == id) return i | (uint32_t)generations[i] << 24;
+        if (ids[i] == id) return i | (uint32_t)k->table[i] << 24;
 
     return 0xffffffu;
 }
@@ -63,18 +77,11 @@ static void api_publish(void) {
 }
 
 static orb_animation api_animation_find(const char* stem, const char* tag) {
-    uint32_t v = api_find(
-        api_assets.animation_ids, api_assets.animation_count, api_animation_generations,
-        orb_asset_id(stem, tag)
-    );
+    uint32_t v = api_find(API_ANIMATION, orb_asset_id(stem, tag));
 
     if (v == 0xffffffu) orb_log("no animation \"%s\" in %s", tag, stem);
 
     return ORB_ANIMATION(v);
-}
-
-static void api_animation_start(orb_animation_state* st, orb_animation a) {
-    orb_animation_start(st, a);
 }
 
 static orb_sprite api_animation_step(orb_animation_state* st) {
@@ -102,10 +109,7 @@ static void api_palette_set(int i, uint8_t r, uint8_t g, uint8_t b) {
 }
 
 static orb_sample api_sample_find(const char* stem) {
-    uint32_t v = api_find(
-        api_assets.sample_ids, api_assets.sample_count, api_sample_generations,
-        orb_asset_id(stem, "")
-    );
+    uint32_t v = api_find(API_SAMPLE, orb_asset_id(stem, ""));
 
     if (v == 0xffffffu) orb_log("no sound \"%s\"", stem);
 
@@ -113,9 +117,7 @@ static orb_sample api_sample_find(const char* stem) {
 }
 
 static orb_song api_song_find(const char* stem) {
-    uint32_t v = api_find(
-        api_assets.song_ids, api_assets.song_count, api_song_generations, orb_asset_id(stem, "")
-    );
+    uint32_t v = api_find(API_SONG, orb_asset_id(stem, ""));
 
     if (v == 0xffffffu) orb_log("no song \"%s\"", stem);
 
@@ -163,10 +165,7 @@ static orb_sprite api_sprite_find(const char* stem, int frame) {
 
     snprintf(suffix, sizeof suffix, "%d", frame);
 
-    uint32_t v = api_find(
-        api_assets.sprite_ids, api_assets.sprite_count, api_sprite_generations,
-        orb_asset_id(stem, suffix)
-    );
+    uint32_t v = api_find(API_SPRITE, orb_asset_id(stem, suffix));
 
     if (v == 0xffffffu) orb_log("no frame %d in %s", frame, stem);
 
@@ -179,7 +178,7 @@ static void api_volume_set(orb_volumes v) {
 
 static const orb_api api_table = {
     .animation_find = api_animation_find,
-    .animation_start = api_animation_start,
+    .animation_start = orb_animation_start,
     .animation_step = api_animation_step,
     .button_down = orb_button_down,
     .button_pressed = orb_button_pressed,
@@ -228,28 +227,24 @@ void orb_api_resolve(uint32_t* rgb) {
     orb_framebuffer_resolve(&api_framebuffer, api_palette.live, rgb);
 }
 
+// A recast that lands a different source at an index bumps that index, so a
+// handle found before it fails closed until reload finds the name again.
 void orb_api_set_assets(const orb_assets* assets) {
-    api_bump_changed(
-        api_sprite_generations, (api_ids) {api_assets.sprite_ids, api_assets.sprite_count},
-        (api_ids) {assets->sprite_ids, assets->sprite_count}
-    );
-    api_bump_changed(
-        api_animation_generations, (api_ids) {api_assets.animation_ids, api_assets.animation_count},
-        (api_ids) {assets->animation_ids, assets->animation_count}
-    );
-    api_bump_changed(
-        api_sample_generations, (api_ids) {api_assets.sample_ids, api_assets.sample_count},
-        (api_ids) {assets->sample_ids, assets->sample_count}
-    );
-    api_bump_changed(
-        api_song_generations, (api_ids) {api_assets.song_ids, api_assets.song_count},
-        (api_ids) {assets->song_ids, assets->song_count}
-    );
+    for (int kind = 0; kind < 4; kind++) {
+        const api_kind* k = &api_kinds[kind];
+        const uint64_t *old = api_ids_of(&api_assets, k), *new = api_ids_of(assets, k);
+        uint32_t n = orb_min(api_count_of(&api_assets, k), api_count_of(assets, k));
+
+        for (uint32_t i = 0; old && new && i < n; i++)
+            if (old[i] != new[i]) k->table[i]++;
+    }
+
     api_assets = *assets;
-    api_assets.sprite_generations = api_sprite_generations;
-    api_assets.animation_generations = api_animation_generations;
-    api_assets.sample_generations = api_sample_generations;
-    api_assets.song_generations = api_song_generations;
+
+    for (int kind = 0; kind < 4; kind++)
+        *(const uint8_t**)((char*)&api_assets + api_kinds[kind].generations) =
+            api_kinds[kind].table;
+
     orb_palette_load(&api_palette, assets->palette);
     api_publish();
 }
@@ -258,13 +253,16 @@ const orb_api* orb_api_table(void) {
     return &api_table;
 }
 
-void orb_audio_idle(uint64_t elapsed_ns, uint64_t* rendered) {
+bool orb_audio_idle(uint64_t elapsed_ns, uint64_t* rendered) {
     static int16_t silence[ORB_MIXER_CHUNK * ORB_AUDIO_CHANNELS];
     uint64_t owed = elapsed_ns / 1000000000u * ORB_AUDIO_RATE + // split so it never wraps
                     elapsed_ns % 1000000000u * ORB_AUDIO_RATE / 1000000000u;
+    uint64_t before = *rendered;
 
     for (; *rendered + ORB_MIXER_CHUNK <= owed; *rendered += ORB_MIXER_CHUNK)
         orb_mixer_render(&api_mixer, silence, ORB_MIXER_CHUNK);
+
+    return before / ORB_AUDIO_RATE != *rendered / ORB_AUDIO_RATE;
 }
 
 void orb_audio_render(int16_t* out, int frames) {

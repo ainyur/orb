@@ -29,8 +29,7 @@ static uint32_t ase_u32(const uint8_t* p) {
 }
 
 static bool ase_fail(orb_error* err, const char* msg) {
-    orb_error_set(err, "aseprite: %s", msg);
-    return false;
+    return orb_error_set(err, "aseprite: %s", msg);
 }
 
 bool orb_ase_parse(orb_arena* a, orb_span file, orb_ase* out, orb_error* err) {

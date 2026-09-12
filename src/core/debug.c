@@ -11,6 +11,8 @@
 constexpr uint64_t DEBUG_SETTLE_NS = 200000000;
 constexpr int DEBUG_MAX_WATCHES = 1024;
 
+static_assert(DEBUG_MAX_WATCHES >= ORB_CAST_MAX_READS, "every cast read fits the asset watch");
+
 void orb_watch_init(orb_watch* w, const char* path) {
     snprintf(w->path, sizeof w->path, "%s", path);
     w->mtime = orb_os_file_mtime(path);
@@ -45,10 +47,12 @@ static void* debug_lib;
 static int debug_copy_count;
 static orb_path debug_dir, debug_so_path, debug_copy_path;
 static orb_watch debug_so_watch;
-static orb_watch debug_asset_watches[DEBUG_MAX_WATCHES];
-static int debug_asset_count;
-static orb_watch debug_source_watches[DEBUG_MAX_WATCHES];
-static int debug_source_count;
+typedef struct debug_watches {
+    orb_watch at[DEBUG_MAX_WATCHES];
+    int count;
+} debug_watches;
+
+static debug_watches debug_assets, debug_sources;
 static uint8_t debug_depfile_mem[1 << 16];
 
 // Copy the game library to a fresh name and load the copy, so the compiler can overwrite
@@ -99,34 +103,37 @@ static const orb_game* debug_load_game(void) {
     return game;
 }
 
-static void debug_watch_add(orb_watch* table, int* count, const char* rel) {
+static void debug_watch_add(debug_watches* w, const char* rel) {
     orb_path path;
 
     orb_path_join(path, debug_dir, rel);
 
-    for (int i = 0; i < *count; i++)
-        if (strcmp(table[i].path, path) == 0) return;
+    for (int i = 0; i < w->count; i++)
+        if (strcmp(w->at[i].path, path) == 0) return;
 
-    if (*count == DEBUG_MAX_WATCHES) orb_fatal("more than %d watched files", DEBUG_MAX_WATCHES);
+    if (w->count == DEBUG_MAX_WATCHES) orb_fatal("more than %d watched files", DEBUG_MAX_WATCHES);
 
-    orb_watch_init(&table[(*count)++], path);
+    orb_watch_init(&w->at[w->count++], path);
 }
 
+// Polls every watch, so each one's settle timer advances; true when any fired.
+static bool debug_watch_any(debug_watches* w, uint64_t now) {
+    bool changed = false;
+
+    for (int i = 0; i < w->count; i++)
+        if (orb_watch_poll(&w->at[i], now)) changed = true;
+
+    return changed;
+}
+
+// Watch what the last cast read, the way sources are watched through what the build read.
 static void debug_watch_assets(void) {
-    const orb_manifest* m = orb_run_manifest();
+    const orb_cast_result* r = orb_run_cast_result();
 
-    debug_asset_count = 0;
-    debug_watch_add(debug_asset_watches, &debug_asset_count, "orb.json");
-    debug_watch_add(debug_asset_watches, &debug_asset_count, m->palette);
+    debug_assets.count = 0;
 
-    for (int i = 0; i < m->sprite_count; i++)
-        debug_watch_add(debug_asset_watches, &debug_asset_count, m->sprites[i]);
-
-    for (int i = 0; i < m->sound_count; i++)
-        debug_watch_add(debug_asset_watches, &debug_asset_count, m->sounds[i]);
-
-    for (int i = 0; i < m->song_count; i++)
-        debug_watch_add(debug_asset_watches, &debug_asset_count, m->songs[i].path);
+    for (int i = 0; i < r->read_count; i++)
+        debug_watch_add(&debug_assets, r->reads[i]);
 }
 
 static void debug_watch_depfile(orb_span text) {
@@ -152,8 +159,7 @@ static void debug_watch_depfile(orb_span text) {
         i++;
         token[n] = 0;
 
-        if (n && token[n - 1] != ':')
-            debug_watch_add(debug_source_watches, &debug_source_count, token);
+        if (n && token[n - 1] != ':') debug_watch_add(&debug_sources, token);
     }
 }
 
@@ -174,7 +180,7 @@ static bool debug_watch_sources(void) {
         return false;
     }
 
-    debug_source_count = 0;
+    debug_sources.count = 0;
 
     for (int i = 0; i < files; i++) {
         orb_span text;
@@ -216,13 +222,7 @@ static void debug_poll_reload(void) {
         if (debug_load_game()) orb_log("scry: reloaded %s", debug_so_path);
     }
 
-    bool changed = false;
-
-    for (int i = 0; i < debug_asset_count; i++) {
-        if (orb_watch_poll(&debug_asset_watches[i], now)) changed = true;
-    }
-
-    if (changed) {
+    if (debug_watch_any(&debug_assets, now)) {
         orb_error err;
 
         if (orb_run_recast(&err)) {
@@ -233,15 +233,16 @@ static void debug_poll_reload(void) {
     }
 }
 
+// Every sixth tick: a stat per watched file at 60 Hz would be most of a frame
+// once a game has hundreds, and the settle window is time-based anyway.
 static void debug_poll_scry(void) {
+    static unsigned tick;
+
+    if (tick++ % 6) return;
+
     uint64_t now = orb_os_ticks();
-    bool changed = false;
 
-    for (int i = 0; i < debug_source_count; i++) {
-        if (orb_watch_poll(&debug_source_watches[i], now)) changed = true;
-    }
-
-    if (changed) {
+    if (debug_watch_any(&debug_sources, now)) {
         if (debug_build())
             debug_watch_sources();
         else
@@ -292,8 +293,7 @@ int orb_debug_scry(const char* game_dir) {
     orb_watch_init(&debug_so_watch, debug_so_path);
     debug_watch_assets();
     orb_log(
-        "scry: watching %d source files, %d art files, and orb.json", debug_source_count,
-        debug_asset_count - 1
+        "scry: watching %d source files and %d asset files", debug_sources.count, debug_assets.count
     );
 
     orb_run_loop(debug_poll_scry);

@@ -27,14 +27,14 @@ typedef struct orb_mixer_command {
     uint8_t kind;
     uint8_t voice;
     uint16_t generation; // play, set, stop: the handle's
-    uint32_t sample;     // play: index and id of the sample
-    uint64_t sample_id;
-    uint32_t song; // song_play: index and id of the song, resolved on the audio thread
-    uint64_t song_id;
-    orb_sound_params params; // play, set
-    int32_t fade_ms;         // song_stop
-    orb_volumes volumes;     // volumes
-    bool loop;               // song_play
+    uint32_t index;      // play: the sample; song_play: the song, resolved on the audio thread
+    uint64_t id;         // its id, so a swapped asset is caught
+    union {
+        orb_sound_params params; // play, set
+        bool loop;               // song_play
+        int32_t fade_ms;         // song_stop
+        orb_volumes volumes;     // volumes
+    };
 } orb_mixer_command;
 
 // A sampler voice. playing is the one field both threads touch: the main thread
@@ -79,8 +79,10 @@ typedef struct orb_mixer {
 void orb_mixer_init(orb_mixer* m);
 void orb_mixer_render(orb_mixer* m, int16_t* out, int frames); // the audio thread; the rest is main
 bool orb_mixer_rendered(const orb_mixer* m, uint32_t render);
-uint32_t
-orb_mixer_set_assets(orb_mixer* m, const orb_assets* assets); // the render to wait for, 0 if none
+uint32_t orb_mixer_set_assets(
+    orb_mixer* m,
+    const orb_assets* assets
+); // the render to wait for, 0 if none
 void orb_mixer_song_pause(orb_mixer* m);
 void orb_mixer_song_play(orb_mixer* m, orb_song s, bool loop);
 orb_song_position orb_mixer_song_position(const orb_mixer* m);

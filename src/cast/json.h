@@ -17,13 +17,15 @@ typedef enum {
 
 typedef struct orb_json {
     orb_json_kind kind;
+    int count; // array or object: children
     const char* key;
-    const char* str;
-    double num;
-    bool boolean;
-    struct orb_json* first;
+    union {
+        const char* str;
+        double num;
+        bool boolean;
+        struct orb_json* first;
+    };
     struct orb_json* next;
-    int count;
 } orb_json;
 
 const orb_json* orb_json_get(const orb_json* object, const char* key);

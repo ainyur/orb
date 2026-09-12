@@ -67,9 +67,9 @@ static int cast_once(const char* dir, bool seal, const char* out_path) {
         return 1;
     }
 
-    if (seal && !out_path) {
-        orb_path bin;
+    orb_path bin, name, sealed;
 
+    if (seal && !out_path) {
         orb_path_join(bin, dir, "bin");
 
         if (!orb_os_make_dir(bin)) {
@@ -77,7 +77,9 @@ static int cast_once(const char* dir, bool seal, const char* out_path) {
             return 1;
         }
 
-        out_path = orb_seal_path(&scratch, dir, &m);
+        snprintf(name, sizeof name, "%s.orb", m.id);
+        orb_path_join(sealed, bin, name);
+        out_path = sealed;
     }
 
     if (out_path && !orb_os_write_file(out_path, result.file)) {
