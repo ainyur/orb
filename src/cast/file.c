@@ -1,35 +1,9 @@
 #include "file.h"
+#include "../core/asset.h"
 
-#include <ctype.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
-
-// FNV-1a over STEM_SUFFIX with every non-alphanumeric folded to '_' and letters
-// uppercased, so "player" + "walk" and "Player" + "WALK" are one id.
-static uint64_t asset_hash(uint64_t h, const char* s) {
-    for (const unsigned char* c = (const unsigned char*)s; *c; c++) {
-        unsigned char x = isalnum(*c) ? (unsigned char)toupper(*c) : (unsigned char)'_';
-
-        h = (h ^ x) * 0x100000001b3u;
-    }
-
-    return h;
-}
-
-uint64_t orb_asset_id(const char* stem, const char* suffix) {
-    uint64_t h = asset_hash(0xcbf29ce484222325u, stem);
-
-    h = (h ^ (unsigned char)'_') * 0x100000001b3u;
-    return asset_hash(h, suffix);
-}
-
-uint64_t orb_sprite_id(const char* stem, int frame) {
-    char suffix[16];
-
-    snprintf(suffix, sizeof suffix, "%d", frame);
-    return orb_asset_id(stem, suffix);
-}
 
 // One row per section: where its bytes and count live in orb_assets. A row with
 // no count field is one element. An id section holds one id per element of its

@@ -9,35 +9,28 @@
 
 static HWND gdi_window;
 static ATOM gdi_class;
-static int gdi_fb_w, gdi_fb_h, gdi_win_w, gdi_win_h;
+static orb_size gdi_fb, gdi_win;
 static bool gdi_keys[ORB_BTN_COUNT];
 static bool gdi_closed;
-static const uint32_t* gdi_last; // the frame most recently presented, for WM_PAINT
+static const uint32_t* gdi_last_frame; // the frame most recently presented, for WM_PAINT
 
 // The key for each button, in ORB_BTN order.
-static const WPARAM gdi_keymap[ORB_BTN_COUNT] = {VK_UP, VK_DOWN, VK_LEFT,   VK_RIGHT,
-                                                 'Z',   'X',     'A',       'S',
-                                                 'Q',   'W',     VK_RETURN, VK_TAB};
-
-static int gdi_button(WPARAM key) {
-    for (int b = 0; b < ORB_BTN_COUNT; b++)
-        if (gdi_keymap[b] == key) return b;
-
-    return -1;
-}
+static const uint32_t gdi_keymap[ORB_BTN_COUNT] = {VK_UP, VK_DOWN, VK_LEFT,   VK_RIGHT,
+                                                   'Z',   'X',     'A',       'S',
+                                                   'Q',   'W',     VK_RETURN, VK_TAB};
 
 // Integer-scale the frame into the client area, centered, borders left to the
 // class background brush.
 static void gdi_blit(HDC dc, const uint32_t* rgb) {
-    int scale = orb_max(1, orb_min(gdi_win_w / gdi_fb_w, gdi_win_h / gdi_fb_h));
+    int scale = orb_max(1, orb_min(gdi_win.w / gdi_fb.w, gdi_win.h / gdi_fb.h));
 
-    int w = gdi_fb_w * scale, h = gdi_fb_h * scale;
-    int ox = (gdi_win_w - w) / 2, oy = (gdi_win_h - h) / 2;
+    int w = gdi_fb.w * scale, h = gdi_fb.h * scale;
+    int ox = (gdi_win.w - w) / 2, oy = (gdi_win.h - h) / 2;
     BITMAPINFO info = {
         .bmiHeader = {
             .biSize = sizeof(BITMAPINFOHEADER),
-            .biWidth = gdi_fb_w,
-            .biHeight = -gdi_fb_h, // top-down
+            .biWidth = gdi_fb.w,
+            .biHeight = -gdi_fb.h, // top-down
             .biPlanes = 1,
             .biBitCount = 32,
             .biCompression = BI_RGB,
@@ -45,28 +38,28 @@ static void gdi_blit(HDC dc, const uint32_t* rgb) {
     };
 
     SetStretchBltMode(dc, COLORONCOLOR); // nearest neighbour: pixels stay square
-    StretchDIBits(dc, ox, oy, w, h, 0, 0, gdi_fb_w, gdi_fb_h, rgb, &info, DIB_RGB_COLORS, SRCCOPY);
+    StretchDIBits(dc, ox, oy, w, h, 0, 0, gdi_fb.w, gdi_fb.h, rgb, &info, DIB_RGB_COLORS, SRCCOPY);
 }
 
 static LRESULT CALLBACK gdi_proc(HWND window, UINT msg, WPARAM w, LPARAM l) {
     switch (msg) {
     case WM_KEYDOWN:
     case WM_KEYUP: {
-        int button = gdi_button(w);
+        int button = orb_os_button(gdi_keymap, (uint32_t)w);
 
         if (button >= 0) gdi_keys[button] = msg == WM_KEYDOWN;
 
         return 0;
     }
     case WM_SIZE:
-        gdi_win_w = LOWORD(l);
-        gdi_win_h = HIWORD(l);
+        gdi_win.w = LOWORD(l);
+        gdi_win.h = HIWORD(l);
         return 0;
     case WM_PAINT: {
         PAINTSTRUCT ps;
         HDC dc = BeginPaint(window, &ps);
 
-        if (gdi_last) gdi_blit(dc, gdi_last);
+        if (gdi_last_frame) gdi_blit(dc, gdi_last_frame);
 
         EndPaint(window, &ps);
         return 0;
@@ -80,14 +73,11 @@ static LRESULT CALLBACK gdi_proc(HWND window, UINT msg, WPARAM w, LPARAM l) {
 }
 
 bool orb_os_open(const orb_os_config* cfg) {
-    gdi_fb_w = cfg->size.w;
-    gdi_fb_h = cfg->size.h;
+    orb_size screen = {GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)};
+    int scale = orb_os_open_scale(cfg->size, screen);
 
-    int max_w = GetSystemMetrics(SM_CXSCREEN), max_h = GetSystemMetrics(SM_CYSCREEN);
-    int scale = orb_os_open_scale(cfg->size, (orb_size) {max_w, max_h});
-
-    gdi_win_w = gdi_fb_w * scale;
-    gdi_win_h = gdi_fb_h * scale;
+    gdi_fb = cfg->size;
+    gdi_win = (orb_size) {gdi_fb.w * scale, gdi_fb.h * scale};
 
     WNDCLASS wc = {
         .lpfnWndProc = gdi_proc,
@@ -105,12 +95,12 @@ bool orb_os_open(const orb_os_config* cfg) {
     }
 
     DWORD style = WS_OVERLAPPEDWINDOW;
-    RECT frame = {0, 0, gdi_win_w, gdi_win_h};
+    RECT frame = {0, 0, gdi_win.w, gdi_win.h};
 
     AdjustWindowRect(&frame, style, FALSE); // grow the outer rect so the client is fb * scale
 
     int outer_w = frame.right - frame.left, outer_h = frame.bottom - frame.top;
-    int x = (max_w - outer_w) / 2, y = (max_h - outer_h) / 2; // centered, not cascaded
+    int x = (screen.w - outer_w) / 2, y = (screen.h - outer_h) / 2; // centered, not cascaded
 
     win32_wpath title;
 
@@ -136,15 +126,12 @@ void orb_os_close(void) {
 
     DestroyWindow(gdi_window);
     UnregisterClass(MAKEINTATOM(gdi_class), GetModuleHandle(nullptr));
-    gdi_window = nullptr;
-    gdi_class = 0;
-    gdi_last = nullptr;
 }
 
 void orb_os_present(const uint32_t* rgb) {
     HDC dc = GetDC(gdi_window);
 
-    gdi_last = rgb;
+    gdi_last_frame = rgb;
     gdi_blit(dc, rgb);
     ReleaseDC(gdi_window, dc);
 }

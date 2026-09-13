@@ -14,6 +14,7 @@
 #include "audio/mixer.c"
 #include "core/api.c"
 #include "core/arena.c"
+#include "core/asset.c"
 #include "core/input.c"
 #include "core/log.c"
 

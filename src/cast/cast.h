@@ -4,8 +4,16 @@
 #include "../core/log.h"
 #include "../orb.h"
 
+constexpr int ORB_CAST_MAX_READS = 1024;
+
+typedef struct orb_cast_result {
+    orb_span file;
+    const char** reads; // every file the cast read, relative to game_dir, once each, in order
+    int read_count;
+} orb_cast_result;
+
 typedef struct orb_manifest_song {
-    float bpm; // within 0..1000
+    float bpm;
     const char* stem;
 } orb_manifest_song;
 
@@ -25,14 +33,6 @@ typedef struct orb_manifest {
     orb_size size;
     size_t asset_headroom;
 } orb_manifest;
-
-constexpr int ORB_CAST_MAX_READS = 1024;
-
-typedef struct orb_cast_result {
-    orb_span file;      // what it yields: orb_file_load reads the counts back
-    const char** reads; // every file the cast read, relative to game_dir, once each, in order
-    int read_count;
-} orb_cast_result;
 
 bool orb_manifest_load(orb_arena* a, const char* game_dir, orb_manifest* m, orb_error* err);
 bool orb_cast_game(

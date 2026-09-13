@@ -1,4 +1,6 @@
 #include "cast.h"
+#include "../core/asset.h"
+#include "../graphics/sprite.h"
 #include "../os/os.h"
 #include "aseprite.h"
 #include "file.h"
@@ -96,7 +98,6 @@ bool orb_manifest_load(orb_arena* a, const char* game_dir, orb_manifest* m, orb_
            cast_string(root, "music", "music", &m->music, err) && cast_song_map(a, root, m, err);
 }
 
-// Everything one cast needs, so each stage takes one argument.
 typedef struct cast {
     orb_arena* scratch;
     orb_arena* out;
@@ -320,22 +321,22 @@ static bool cast_art(cast* c, const orb_ase* master, orb_assets* as) {
         for (int k = 0; k < ase->color_count; k++) {
             if (k == ase->transparent) continue;
 
-            int found = 0;
+            int master_index = 0;
 
             for (int j = 1; j < master->color_count; j++) {
                 if (memcmp(master->rgb[j], ase->rgb[k], 3) == 0) {
-                    found = j;
+                    master_index = j;
                     break;
                 }
             }
 
-            if (!found)
+            if (!master_index)
                 return orb_error_set(
                     c->err, "%s: color %d (%d,%d,%d) is not in the master palette", paths[i], k,
                     ase->rgb[k][0], ase->rgb[k][1], ase->rgb[k][2]
                 );
 
-            remap[k] = (uint8_t)found;
+            remap[k] = (uint8_t)master_index;
         }
 
         size_t pixel_count = (size_t)ase->w * ase->h * ase->frame_count;
@@ -454,7 +455,7 @@ static bool cast_audio(cast* c, orb_assets* as) {
     uint64_t* sample_ids = orb_arena_push_array(scratch, uint64_t, wav_count);
     orb_song_desc* songs = orb_arena_push_array(scratch, orb_song_desc, music.count);
     uint64_t* song_ids = orb_arena_push_array(scratch, uint64_t, music.count);
-    bool* named = orb_arena_push_array(scratch, bool, m->song_count);
+    bool* has_file = orb_arena_push_array(scratch, bool, m->song_count);
     uint32_t pcm_total = 0;
 
     for (int i = 0; i < music.count; i++) {
@@ -462,14 +463,14 @@ static bool cast_audio(cast* c, orb_assets* as) {
 
         if (index < 0) return orb_error_set(c->err, "%s: no bpm in orb.json songs", music.paths[i]);
 
-        named[index] = true;
+        has_file[index] = true;
         songs[i] =
             (orb_song_desc) {.sample = sound_count + (uint32_t)i, .bpm = m->songs[index].bpm};
         song_ids[i] = orb_asset_id(music.stems[i], "");
     }
 
     for (int i = 0; i < m->song_count; i++) {
-        if (named[i]) continue;
+        if (has_file[i]) continue;
 
         return orb_error_set(
             c->err, "orb.json: songs: no %s/%s.wav for \"%s\"", m->music, m->songs[i].stem,
@@ -532,8 +533,6 @@ static bool cast_audio(cast* c, orb_assets* as) {
     return true;
 }
 
-// Arm both arenas so that running out of room unwinds to the cast entry point
-// as an ordinary error instead of ending the process.
 static bool cast_body(cast* c) {
     orb_ase master;
     orb_assets as = {};

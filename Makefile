@@ -72,7 +72,6 @@ build/wine/test_%.exe: tests/test_%.c tests/test.h $(SRC) $(wildcard tests/fixtu
 test: $(TESTS)
 	@for t in $(TESTS); do echo "== $$t"; ./$$t || exit 1; done
 
-
 # The UTF-8 directory the test makes is checked from this side, since inside one
 # process a mangled name round-trips and looks fine.
 test-wine: build/wine/test_os.exe

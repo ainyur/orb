@@ -190,11 +190,11 @@ int main(void) {
     render(1);
     CHECK_EQ(out[0], 1000);
     orb_mixer_volume_set(&mixer, (orb_volumes) {1, 1, 1});
-    orb_mixer_song_pause(&mixer);
+    orb_mixer_song_pause(&mixer, true);
     render(2);
     CHECK_EQ(out[0], 0);
     CHECK(song_playing());
-    orb_mixer_song_resume(&mixer);
+    orb_mixer_song_pause(&mixer, false);
     render(1);
     CHECK_EQ(out[0], 2000);
     orb_mixer_song_stop(&mixer, 1); // 1 ms: 48 frames of fade
@@ -234,10 +234,10 @@ int main(void) {
     CHECK(near(orb_mixer_song_position(&mixer).beats, 6.0f / 48000 * 1.5f));
     render(4); // wraps at 8: the playhead is at frame 2 again
     CHECK(near(orb_mixer_song_position(&mixer).seconds, 2.0f / 48000));
-    orb_mixer_song_pause(&mixer);
+    orb_mixer_song_pause(&mixer, true);
     render(5);
     CHECK(near(orb_mixer_song_position(&mixer).seconds, 2.0f / 48000));
-    orb_mixer_song_resume(&mixer);
+    orb_mixer_song_pause(&mixer, false);
     orb_mixer_song_stop(&mixer, 0);
     render(1);
     CHECK(orb_mixer_song_position(&mixer).seconds == -1);

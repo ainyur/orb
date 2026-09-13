@@ -1,5 +1,7 @@
 #include "sprite.h"
 
+#include <stdio.h>
+
 void orb_animation_start(orb_animation_state* st, orb_animation a) {
     st->animation = a;
     st->frame = 0;
@@ -7,8 +9,7 @@ void orb_animation_start(orb_animation_state* st, orb_animation a) {
 }
 
 orb_sprite orb_animation_step(const orb_assets* assets, orb_animation_state* st) {
-    uint32_t index =
-        orb_handle_index(assets->animation_generations, assets->animation_count, st->animation.v);
+    uint32_t index = orb_asset_index_of(assets, st->animation);
 
     if (index == ORB_NO_INDEX) return ORB_NO_SPRITE;
 
@@ -37,7 +38,7 @@ void orb_sprite_draw(
     uint32_t flags,
     const uint8_t* remap
 ) {
-    uint32_t index = orb_handle_index(assets->sprite_generations, assets->sprite_count, s.v);
+    uint32_t index = orb_asset_index_of(assets, s);
 
     if (index == ORB_NO_INDEX) return;
 
@@ -55,4 +56,11 @@ void orb_sprite_draw(
     const uint8_t* src = assets->pixels + sheet->pixels + d->y * sheet->w + d->x;
 
     orb_framebuffer_blit(fb, src, sheet->w, (orb_size) {d->w, d->h}, at, flags, remap);
+}
+
+uint64_t orb_sprite_id(const char* stem, int frame) {
+    char suffix[16];
+
+    snprintf(suffix, sizeof suffix, "%d", frame);
+    return orb_asset_id(stem, suffix);
 }

@@ -16,7 +16,7 @@ static_assert(DEBUG_MAX_WATCHES >= ORB_CAST_MAX_READS, "every cast read fits the
 void orb_watch_init(orb_watch* w, const char* path) {
     snprintf(w->path, sizeof w->path, "%s", path);
     w->mtime = orb_os_file_mtime(path);
-    w->pending = 0;
+    w->pending_mtime = 0;
     w->pending_since = 0;
 }
 
@@ -26,12 +26,12 @@ bool orb_watch_poll(orb_watch* w, uint64_t now) {
     if (mtime == 0) return false; // missing, mid-save: wait for it to come back
 
     if (mtime == w->mtime) {
-        w->pending = 0;
+        w->pending_mtime = 0;
         return false;
     }
 
-    if (mtime != w->pending) {
-        w->pending = mtime;
+    if (mtime != w->pending_mtime) {
+        w->pending_mtime = mtime;
         w->pending_since = now;
         return false;
     }
@@ -39,11 +39,11 @@ bool orb_watch_poll(orb_watch* w, uint64_t now) {
     if (now - w->pending_since < DEBUG_SETTLE_NS) return false;
 
     w->mtime = mtime;
-    w->pending = 0;
+    w->pending_mtime = 0;
     return true;
 }
 
-static void* debug_lib;
+static orb_os_library* debug_lib;
 static int debug_copy_count;
 static orb_path debug_dir, debug_so_path, debug_copy_path;
 static orb_watch debug_so_watch;
@@ -71,7 +71,7 @@ static const orb_game* debug_load_game(void) {
         return nullptr;
     }
 
-    void* lib = orb_os_dlopen(path);
+    orb_os_library* lib = orb_os_dlopen(path);
 
     if (!lib) {
         orb_log("cannot load %s", path);

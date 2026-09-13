@@ -76,12 +76,12 @@ static int alsa_start(void) {
 // suspend lands; the caller checks the flag.
 static int alsa_fill(int16_t* buffer) {
     const int16_t* at = buffer;
-    snd_pcm_uframes_t left = ALSA_FRAMES;
+    snd_pcm_uframes_t frames_left = ALSA_FRAMES;
 
     orb_audio_render(buffer, ALSA_FRAMES);
 
-    while (left > 0) {
-        snd_pcm_sframes_t n = snd_pcm_writei(alsa_pcm, at, left);
+    while (frames_left > 0) {
+        snd_pcm_sframes_t n = snd_pcm_writei(alsa_pcm, at, frames_left);
 
         if (n < 0) {
             if (alsa_recover((int)n)) continue;
@@ -90,7 +90,7 @@ static int alsa_fill(int16_t* buffer) {
         }
 
         at += n * ORB_AUDIO_CHANNELS;
-        left -= (snd_pcm_uframes_t)n;
+        frames_left -= (snd_pcm_uframes_t)n;
     }
 
     return 0;

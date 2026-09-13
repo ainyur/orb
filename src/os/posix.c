@@ -42,15 +42,15 @@ bool orb_os_copy_file(const char* from, const char* to) {
     return ok;
 }
 
-void* orb_os_dlopen(const char* path) {
-    return dlopen(path, RTLD_NOW | RTLD_LOCAL);
+orb_os_library* orb_os_dlopen(const char* path) {
+    return (orb_os_library*)dlopen(path, RTLD_NOW | RTLD_LOCAL);
 }
 
-void orb_os_dlclose(void* lib) {
+void orb_os_dlclose(orb_os_library* lib) {
     dlclose(lib);
 }
 
-void* orb_os_dlsym(void* lib, const char* name) {
+void* orb_os_dlsym(orb_os_library* lib, const char* name) {
     return dlsym(lib, name);
 }
 
@@ -109,7 +109,7 @@ int orb_os_run(const char* command, void (*line)(const char* text)) {
 
 void orb_os_sleep(uint64_t ns) {
     struct timespec ts = {
-        .tv_sec = (time_t)(ns / 1000000000u), .tv_nsec = (long)(ns % 1000000000u)
+        .tv_sec = (time_t)(ns / ORB_NS_PER_SECOND), .tv_nsec = (long)(ns % ORB_NS_PER_SECOND)
     };
 
     nanosleep(&ts, nullptr);
@@ -120,7 +120,7 @@ uint64_t orb_os_ticks(void) {
 
     clock_gettime(CLOCK_MONOTONIC, &ts);
 
-    return (uint64_t)ts.tv_sec * 1000000000u + (uint64_t)ts.tv_nsec;
+    return (uint64_t)ts.tv_sec * ORB_NS_PER_SECOND + (uint64_t)ts.tv_nsec;
 }
 
 bool orb_os_stat(const char* path, orb_os_info* out) {
@@ -130,7 +130,7 @@ bool orb_os_stat(const char* path, orb_os_info* out) {
 
     *out = (orb_os_info) {
         .size = (uint64_t)st.st_size,
-        .mtime = (uint64_t)st.st_mtim.tv_sec * 1000000000u + (uint64_t)st.st_mtim.tv_nsec,
+        .mtime = (uint64_t)st.st_mtim.tv_sec * ORB_NS_PER_SECOND + (uint64_t)st.st_mtim.tv_nsec,
         .dir = S_ISDIR(st.st_mode)
     };
     return true;

@@ -3,9 +3,44 @@
 #include <stddef.h>
 #include <stdint.h>
 
+typedef struct {
+    uint32_t v;
+} orb_animation;
+
+typedef struct orb_animation_state {
+    orb_animation animation;
+    uint16_t frame, ticks;
+} orb_animation_state;
+
+typedef struct {
+    uint32_t v;
+} orb_sample;
+
 typedef struct orb_size {
     int w, h;
 } orb_size;
+
+typedef struct {
+    uint32_t v;
+} orb_song;
+
+typedef struct orb_song_position {
+    float seconds, beats; // into the song's file; both -1 when no song plays
+} orb_song_position;
+
+typedef struct orb_sound_params {
+    float volume, pan; // 0..1, -1..1
+    int pitch_cents;   // -2400..2400; 0 is the sample's own rate
+} orb_sound_params;
+
+typedef struct {
+    const uint8_t* ptr;
+    size_t len;
+} orb_span;
+
+typedef struct {
+    uint32_t v;
+} orb_sprite;
 
 typedef struct orb_vec2 {
     int x, y;
@@ -15,23 +50,14 @@ typedef struct orb_vec2f {
     float x, y;
 } orb_vec2f;
 
-typedef struct orb_sound_params {
-    float volume, pan; // 0..1, -1..1
-    int pitch_cents;   // -2400..2400; 0 is the sample's own rate
-} orb_sound_params;
+// Opaque: a game only passes it back. Not an ORB_HANDLE_INDEX handle.
+typedef struct {
+    uint32_t v;
+} orb_voice;
 
 typedef struct orb_volumes {
     float master, song, sound; // 0..1 each, 1 by default
 } orb_volumes;
-
-typedef struct orb_song_position {
-    float seconds, beats; // into the song's file; both -1 when no song plays
-} orb_song_position;
-
-typedef struct {
-    const uint8_t* ptr;
-    size_t len;
-} orb_span;
 
 enum {
     ORB_BTN_UP,
@@ -49,81 +75,27 @@ enum {
     ORB_BTN_COUNT
 };
 
-typedef struct {
-    uint32_t v;
-} orb_animation;
-
-typedef struct orb_animation_state {
-    orb_animation animation;
-    uint16_t frame, ticks;
-} orb_animation_state;
-
-typedef struct {
-    uint32_t v;
-} orb_sprite;
-
-// The index of every kind's null handle: what a find that misses returns. It
-// draws and plays nothing.
-constexpr uint32_t ORB_NO_INDEX = 0xffffffu;
-
 #define ORB_ANIMATION(i) ((orb_animation) {(uint32_t)(i)})
+#define ORB_SAMPLE(i) ((orb_sample) {(uint32_t)(i)})
+#define ORB_SONG(i) ((orb_song) {(uint32_t)(i)})
 #define ORB_SPRITE(i) ((orb_sprite) {(uint32_t)(i)})
-#define ORB_NO_ANIMATION ORB_ANIMATION(ORB_NO_INDEX)
-#define ORB_NO_SPRITE ORB_SPRITE(ORB_NO_INDEX)
 #define ORB_HANDLE_INDEX(h) ((h).v & ORB_NO_INDEX) // v = handle index (24 bits) | generation << 24
 #define ORB_HANDLE_GENERATION(h) ((h).v >> 24)
 
-typedef struct {
-    uint32_t v;
-} orb_sample;
+constexpr uint32_t ORB_NO_INDEX = 0xffffffu;
+constexpr orb_animation ORB_NO_ANIMATION = {ORB_NO_INDEX};
+constexpr orb_sample ORB_NO_SAMPLE = {ORB_NO_INDEX};
+constexpr orb_song ORB_NO_SONG = {ORB_NO_INDEX};
+constexpr orb_sprite ORB_NO_SPRITE = {ORB_NO_INDEX};
+constexpr orb_voice ORB_NO_VOICE = {0xffffu};
 
-typedef struct {
-    uint32_t v;
-} orb_song;
-
-// Opaque: a game only passes it back. Not an ORB_HANDLE_INDEX handle.
-typedef struct {
-    uint32_t v;
-} orb_voice;
-
-#define ORB_SAMPLE(i) ((orb_sample) {(uint32_t)(i)})
-#define ORB_SONG(i) ((orb_song) {(uint32_t)(i)})
-#define ORB_NO_SAMPLE ORB_SAMPLE(ORB_NO_INDEX)
-#define ORB_NO_SONG ORB_SONG(ORB_NO_INDEX)
-#define ORB_NO_VOICE                                                                               \
-    ((orb_voice) {0xffffu}) // what a play that fails returns; set and stop ignore it
-
-#define ORB_FLIP_X 1u
-#define ORB_FLIP_Y 2u
+constexpr uint32_t ORB_FLIP_X = 1;
+constexpr uint32_t ORB_FLIP_Y = 2;
 constexpr int ORB_TICK_RATE = 60; // update calls per second
-#define ORB_TICK_SECONDS (1.0f / ORB_TICK_RATE)
+constexpr float ORB_TICK_SECONDS = 1.0f / ORB_TICK_RATE;
 
 constexpr int ORB_AUDIO_RATE = 48000;
 constexpr int ORB_AUDIO_CHANNELS = 2;
-
-// Reload rules. orb reloads game code and recasts art while the game runs, and
-// three rules keep that safe:
-//  1. State lives in the struct orb hands you. config() is read once at boot;
-//     if state_version or state_size differs after a code reload, orb zeroes
-//     the state and calls init instead of continuing on stale bytes.
-//  2. No pointer into your library survives a reload: not function pointers,
-//     not string literals, not static const tables. Store handles and indices,
-//     and re-bind behavior in reload.
-//  3. Assets are found by name: sprite_find("player", 0) is frame 0 of
-//     player.aseprite, animation_find("player", "walk") its "walk" tag. reload
-//     runs at boot after init, after every code reload, and after every art
-//     recast, so it is the one place to find things and store the handles.
-// A handle is an index plus a generation. A recast that puts different art at
-// an index bumps its generation, so a handle found before it draws and plays
-// nothing until reload finds it again. A find that misses logs the name and
-// returns ORB_NO_SPRITE, ORB_NO_ANIMATION, ORB_NO_SAMPLE, or ORB_NO_SONG.
-typedef struct orb_config {
-    size_t arena_size;
-    size_t state_size;
-    uint32_t state_version;
-    uint32_t save_version;
-    uint32_t max_entities;
-} orb_config;
 
 // Audio. sample_find("jump") is jump.wav from the manifest's sounds; song_find("title")
 // is title.wav from its songs. sound_play returns a voice handle; when all 16 game voices
@@ -162,6 +134,30 @@ typedef struct orb_api {
     orb_sprite (*sprite_find)(const char* stem, int frame);
     void (*volume_set)(orb_volumes v);
 } orb_api;
+
+// Reload rules. orb reloads game code and recasts art while the game runs, and
+// three rules keep that safe:
+//  1. State lives in the struct orb hands you. config() is read once at boot;
+//     if state_version or state_size differs after a code reload, orb zeroes
+//     the state and calls init instead of continuing on stale bytes.
+//  2. No pointer into your library survives a reload: not function pointers,
+//     not string literals, not static const tables. Store handles and indices,
+//     and re-bind behavior in reload.
+//  3. Assets are found by name: sprite_find("player", 0) is frame 0 of
+//     player.aseprite, animation_find("player", "walk") its "walk" tag. reload
+//     runs at boot after init, after every code reload, and after every art
+//     recast, so it is the one place to find things and store the handles.
+// A handle is an index plus a generation. A recast that puts different art at
+// an index bumps its generation, so a handle found before it draws and plays
+// nothing until reload finds it again. A find that misses logs the name and
+// returns ORB_NO_SPRITE, ORB_NO_ANIMATION, ORB_NO_SAMPLE, or ORB_NO_SONG.
+typedef struct orb_config {
+    size_t arena_size;
+    size_t state_size;
+    uint32_t state_version;
+    uint32_t save_version;
+    uint32_t max_entities;
+} orb_config;
 
 typedef struct orb_game {
     orb_config (*config)(void);

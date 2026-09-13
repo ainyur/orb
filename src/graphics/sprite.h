@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../cast/file.h"
+#include "../core/asset.h"
 #include "../orb.h"
 #include "framebuffer.h"
 
@@ -15,3 +15,4 @@ void orb_sprite_draw(
     uint32_t flags,
     const uint8_t* remap
 );
+uint64_t orb_sprite_id(const char* stem, int frame); // orb_asset_id with the frame as the suffix

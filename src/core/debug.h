@@ -6,7 +6,7 @@
 
 typedef struct orb_watch {
     orb_path path;
-    uint64_t mtime, pending, pending_since;
+    uint64_t mtime, pending_mtime, pending_since;
 } orb_watch;
 
 void orb_watch_init(orb_watch* w, const char* path);

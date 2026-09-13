@@ -34,7 +34,7 @@ static int win32_narrow(const wchar_t* wide, char* out, int cap) {
 }
 
 void orb_os_args(int* argc, char*** argv) {
-    static char* args[65]; // 64 and the NULL after them
+    static char* args[65];
     static char text[4096];
     int n;
     wchar_t** wide = CommandLineToArgvW(GetCommandLine(), &n);
@@ -66,18 +66,18 @@ bool orb_os_copy_file(const char* from, const char* to) {
     return CopyFile(win32_wide(from, f, ORB_PATH_MAX), win32_wide(to, t, ORB_PATH_MAX), FALSE) != 0;
 }
 
-void* orb_os_dlopen(const char* path) {
+orb_os_library* orb_os_dlopen(const char* path) {
     win32_wpath w;
 
-    return LoadLibrary(win32_wide(path, w, ORB_PATH_MAX));
+    return (orb_os_library*)LoadLibrary(win32_wide(path, w, ORB_PATH_MAX));
 }
 
-void orb_os_dlclose(void* lib) {
-    FreeLibrary(lib);
+void orb_os_dlclose(orb_os_library* lib) {
+    FreeLibrary((HMODULE)lib);
 }
 
-void* orb_os_dlsym(void* lib, const char* name) {
-    return (void*)GetProcAddress(lib, name);
+void* orb_os_dlsym(orb_os_library* lib, const char* name) {
+    return (void*)GetProcAddress((HMODULE)lib, name);
 }
 
 FILE* orb_os_fopen(const char* path, const char* mode) {
@@ -231,21 +231,22 @@ void orb_os_sleep(uint64_t ns) {
 }
 
 uint64_t orb_os_ticks(void) {
-    static uint64_t f;
+    static uint64_t ticks_per_second;
     LARGE_INTEGER count;
 
-    if (!f) {
+    if (!ticks_per_second) {
         LARGE_INTEGER freq;
 
         QueryPerformanceFrequency(&freq);
-        f = (uint64_t)freq.QuadPart;
+        ticks_per_second = (uint64_t)freq.QuadPart;
     }
 
     QueryPerformanceCounter(&count);
 
     uint64_t c = (uint64_t)count.QuadPart;
 
-    return c / f * 1000000000u + c % f * 1000000000u / f;
+    return c / ticks_per_second * ORB_NS_PER_SECOND +
+           c % ticks_per_second * ORB_NS_PER_SECOND / ticks_per_second;
 }
 
 #include "stdio.c"

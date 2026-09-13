@@ -1,7 +1,3 @@
-// The file helpers every platform shares, over the primitives each platform
-// provides: orb_os_stat, orb_os_fopen, and orb_os_read_dir, the only ones that
-// see a native path.
-
 static int stdio_compare_entries(const void* a, const void* b) {
     return strcmp(a, b); // the name is the first field
 }

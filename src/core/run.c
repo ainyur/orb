@@ -2,6 +2,7 @@
 #include "../cast/file.h"
 #include "../os/os.h"
 #include "api.h"
+#include "asset.h"
 #include "input.h"
 #include "log.h"
 #include "macros.h"
@@ -44,7 +45,7 @@ static bool run_open(orb_error* err) {
 static orb_cast_result run_result; // from the last successful cast; valid until the next one
 static const char* run_dir;
 static orb_arena run_assets[2], run_scratch;
-static int run_live;
+static int run_live_half;
 
 // Zero the state and start over: the layout the running code expects changed.
 // init sets the state up, then reload binds names, as it does after any recast.
@@ -72,7 +73,7 @@ static bool run_cast(int half, orb_error* err) {
 
     if (!run_load(result.file, err)) return false;
 
-    run_live = half;
+    run_live_half = half;
     run_result = result;
     return true;
 }
@@ -110,9 +111,9 @@ bool orb_run_boot(
 
     orb_arena_init(&run_arena, "arena", mem, run_config.arena_size);
     // Twice the struct, so a field added across a code reload does not end the session.
-    size_t reserve = orb_max(run_config.state_size * 2, (size_t)256 << 10);
+    size_t state_reserve = orb_max(run_config.state_size * 2, (size_t)256 << 10);
 
-    run_state = orb_arena_carve(&run_arena, "game state", reserve);
+    run_state = orb_arena_carve(&run_arena, "game state", state_reserve);
 
 #ifndef ORB_RELEASE
     if (!sealed.len) return run_boot_sources(game_dir, err) && run_open(err);
@@ -139,7 +140,7 @@ void orb_run_draw(void) {
 }
 
 void orb_run_loop(void (*poll)(void)) {
-    const uint64_t step = 1000000000u / ORB_TICK_RATE;
+    const uint64_t step = ORB_NS_PER_SECOND / ORB_TICK_RATE;
     uint64_t previous = orb_os_ticks(), accumulator = 0;
 
     for (;;) {
@@ -167,7 +168,7 @@ void orb_run_loop(void (*poll)(void)) {
 
 #ifndef ORB_RELEASE
 bool orb_run_recast(orb_error* err) {
-    if (!run_cast(1 - run_live, err)) return false;
+    if (!run_cast(1 - run_live_half, err)) return false;
 
     run_game->reload(run_state.base, orb_api_table());
     return true;
