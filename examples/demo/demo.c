@@ -1,8 +1,9 @@
 #include "orb.h"
 
 #define SCREEN_W 320
-#define SCREEN_H 180
-#define SPRITE 16
+#define FRAME 16  // the player sprite's frame, drawn at (x, y)
+#define BODY_AT 4 // its 8x8 body sits at (4,4) in that frame
+#define BODY 8
 
 #define ACCEL 0.15f
 #define MAX_SPEED 3.0f
@@ -27,6 +28,10 @@ typedef struct {
     orb_animation_state animation;
     orb_sprite sprite;
     orb_sample bounce;
+    orb_level room;
+    int floor, walls, shadow;
+    int grid; // the walls layer's cell size, what a hit snaps to
+    orb_camera camera;
 } game_state;
 
 static orb_config config(void) {
@@ -42,8 +47,9 @@ static orb_config config(void) {
 static void init(void* state, const orb_api* orb) {
     game_state* g = state;
 
-    g->x = (SCREEN_W - SPRITE) / 2;
-    g->y = (SCREEN_H - SPRITE) / 2;
+    g->x = 48;
+    g->y = 48;
+    g->camera.lerp = 0.85f;
     orb->song_play(orb->song_find("song"), true);
 }
 
@@ -52,24 +58,60 @@ static void reload(void* state, const orb_api* orb) {
 
     g->animation.animation = orb->animation_find("player", "walk");
     g->bounce = orb->sample_find("bounce");
+    g->room = orb->level_find("room");
+    g->floor = orb->layer_find(g->room, "floor");
+    g->walls = orb->layer_find(g->room, "walls");
+    g->shadow = orb->layer_find(g->room, "shadow");
+    g->grid = orb->layer_info(g->room, g->walls).grid;
+    g->camera.bounds = orb->level_bounds(g->room);
 }
 
 static float clampf(float v, float lo, float hi) {
     return v < lo ? lo : v > hi ? hi : v;
 }
 
-static float bounce(float* pos, float* vel, float max, float keep) {
+static bool blocked(const orb_api* orb, const game_state* g, float x, float y) {
+    int left = (int)x + BODY_AT, right = left + BODY - 1;
+    int top = (int)y + BODY_AT, bottom = top + BODY - 1;
+    orb_vec2 corners[4] = {{left, top}, {right, top}, {left, bottom}, {right, bottom}};
+
+    for (int i = 0; i < 4; i++)
+        if (orb->cell_get(g->room, g->walls, corners[i]) == 1) return true;
+
+    return false;
+}
+
+// Integrates one axis; on a wall hit moves the body flush against the cell it entered
+// and bounces or stops. Returns the pre-collision speed, or 0 when nothing was hit.
+static float move_axis(
+    const orb_api* orb,
+    const game_state* g,
+    float* pos,
+    float* vel,
+    float other,
+    bool along_x,
+    float keep
+) {
+    *pos += *vel;
+
+    float x = along_x ? *pos : other;
+    float y = along_x ? other : *pos;
+    if (!blocked(orb, g, x, y)) return 0;
+
+    if (*vel > 0) {
+        int edge = ((int)*pos + BODY_AT + BODY - 1) / g->grid * g->grid;
+
+        *pos = (float)(edge - BODY_AT - BODY);
+    } else {
+        int edge = ((int)*pos + BODY_AT) / g->grid * g->grid + g->grid;
+
+        *pos = (float)(edge - BODY_AT);
+    }
+
+    // A hard hit bounces and a soft one rests flush, so a held key settles against
+    // the wall; the wander (keep 1) always bounces, or it would stall.
     float speed = *vel < 0 ? -*vel : *vel;
-
-    if (*pos < 0) {
-        *pos = 0;
-        *vel = speed * keep;
-    } else if (*pos > max) {
-        *pos = max;
-        *vel = -speed * keep;
-    } else
-        return 0;
-
+    *vel = speed >= FLASH_SPEED || keep == 1.0f ? -*vel * keep : 0;
     return speed;
 }
 
@@ -103,21 +145,21 @@ static void update(void* state, const orb_api* orb) {
         if (g->vy > -0.05f && g->vy < 0.05f) g->vy = 0;
     }
 
-    g->x += g->vx;
-    g->y += g->vy;
-
     float keep = wandering ? 1.0f : BOUNCE;
-    float hit_x = bounce(&g->x, &g->vx, SCREEN_W - SPRITE, keep);
-    float hit_y = bounce(&g->y, &g->vy, SCREEN_H - SPRITE, keep);
+    float hit_x = move_axis(orb, g, &g->x, &g->vx, g->y, true, keep);
+    float hit_y = move_axis(orb, g, &g->y, &g->vy, g->x, false, keep);
     float hit = hit_x > hit_y ? hit_x : hit_y;
 
     if (hit > 0 && (wandering || hit >= FLASH_SPEED)) {
-        float pan = (g->x + SPRITE / 2) / (SCREEN_W / 2.0f) - 1;
+        float pan = (g->x - g->camera.at.x + FRAME / 2) / (SCREEN_W / 2.0f) - 1;
 
         g->flash = FLASH_TICKS;
         orb->sound_play(g->bounce, (orb_sound_params) {.volume = 0.8f, .pan = pan}, 0);
     }
     if (g->flash > 0) g->flash--;
+
+    g->camera.target = (orb_vec2f) {g->x + FRAME / 2, g->y + FRAME / 2};
+    orb->camera_update(&g->camera);
 
     g->sprite = orb->animation_step(&g->animation);
 }
@@ -133,6 +175,9 @@ static void draw(void* state, const orb_api* orb) {
     remap[WHITE] = RED;
 
     orb->clear(BG);
+    orb->layer_draw(g->room, g->floor);
+    orb->layer_draw(g->room, g->walls);
+    orb->layer_draw(g->room, g->shadow);
     orb->sprite_draw(
         g->sprite, (orb_vec2) {(int)g->x, (int)g->y}, g->flip ? ORB_FLIP_X : 0,
         g->flash > 0 ? remap : nullptr

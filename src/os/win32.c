@@ -93,6 +93,10 @@ bool orb_os_make_dir(const char* path) {
            GetLastError() == ERROR_ALREADY_EXISTS;
 }
 
+uint32_t orb_os_pid(void) {
+    return GetCurrentProcessId();
+}
+
 int orb_os_read_dir(const char* dir, orb_os_entry* out, int max) {
     orb_path pattern;
 

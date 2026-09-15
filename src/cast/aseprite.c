@@ -11,7 +11,7 @@ typedef struct {
     const uint8_t* zdata;
     uint32_t zlen;
     int16_t x, y;
-    uint16_t w, h;
+    uint16_t width, height;
     bool present;
 } ase_cel;
 
@@ -35,8 +35,8 @@ bool orb_ase_parse(orb_arena* a, orb_span file, orb_ase* out, orb_error* err) {
     memset(out, 0, sizeof *out);
 
     out->frame_count = orb_bytes_u16(p + 6);
-    out->w = orb_bytes_u16(p + 8);
-    out->h = orb_bytes_u16(p + 10);
+    out->width = orb_bytes_u16(p + 8);
+    out->height = orb_bytes_u16(p + 10);
     out->transparent = orb_bytes_u8(p + 28);
     out->color_count = orb_bytes_u16(p + 32);
 
@@ -124,8 +124,8 @@ bool orb_ase_parse(orb_arena* a, orb_span file, orb_ase* out, orb_error* err) {
 
                 cel->x = orb_bytes_i16(d + 2);
                 cel->y = orb_bytes_i16(d + 4);
-                cel->w = orb_bytes_u16(d + 16);
-                cel->h = orb_bytes_u16(d + 18);
+                cel->width = orb_bytes_u16(d + 16);
+                cel->height = orb_bytes_u16(d + 18);
                 cel->zdata = d + 20;
                 cel->zlen = (uint32_t)(chunk_end - cel->zdata);
                 cel->present = true;
@@ -158,7 +158,7 @@ bool orb_ase_parse(orb_arena* a, orb_span file, orb_ase* out, orb_error* err) {
         p = frame_end;
     }
 
-    size_t frame_size = (size_t)out->w * out->h;
+    size_t frame_size = (size_t)out->width * out->height;
 
     out->frames = orb_arena_push(a, frame_size * out->frame_count, 1);
     memset(out->frames, out->transparent, frame_size * out->frame_count);
@@ -178,26 +178,26 @@ bool orb_ase_parse(orb_arena* a, orb_span file, orb_ase* out, orb_error* err) {
                 );
             }
 
-            size_t cel_size = (size_t)cel->w * cel->h;
+            size_t cel_size = (size_t)cel->width * cel->height;
             uint8_t* pixels = orb_arena_push(a, cel_size, 1);
 
             if (orb_inflate(cel->zdata, cel->zlen, pixels, cel_size) != (ptrdiff_t)cel_size) {
                 return ase_fail(err, "cel decompression failed");
             }
 
-            for (int y = 0; y < cel->h; y++) {
+            for (int y = 0; y < cel->height; y++) {
                 int fy = cel->y + y;
 
-                if (fy < 0 || fy >= out->h) continue;
+                if (fy < 0 || fy >= out->height) continue;
 
-                for (int x = 0; x < cel->w; x++) {
+                for (int x = 0; x < cel->width; x++) {
                     int fx = cel->x + x;
 
-                    if (fx < 0 || fx >= out->w) continue;
+                    if (fx < 0 || fx >= out->width) continue;
 
-                    uint8_t index = pixels[y * cel->w + x];
+                    uint8_t index = pixels[y * cel->width + x];
 
-                    if (index != out->transparent) frame[fy * out->w + fx] = index;
+                    if (index != out->transparent) frame[fy * out->width + fx] = index;
                 }
             }
         }

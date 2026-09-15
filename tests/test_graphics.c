@@ -68,10 +68,26 @@ int main(void) {
     CHECK_EQ(rgb[31], 0x123456);
 
     uint8_t pixels[8] = {1, 2, 3, 4, 5, 6, 7, 8};
-    orb_sheet_desc sheets[1] = {{.w = 4, .h = 2, .pixels = 0}};
+    orb_sheet_desc sheets[1] = {{.width = 4, .height = 2, .pixels = 0}};
     orb_sprite_desc sprites[2] = {
-        {.sheet = 0, .x = 0, .y = 0, .w = 2, .h = 2, .ox = 1, .oy = 1, .fw = 4, .fh = 4},
-        {.sheet = 0, .x = 2, .y = 0, .w = 2, .h = 2, .ox = 0, .oy = 0, .fw = 4, .fh = 4}
+        {.sheet = 0,
+         .x = 0,
+         .y = 0,
+         .width = 2,
+         .height = 2,
+         .ox = 1,
+         .oy = 1,
+         .frame_width = 4,
+         .frame_height = 4},
+        {.sheet = 0,
+         .x = 2,
+         .y = 0,
+         .width = 2,
+         .height = 2,
+         .ox = 0,
+         .oy = 0,
+         .frame_width = 4,
+         .frame_height = 4}
     };
     orb_animation_desc animations[1] = {{.first_sprite = 0, .first_duration = 0, .count = 2}};
     uint16_t durations[2] = {2, 1};
@@ -110,6 +126,10 @@ int main(void) {
     orb_sprite_draw(
         &fb, &as, (orb_vec2f) {}, ORB_SPRITE(99), (orb_vec2) {0, 0}, 0, nullptr
     ); // invalid handle: nothing
+
+    orb_framebuffer_clear(&fb, 0);
+    orb_sprite_draw(&fb, &as, (orb_vec2f) {-0.5f, 0}, ORB_SPRITE(1), (orb_vec2) {1, 0}, 0, nullptr);
+    CHECK_EQ(fb.px[0 * 8 + 2], 3); // floor(-0.5) is -1, so x 1 lands at 2
 
     orb_animation_state st;
 

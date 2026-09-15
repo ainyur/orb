@@ -63,10 +63,10 @@ run-wine: bin/orb.exe
 	$(MAKE) --no-print-directory -s -C $(GAME) build/game.dll
 	WINEDEBUG=-all wine bin/orb.exe run $(GAME)
 
-build/test_%: tests/test_%.c tests/test.h $(SRC) $(wildcard tests/fixtures/* tests/fixtures/*/*) | build/scratch
+build/test_%: tests/test_%.c tests/test.h $(SRC) $(wildcard tests/fixtures/* tests/fixtures/*/* tests/fixtures/*/*/*) | build/scratch
 	$(CC) $(CFLAGS) -g -O1 -DORB_OS_HEADLESS -Isrc -o $@ $< $(TESTLIBS)
 
-build/wine/test_%.exe: tests/test_%.c tests/test.h $(SRC) $(wildcard tests/fixtures/* tests/fixtures/*/*) | build/scratch build/wine
+build/wine/test_%.exe: tests/test_%.c tests/test.h $(SRC) $(wildcard tests/fixtures/* tests/fixtures/*/* tests/fixtures/*/*/*) | build/scratch build/wine
 	$(CC) $(CFLAGS) -g -O1 -DORB_OS_HEADLESS -Isrc -o $@ $< $(TESTLIBS)
 
 test: $(TESTS)
@@ -79,7 +79,7 @@ test-wine: build/wine/test_os.exe
 	@test -f build/scratch/héllo/ü.bin || { echo "wine wrote a mangled path"; exit 1; }
 
 fixtures: build/wav$(EXE)
-	mkdir -p tests/fixtures/art tests/fixtures/sfx tests/fixtures/music examples/demo/sfx examples/demo/music
+	mkdir -p tests/fixtures/art tests/fixtures/sfx tests/fixtures/music tests/fixtures/levels examples/demo/sfx examples/demo/music examples/demo/levels
 	aseprite -b --script tests/fixtures/make.lua
 	aseprite -b --script examples/demo/art/make.lua
 	build/wav$(EXE) beep tests/fixtures/sfx/beep.wav
@@ -87,5 +87,5 @@ fixtures: build/wav$(EXE)
 	build/wav$(EXE) beep examples/demo/sfx/bounce.wav
 	build/wav$(EXE) song examples/demo/music/song.wav
 
-build/wav$(EXE): tests/fixtures/wav.c | build/scratch
+build/wav$(EXE): build/%$(EXE): tests/fixtures/%.c | build/scratch
 	$(CC) $(CFLAGS) -O1 -o $@ $<

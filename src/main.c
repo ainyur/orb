@@ -90,10 +90,10 @@ static int cast_once(const char* dir, bool seal, const char* out_path) {
     }
 
     printf(
-        "%s %u sprites, %u animations, %u samples, %u songs (%zu bytes; scratch peaked at %zu "
-        "of the %zu asset_headroom)\n",
-        out_path ? "sealed" : "cast", as.sprite_count, as.animation_count, as.sample_count,
-        as.song_count, result.file.len, scratch.peak, scratch.size
+        "%s %u sprites, %u animations, %u levels, %u layers, %u samples, %u songs (%zu bytes; "
+        "scratch peaked at %zu of the %zu asset_headroom)\n",
+        out_path ? "sealed" : "cast", as.sprite_count, as.animation_count, as.level_count,
+        as.layer_count, as.sample_count, as.song_count, result.file.len, scratch.peak, scratch.size
     );
 
     return 0;

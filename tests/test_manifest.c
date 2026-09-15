@@ -47,6 +47,28 @@ int main(void) {
 
     orb_error err;
 
+    // "world" defaults to levels/world.ldtk and can be overridden like art or sfx
+    static alignas(16) uint8_t world_mem[1 << 16];
+    orb_arena world_arena;
+    orb_arena_init(&world_arena, "world manifest", world_mem, sizeof world_mem);
+
+    orb_manifest wm;
+    CHECK(orb_manifest_load(&world_arena, DIR, &wm, &err));
+    CHECK(strcmp(wm.world, "levels/world.ldtk") == 0);
+
+    const char* world_override =
+        "{\"id\": \"m\", \"name\": \"m\", \"size\": [64, 32], \"asset_headroom\": 1048576,\n"
+        " \"palette\": " ART
+        "art/palette.aseprite\", \"art\": \".\", \"world\": \"maps/w.ldtk\"}\n";
+    CHECK(orb_os_write_file(
+        DIR "/orb.json", (orb_span) {(uint8_t*)world_override, strlen(world_override)}
+    ));
+    orb_arena_reset(&world_arena);
+    CHECK(orb_manifest_load(&world_arena, DIR, &wm, &err));
+    CHECK(strcmp(wm.world, "maps/w.ldtk") == 0);
+
+    CHECK(write_manifest("[64, 32]")); // restore for orb_run_boot below
+
     if (!orb_run_boot(&test_game, DIR, (orb_span) {}, &err)) {
         fprintf(stderr, "boot: %s\n", err.text);
         return 1;

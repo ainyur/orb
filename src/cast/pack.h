@@ -9,11 +9,11 @@ typedef struct orb_pack_frame {
 } orb_pack_frame;
 
 typedef struct orb_pack_rect {
-    uint16_t x, y, w, h;
+    uint16_t x, y, width, height;
 } orb_pack_rect;
 
 typedef struct orb_pack {
-    uint16_t sheet_w, sheet_h;
+    uint16_t sheet_width, sheet_height;
     uint8_t* pixels;
     orb_pack_rect* rects;
     uint32_t rect_count;

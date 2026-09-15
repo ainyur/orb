@@ -8,6 +8,8 @@
 #define BACKGROUND 0x202040u // master index 1, what the fixture clears to
 #define RED 0xff0000u        // walk frame 0: an 8x8 body at (4,4) of the 16x16 sprite
 #define GREEN 0x00ff00u      // walk frame 1: an 8x8 body at (6,4)
+#define WHITE 0xffffffu      // tile 7's body, master index 5
+#define YELLOW 0xffff00u     // tile 7's marker pixel, master index 6
 
 static uint32_t pixel(int x, int y) {
     return orb_os_headless_frame()[y * W + x];
@@ -37,6 +39,12 @@ int main(void) {
     orb_run_draw();
 
     CHECK_EQ(pixel(0, 0), BACKGROUND);
+
+    // the floor layer: tile 7 at cell (4,2) flipped Y puts its marker at the cell's bottom-left.
+    // Cell (3,2) is under the sprite's body at boot (body x 24..31, y 12..19), so it is
+    // checked after the walk below moves the body away.
+    CHECK_EQ(pixel(4 * 8, 2 * 8 + 7), YELLOW);
+    CHECK_EQ(pixel(4 * 8, 2 * 8), WHITE);
 
     // sounds and the song play through the API table into the headless render
     const orb_api* api = orb_api_table();
@@ -129,6 +137,25 @@ int main(void) {
 
     // handles survive a recast that changes nothing, so a game need not find again
     CHECK(api->sound_play(beep, (orb_sound_params) {.volume = 1}, 0).v != ORB_NO_VOICE.v);
+
+    in = (orb_input) {0};
+    in.down[ORB_BTN_LEFT] = true;
+    orb_os_headless_set_input(&in);
+
+    for (int i = 0; i < 40; i++)
+        CHECK(orb_run_tick());
+
+    orb_run_draw();
+
+    int x, y;
+    bool is_red = find(RED, &x, &y);
+    CHECK(is_red || find(GREEN, &x, &y));
+    // the body's left edge stops against the wall cells; flipped, walk frame 0's body sits
+    // symmetric in its 16-wide sprite (edge at x+4) but frame 1's does not (edge at x+2)
+    CHECK_EQ(x, is_red ? 8 : 6);
+    // cell (3,2) is uncovered now: tile 7 flipped X has its marker at the cell's top-right
+    CHECK_EQ(pixel(3 * 8 + 7, 2 * 8), YELLOW);
+    CHECK_EQ(pixel(3 * 8 + 0, 2 * 8), WHITE);
 
     orb_os_close();
 

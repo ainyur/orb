@@ -40,7 +40,7 @@ void orb_pack_frames(
     orb_size frame,
     orb_pack* out
 ) {
-    int w = frame.w, h = frame.h;
+    int w = frame.width, h = frame.height;
     size_t frame_size = (size_t)w * h;
     pack_bounds* bounds = orb_arena_push_array(a, pack_bounds, frame_count);
     uint32_t* owner = orb_arena_push_array(a, uint32_t, frame_count); // frame that a rect came from
@@ -73,8 +73,8 @@ void orb_pack_frames(
         if (found == out->rect_count) {
             orb_pack_rect* rect = &out->rects[out->rect_count];
 
-            rect->w = empty ? 0 : (uint16_t)(bounds[f].x1 - bounds[f].x0 + 1);
-            rect->h = empty ? 0 : (uint16_t)(bounds[f].y1 - bounds[f].y0 + 1);
+            rect->width = empty ? 0 : (uint16_t)(bounds[f].x1 - bounds[f].x0 + 1);
+            rect->height = empty ? 0 : (uint16_t)(bounds[f].y1 - bounds[f].y0 + 1);
             owner[out->rect_count++] = f;
         }
 
@@ -83,10 +83,10 @@ void orb_pack_frames(
         out->frames[f].oy = empty ? 0 : (int16_t)bounds[f].y0;
     }
 
-    out->sheet_w = 256;
+    out->sheet_width = 256;
 
     for (uint32_t r = 0; r < out->rect_count; r++) {
-        if (out->rects[r].w > out->sheet_w) out->sheet_w = out->rects[r].w;
+        if (out->rects[r].width > out->sheet_width) out->sheet_width = out->rects[r].width;
     }
 
     int cursor_x = 0, cursor_y = 0, shelf_h = 0;
@@ -94,9 +94,9 @@ void orb_pack_frames(
     for (uint32_t r = 0; r < out->rect_count; r++) {
         orb_pack_rect* rect = &out->rects[r];
 
-        if (rect->w == 0) continue;
+        if (rect->width == 0) continue;
 
-        if (cursor_x + rect->w > out->sheet_w) {
+        if (cursor_x + rect->width > out->sheet_width) {
             cursor_x = 0;
             cursor_y += shelf_h;
             shelf_h = 0;
@@ -104,23 +104,23 @@ void orb_pack_frames(
 
         rect->x = (uint16_t)cursor_x;
         rect->y = (uint16_t)cursor_y;
-        cursor_x += rect->w;
+        cursor_x += rect->width;
 
-        if (rect->h > shelf_h) shelf_h = rect->h;
+        if (rect->height > shelf_h) shelf_h = rect->height;
     }
 
-    out->sheet_h = (uint16_t)(cursor_y + shelf_h);
-    out->pixels = orb_arena_push(a, (size_t)out->sheet_w * out->sheet_h, 1);
+    out->sheet_height = (uint16_t)(cursor_y + shelf_h);
+    out->pixels = orb_arena_push(a, (size_t)out->sheet_width * out->sheet_height, 1);
 
     for (uint32_t r = 0; r < out->rect_count; r++) {
         const orb_pack_rect* rect = &out->rects[r];
         const uint8_t* frame = frames + owner[r] * frame_size;
         pack_bounds b = bounds[owner[r]];
 
-        for (int y = 0; y < rect->h; y++) {
+        for (int y = 0; y < rect->height; y++) {
             memcpy(
-                out->pixels + (rect->y + y) * out->sheet_w + rect->x, frame + (b.y0 + y) * w + b.x0,
-                rect->w
+                out->pixels + (rect->y + y) * out->sheet_width + rect->x,
+                frame + (b.y0 + y) * w + b.x0, rect->width
             );
         }
     }

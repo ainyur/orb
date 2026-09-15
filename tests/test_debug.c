@@ -52,20 +52,39 @@ int main(void) {
     CHECK(!orb_watch_poll(&w, 3400000000));
     CHECK(orb_watch_poll(&w, 3700000000));
     CHECK_EQ(orb_os_run("make -s -C examples/demo build/game" ORB_OS_LIB_SUFFIX, debug_swallow), 0);
+
+    // the copy is named per process, and a leftover at that name is replaced by a
+    // new file rather than truncated, since another orb may have it mapped
+    char copy_name[64];
+    orb_path leftover;
+
+    snprintf(copy_name, sizeof copy_name, ".orb-game-%u-0" ORB_OS_LIB_SUFFIX, orb_os_pid());
+    orb_path_join(leftover, "examples/demo/build", copy_name);
+    CHECK(orb_os_write_file(leftover, (orb_span) {a, 1}));
+#ifndef _WIN32
+    struct stat before;
+    CHECK_EQ(stat(leftover, &before), 0);
+#endif
     CHECK_EQ(debug_boot("examples/demo"), 0);
     CHECK(strcmp(debug_so_path, "examples/demo/build/game" ORB_OS_LIB_SUFFIX) == 0);
-    CHECK(strncmp(debug_copy_path, "examples/demo/build/", 20) == 0);
-    CHECK(strstr(debug_copy_path, ORB_OS_LIB_SUFFIX) != nullptr);
+    CHECK(strcmp(debug_copy_path, leftover) == 0);
     CHECK(orb_os_file_mtime(debug_copy_path) != 0);
+#ifndef _WIN32
+    struct stat after;
+    CHECK_EQ(stat(debug_copy_path, &after), 0);
+    CHECK(after.st_ino != before.st_ino);
+#endif
 
     // the asset watch is what the cast read: the manifest, then every file and
     // directory it opened, so a file added to a directory recasts too
     debug_watch_assets();
-    CHECK_EQ(debug_assets.count, 8);
+    CHECK_EQ(debug_assets.count, 10);
     CHECK(strcmp(debug_assets.at[0].path, "examples/demo/orb.json") == 0);
     CHECK(strcmp(debug_assets.at[1].path, "examples/demo/art/palette.aseprite") == 0);
-    CHECK(strcmp(debug_assets.at[2].path, "examples/demo/art") == 0);
-    CHECK(strcmp(debug_assets.at[7].path, "examples/demo/music/song.wav") == 0);
+    CHECK(strcmp(debug_assets.at[2].path, "examples/demo/levels/world.ldtk") == 0);
+    CHECK(strcmp(debug_assets.at[3].path, "examples/demo/art") == 0);
+    CHECK(strcmp(debug_assets.at[5].path, "examples/demo/levels/tiles.aseprite") == 0);
+    CHECK(strcmp(debug_assets.at[9].path, "examples/demo/music/song.wav") == 0);
 
     debug_finish();
 

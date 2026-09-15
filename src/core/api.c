@@ -1,7 +1,9 @@
 #include "api.h"
 #include "../audio/mixer.h"
+#include "../graphics/camera.h"
 #include "../graphics/palette.h"
 #include "../graphics/sprite.h"
+#include "../graphics/tilemap.h"
 #include "../os/os.h"
 #include "asset.h"
 #include "input.h"
@@ -50,8 +52,86 @@ static void api_camera_set(orb_vec2f at) {
     api_camera = at;
 }
 
+static void api_camera_update(orb_camera* camera) {
+    api_camera =
+        orb_camera_update(camera, (orb_size) {api_framebuffer.width, api_framebuffer.height});
+}
+
+static int api_cell_get(orb_level level, int layer, orb_vec2 at) {
+    return orb_tilemap_cell(&api_assets.assets, level, layer, at);
+}
+
 static void api_clear(uint8_t index) {
     orb_framebuffer_clear(&api_framebuffer, index);
+}
+
+static void api_layer_draw(orb_level level, int layer) {
+    orb_tilemap_draw(&api_framebuffer, &api_assets.assets, api_camera, level, layer);
+}
+
+// The level desc behind a handle, or nullptr when it is stale.
+static const orb_level_desc* api_level(orb_level level) {
+    uint32_t index = orb_asset_index_of(&api_assets.assets, level);
+
+    return index == ORB_NO_INDEX ? nullptr : &api_assets.assets.levels[index];
+}
+
+static int api_layer_find(orb_level level, const char* name) {
+    const orb_level_desc* d = api_level(level);
+    uint64_t id = orb_asset_id(name, "");
+
+    for (int i = 0; d && i < d->layer_count; i++)
+        if (api_assets.assets.layer_ids[d->first_layer + i] == id) return i;
+
+    if (d) orb_log("no layer \"%s\" in the level", name);
+
+    return (int)ORB_NO_INDEX;
+}
+
+static orb_layer_info api_layer_info(orb_level level, int layer) {
+    const orb_level_desc* d = api_level(level);
+
+    if (!d || layer < 0 || layer >= d->layer_count) return (orb_layer_info) {};
+
+    const orb_layer_desc* l = &api_assets.assets.layers[d->first_layer + layer];
+
+    return (orb_layer_info) {
+        .grid = l->grid,
+        .columns = l->columns,
+        .rows = l->rows,
+        .has_tiles = l->sublayers > 0,
+        .has_cells = l->cells != ORB_NO_INDEX
+    };
+}
+
+static orb_rect api_level_bounds(orb_level level) {
+    const orb_level_desc* d = api_level(level);
+
+    if (!d) return (orb_rect) {};
+
+    return (orb_rect) {{d->world_x, d->world_y}, {d->width, d->height}};
+}
+
+static orb_level api_level_find(const char* stem) {
+    uint32_t v = orb_asset_find(&api_assets, ORB_ASSET_LEVEL, orb_asset_id(stem, ""));
+
+    if (v == ORB_NO_INDEX) orb_log("no level \"%s\"", stem);
+
+    return ORB_LEVEL(v);
+}
+
+static int api_level_neighbors(orb_level level, orb_neighbor* out, int max) {
+    const orb_level_desc* d = api_level(level);
+    int n = 0;
+
+    for (int i = 0; d && i < d->neighbor_count && n < max; i++) {
+        const orb_neighbor_desc* link = &api_assets.assets.neighbors[d->first_neighbor + i];
+        uint32_t generation = api_assets.assets.level_generations[link->level];
+
+        out[n++] = (orb_neighbor) {ORB_LEVEL(link->level | generation << 24), link->dir};
+    }
+
+    return n;
 }
 
 static uint32_t api_palette_get(int i) {
@@ -138,7 +218,15 @@ static const orb_api api_table = {
     .button_pressed = orb_button_pressed,
     .button_released = orb_button_released,
     .camera_set = api_camera_set,
+    .camera_update = api_camera_update,
+    .cell_get = api_cell_get,
     .clear = api_clear,
+    .layer_draw = api_layer_draw,
+    .layer_find = api_layer_find,
+    .layer_info = api_layer_info,
+    .level_bounds = api_level_bounds,
+    .level_find = api_level_find,
+    .level_neighbors = api_level_neighbors,
     .log = orb_log,
     .palette_get = api_palette_get,
     .palette_reset = api_palette_reset,

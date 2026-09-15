@@ -19,8 +19,8 @@ int main(void) {
     orb_ase ase;
 
     CHECK(orb_ase_parse(&a, file, &ase, &err));
-    CHECK_EQ(ase.w, 16);
-    CHECK_EQ(ase.h, 16);
+    CHECK_EQ(ase.width, 16);
+    CHECK_EQ(ase.height, 16);
     CHECK_EQ(ase.frame_count, 2);
     CHECK_EQ(ase.color_count, 4);
     CHECK_EQ(ase.transparent, 0);

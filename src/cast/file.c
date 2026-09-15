@@ -44,11 +44,19 @@ static const file_row file_rows[] = {
     FILE_IDS(SAMPLE_IDS, sample_ids, sample_count),
     FILE_ROW(SONGS, orb_song_desc, songs, song_count, ORB_MAX_SONGS),
     FILE_IDS(SONG_IDS, song_ids, song_count),
+    FILE_ROW(TILESETS, orb_tileset_desc, tilesets, tileset_count, 0),
+    FILE_ROW(LEVELS, orb_level_desc, levels, level_count, ORB_MAX_LEVELS),
+    FILE_ROW(LAYERS, orb_layer_desc, layers, layer_count, ORB_MAX_LAYERS),
+    FILE_ROW(NEIGHBORS, orb_neighbor_desc, neighbors, neighbor_count, 0),
+    FILE_ROW(TILES, uint16_t, tiles, tile_count, 0),
+    FILE_ROW(CELLS, uint8_t, cells, cell_count, 0),
+    FILE_IDS(LEVEL_IDS, level_ids, level_count),
+    FILE_IDS(LAYER_IDS, layer_ids, layer_count),
 };
 
 constexpr uint32_t FILE_ROW_COUNT = sizeof file_rows / sizeof *file_rows;
 
-static_assert(FILE_ROW_COUNT == ORB_SEC_COUNT_, "every section tag has a row");
+static_assert(FILE_ROW_COUNT == ORB_SEC_COUNT_ - 1, "every section tag has a row");
 
 static const void** file_ptr(const orb_assets* as, const file_row* row) {
     return (const void**)((char*)as + row->ptr);
@@ -89,6 +97,62 @@ orb_span orb_file_write(orb_arena* a, const orb_assets* in) {
     }
 
     return (orb_span) {base, (size_t)(a->base + a->used - base)};
+}
+
+static bool file_check_levels(const orb_assets* out, orb_error* err) {
+    for (uint32_t i = 0; i < out->tileset_count; i++) {
+        const orb_tileset_desc* t = &out->tilesets[i];
+
+        if (t->sheet >= out->sheet_count || t->grid == 0 || t->columns == 0)
+            return orb_error_set(err, "orb file: tileset %u names a bad sheet or grid", i);
+    }
+
+    for (uint32_t i = 0; i < out->layer_count; i++) {
+        const orb_layer_desc* l = &out->layers[i];
+        uint64_t area = (uint64_t)l->columns * l->rows;
+
+        if (l->grid == 0 || area == 0)
+            return orb_error_set(err, "orb file: layer %u has an empty grid", i);
+
+        if (l->sublayers > ORB_MAX_SUBLAYERS)
+            return orb_error_set(err, "orb file: layer %u has %u sub-layers", i, l->sublayers);
+
+        if (l->sublayers && l->tileset >= out->tileset_count)
+            return orb_error_set(err, "orb file: layer %u names tileset %u", i, l->tileset);
+
+        if (l->sublayers && (uint64_t)l->tiles + area * l->sublayers > out->tile_count)
+            return orb_error_set(err, "orb file: layer %u runs past the tiles section", i);
+
+        if (l->cells != ORB_NO_INDEX && (uint64_t)l->cells + area > out->cell_count)
+            return orb_error_set(err, "orb file: layer %u runs past the cells section", i);
+
+        for (uint64_t k = 0; l->sublayers && k < area * l->sublayers; k++) {
+            uint16_t id = out->tiles[l->tiles + k] & ORB_TILE_ID_MASK;
+
+            if (id > out->tilesets[l->tileset].count)
+                return orb_error_set(
+                    err, "orb file: layer %u holds tile %u past its tileset", i, id
+                );
+        }
+    }
+
+    for (uint32_t i = 0; i < out->level_count; i++) {
+        const orb_level_desc* d = &out->levels[i];
+
+        if ((uint32_t)d->first_layer + d->layer_count > out->layer_count ||
+            (uint32_t)d->first_neighbor + d->neighbor_count > out->neighbor_count)
+            return orb_error_set(err, "orb file: level %u runs past its layers or neighbors", i);
+    }
+
+    for (uint32_t i = 0; i < out->neighbor_count; i++) {
+        if (out->neighbors[i].level >= out->level_count ||
+            out->neighbors[i].dir > ORB_NEIGHBOR_OVERLAP)
+            return orb_error_set(
+                err, "orb file: neighbor %u names level %u", i, out->neighbors[i].level
+            );
+    }
+
+    return true;
 }
 
 bool orb_file_load(orb_span file, orb_assets* out, orb_error* err) {
@@ -187,5 +251,5 @@ bool orb_file_load(orb_span file, orb_assets* out, orb_error* err) {
         }
     }
 
-    return true;
+    return file_check_levels(out, err);
 }

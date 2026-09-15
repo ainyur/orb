@@ -18,9 +18,9 @@ typedef struct orb_manifest_song {
 } orb_manifest_song;
 
 // orb.json. id, name, and size are required; the rest default to the layout
-// art/palette.aseprite, art/, sfx/, and music/ and 16 MB of headroom. The
-// directories are walked recursively at cast, so only songs list files, one
-// stem to tempo each, since a rendered file carries none.
+// art/palette.aseprite, art/, sfx/, music/, and levels/world.ldtk, and 16 MB of
+// headroom. The directories are walked recursively at cast, so only songs
+// list files, one stem to tempo each, since a rendered file carries none.
 typedef struct orb_manifest {
     const char* id;
     const char* name;
@@ -28,6 +28,7 @@ typedef struct orb_manifest {
     const char* art;
     const char* sfx;
     const char* music;
+    const char* world;
     const orb_manifest_song* songs;
     int song_count;
     orb_size size;

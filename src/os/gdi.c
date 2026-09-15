@@ -22,15 +22,15 @@ static const uint32_t gdi_keymap[ORB_BTN_COUNT] = {VK_UP, VK_DOWN, VK_LEFT,   VK
 // Integer-scale the frame into the client area, centered, borders left to the
 // class background brush.
 static void gdi_blit(HDC dc, const uint32_t* rgb) {
-    int scale = orb_max(1, orb_min(gdi_win.w / gdi_fb.w, gdi_win.h / gdi_fb.h));
+    int scale = orb_max(1, orb_min(gdi_win.width / gdi_fb.width, gdi_win.height / gdi_fb.height));
 
-    int w = gdi_fb.w * scale, h = gdi_fb.h * scale;
-    int ox = (gdi_win.w - w) / 2, oy = (gdi_win.h - h) / 2;
+    int w = gdi_fb.width * scale, h = gdi_fb.height * scale;
+    int ox = (gdi_win.width - w) / 2, oy = (gdi_win.height - h) / 2;
     BITMAPINFO info = {
         .bmiHeader = {
             .biSize = sizeof(BITMAPINFOHEADER),
-            .biWidth = gdi_fb.w,
-            .biHeight = -gdi_fb.h, // top-down
+            .biWidth = gdi_fb.width,
+            .biHeight = -gdi_fb.height, // top-down
             .biPlanes = 1,
             .biBitCount = 32,
             .biCompression = BI_RGB,
@@ -38,7 +38,9 @@ static void gdi_blit(HDC dc, const uint32_t* rgb) {
     };
 
     SetStretchBltMode(dc, COLORONCOLOR); // nearest neighbour: pixels stay square
-    StretchDIBits(dc, ox, oy, w, h, 0, 0, gdi_fb.w, gdi_fb.h, rgb, &info, DIB_RGB_COLORS, SRCCOPY);
+    StretchDIBits(
+        dc, ox, oy, w, h, 0, 0, gdi_fb.width, gdi_fb.height, rgb, &info, DIB_RGB_COLORS, SRCCOPY
+    );
 }
 
 static LRESULT CALLBACK gdi_proc(HWND window, UINT msg, WPARAM w, LPARAM l) {
@@ -52,8 +54,8 @@ static LRESULT CALLBACK gdi_proc(HWND window, UINT msg, WPARAM w, LPARAM l) {
         return 0;
     }
     case WM_SIZE:
-        gdi_win.w = LOWORD(l);
-        gdi_win.h = HIWORD(l);
+        gdi_win.width = LOWORD(l);
+        gdi_win.height = HIWORD(l);
         return 0;
     case WM_PAINT: {
         PAINTSTRUCT ps;
@@ -77,7 +79,7 @@ bool orb_os_open(const orb_os_config* cfg) {
     int scale = orb_os_open_scale(cfg->size, screen);
 
     gdi_fb = cfg->size;
-    gdi_win = (orb_size) {gdi_fb.w * scale, gdi_fb.h * scale};
+    gdi_win = (orb_size) {gdi_fb.width * scale, gdi_fb.height * scale};
 
     WNDCLASS wc = {
         .lpfnWndProc = gdi_proc,
@@ -95,12 +97,13 @@ bool orb_os_open(const orb_os_config* cfg) {
     }
 
     DWORD style = WS_OVERLAPPEDWINDOW;
-    RECT frame = {0, 0, gdi_win.w, gdi_win.h};
+    RECT frame = {0, 0, gdi_win.width, gdi_win.height};
 
     AdjustWindowRect(&frame, style, FALSE); // grow the outer rect so the client is fb * scale
 
     int outer_w = frame.right - frame.left, outer_h = frame.bottom - frame.top;
-    int x = (screen.w - outer_w) / 2, y = (screen.h - outer_h) / 2; // centered, not cascaded
+    int x = (screen.width - outer_w) / 2,
+        y = (screen.height - outer_h) / 2; // centered, not cascaded
 
     win32_wpath title;
 

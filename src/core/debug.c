@@ -57,14 +57,20 @@ static uint8_t debug_depfile_mem[1 << 16];
 
 // Copy the game library to a fresh name and load the copy, so the compiler can overwrite
 // the original while it is loaded (Windows locks loaded DLLs; the copy keeps
-// both platforms on one path). The previous copy is closed and removed only
+// both platforms on one path). The name carries the process id and any leftover
+// is removed before the copy, so a second orb on the same game never truncates
+// a file this process has mapped. The previous copy is closed and removed only
 // after the new one loaded, so a broken build keeps the old code running.
 static const orb_game* debug_load_game(void) {
     char name[64];
-    snprintf(name, sizeof name, "build/.orb-game-%d" ORB_OS_LIB_SUFFIX, debug_copy_count++);
+    snprintf(
+        name, sizeof name, "build/.orb-game-%u-%d" ORB_OS_LIB_SUFFIX, orb_os_pid(),
+        debug_copy_count++
+    );
     orb_path path;
 
     orb_path_join(path, debug_dir, name);
+    remove(path);
 
     if (!orb_os_copy_file(debug_so_path, path)) {
         orb_log("cannot copy %s to %s", debug_so_path, path);

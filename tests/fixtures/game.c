@@ -5,6 +5,8 @@ typedef struct {
     bool flip;
     orb_animation_state animation;
     orb_sprite sprite;
+    orb_level room;
+    int floor, collision;
 } game_state;
 
 static orb_config config(void) {
@@ -30,23 +32,35 @@ static void reload(void* state, const orb_api* orb) {
     game_state* g = state;
 
     g->animation.animation = orb->animation_find("player", "walk");
+    g->room = orb->level_find("room");
+    g->floor = orb->layer_find(g->room, "floor");
+    g->collision = orb->layer_find(g->room, "collision");
+}
+
+static bool blocked(const orb_api* orb, const game_state* g, int x, int y) {
+    orb_vec2 corners[4] = {{x + 4, y + 4}, {x + 11, y + 4}, {x + 4, y + 11}, {x + 11, y + 11}};
+
+    for (int i = 0; i < 4; i++)
+        if (orb->cell_get(g->room, g->collision, corners[i]) == 1) return true;
+
+    return false;
 }
 
 static void update(void* state, const orb_api* orb) {
     game_state* g = state;
 
-    if (orb->button_down(ORB_BTN_LEFT)) {
+    if (orb->button_down(ORB_BTN_LEFT) && !blocked(orb, g, g->x - 1, g->y)) {
         g->x--;
         g->flip = true;
     }
 
-    if (orb->button_down(ORB_BTN_RIGHT)) {
+    if (orb->button_down(ORB_BTN_RIGHT) && !blocked(orb, g, g->x + 1, g->y)) {
         g->x++;
         g->flip = false;
     }
 
-    if (orb->button_down(ORB_BTN_UP)) g->y--;
-    if (orb->button_down(ORB_BTN_DOWN)) g->y++;
+    if (orb->button_down(ORB_BTN_UP) && !blocked(orb, g, g->x, g->y - 1)) g->y--;
+    if (orb->button_down(ORB_BTN_DOWN) && !blocked(orb, g, g->x, g->y + 1)) g->y++;
 
     g->sprite = orb->animation_step(&g->animation);
 }
@@ -55,6 +69,7 @@ static void draw(void* state, const orb_api* orb) {
     game_state* g = state;
 
     orb->clear(1);
+    orb->layer_draw(g->room, g->floor);
     orb->sprite_draw(g->sprite, (orb_vec2) {g->x, g->y}, g->flip ? ORB_FLIP_X : 0, nullptr);
 }
 

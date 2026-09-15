@@ -42,11 +42,11 @@ bool orb_os_open(const orb_os_config* cfg) {
 
     int scale = orb_os_open_scale(x11_fb, x11_screen);
 
-    x11_win = (orb_size) {x11_fb.w * scale, x11_fb.h * scale};
+    x11_win = (orb_size) {x11_fb.width * scale, x11_fb.height * scale};
 
     x11_window = XCreateSimpleWindow(
-        x11_display, RootWindow(x11_display, screen), 0, 0, (unsigned)x11_win.w,
-        (unsigned)x11_win.h, 0, 0, BlackPixel(x11_display, screen)
+        x11_display, RootWindow(x11_display, screen), 0, 0, (unsigned)x11_win.width,
+        (unsigned)x11_win.height, 0, 0, BlackPixel(x11_display, screen)
     );
     XStoreName(x11_display, x11_window, cfg->title);
     XSelectInput(x11_display, x11_window, KeyPressMask | KeyReleaseMask | StructureNotifyMask);
@@ -56,11 +56,11 @@ bool orb_os_open(const orb_os_config* cfg) {
     XMapWindow(x11_display, x11_window);
     x11_gc = DefaultGC(x11_display, screen);
 
-    x11_pixels = calloc((size_t)x11_screen.w * x11_screen.h, sizeof *x11_pixels);
+    x11_pixels = calloc((size_t)x11_screen.width * x11_screen.height, sizeof *x11_pixels);
     x11_image = XCreateImage(
         x11_display, DefaultVisual(x11_display, screen),
         (unsigned)DefaultDepth(x11_display, screen), ZPixmap, 0, (char*)x11_pixels,
-        (unsigned)x11_screen.w, (unsigned)x11_screen.h, 32, 0
+        (unsigned)x11_screen.width, (unsigned)x11_screen.height, 32, 0
     );
 
     if (!x11_image) {
@@ -81,31 +81,31 @@ void orb_os_close(void) {
 }
 
 void orb_os_present(const uint32_t* rgb) {
-    int w = orb_min(x11_win.w, x11_screen.w);
-    int h = orb_min(x11_win.h, x11_screen.h);
-    int scale = orb_max(1, orb_min(w / x11_fb.w, h / x11_fb.h));
+    int w = orb_min(x11_win.width, x11_screen.width);
+    int h = orb_min(x11_win.height, x11_screen.height);
+    int scale = orb_max(1, orb_min(w / x11_fb.width, h / x11_fb.height));
 
     // A window smaller than the frame shows its top-left corner.
-    int cols = orb_min(x11_fb.w, w / scale), rows = orb_min(x11_fb.h, h / scale);
+    int cols = orb_min(x11_fb.width, w / scale), rows = orb_min(x11_fb.height, h / scale);
     int ox = (w - cols * scale) / 2, oy = (h - rows * scale) / 2;
 
     // The frame overwrites its own area every time; only the borders need clearing,
     // and only when they move.
     if (x11_resized) {
-        memset(x11_pixels, 0, (size_t)x11_screen.w * x11_screen.h * sizeof *x11_pixels);
+        memset(x11_pixels, 0, (size_t)x11_screen.width * x11_screen.height * sizeof *x11_pixels);
         x11_resized = false;
     }
 
     for (int y = 0; y < rows; y++) {
-        const uint32_t* src = rgb + y * x11_fb.w;
-        uint32_t* dst = x11_pixels + (oy + y * scale) * x11_screen.w + ox;
+        const uint32_t* src = rgb + y * x11_fb.width;
+        uint32_t* dst = x11_pixels + (oy + y * scale) * x11_screen.width + ox;
 
         for (int x = 0; x < cols; x++)
             for (int k = 0; k < scale; k++)
                 dst[x * scale + k] = src[x];
 
         for (int k = 1; k < scale; k++)
-            memcpy(dst + k * x11_screen.w, dst, (size_t)cols * scale * sizeof *dst);
+            memcpy(dst + k * x11_screen.width, dst, (size_t)cols * scale * sizeof *dst);
     }
 
     XPutImage(x11_display, x11_window, x11_gc, x11_image, 0, 0, 0, 0, (unsigned)w, (unsigned)h);

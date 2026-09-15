@@ -13,11 +13,19 @@ int main(void) {
     palette[5] = 32;
     palette[6] = 64;
 
-    orb_sheet_desc sheets[1] = {{.w = 4, .h = 2, .pixels = 0}};
+    orb_sheet_desc sheets[1] = {{.width = 4, .height = 2, .pixels = 0}};
     uint8_t pixels[8] = {1, 2, 3, 4, 5, 6, 7, 8};
     orb_sprite_desc sprites[2] = {
-        {.sheet = 0, .x = 0, .y = 0, .w = 2, .h = 2, .ox = 1, .oy = 1, .fw = 8, .fh = 8},
-        {.sheet = 0, .x = 2, .y = 0, .w = 2, .h = 2, .fw = 8, .fh = 8}
+        {.sheet = 0,
+         .x = 0,
+         .y = 0,
+         .width = 2,
+         .height = 2,
+         .ox = 1,
+         .oy = 1,
+         .frame_width = 8,
+         .frame_height = 8},
+        {.sheet = 0, .x = 2, .y = 0, .width = 2, .height = 2, .frame_width = 8, .frame_height = 8}
     };
     orb_animation_desc animations[1] = {{.first_sprite = 0, .first_duration = 0, .count = 2}};
     uint16_t durations[2] = {6, 12};
@@ -30,7 +38,7 @@ int main(void) {
     };
     orb_song_desc songs[1] = {{.sample = 1, .bpm = 120}};
     uint64_t sample_ids[2] = {55, 66}, song_ids[1] = {77};
-    orb_info_desc info = {.w = 64, .h = 32, .name = "fixture"};
+    orb_info_desc info = {.width = 64, .height = 32, .name = "fixture"};
     orb_assets in = {
         .info = &info,
         .palette = palette,
@@ -63,12 +71,12 @@ int main(void) {
     orb_assets out;
     orb_error err;
     CHECK(orb_file_load(file, &out, &err));
-    CHECK_EQ(out.info->w, 64);
-    CHECK_EQ(out.info->h, 32);
+    CHECK_EQ(out.info->width, 64);
+    CHECK_EQ(out.info->height, 32);
     CHECK(strcmp(out.info->name, "fixture") == 0);
     CHECK_EQ(out.palette[6], 64);
     CHECK_EQ(out.sheet_count, 1);
-    CHECK_EQ(out.sheets[0].w, 4);
+    CHECK_EQ(out.sheets[0].width, 4);
     CHECK_EQ(out.pixel_count, 8);
     CHECK_EQ(out.pixels[7], 8);
     CHECK_EQ(out.sprite_count, 2);
@@ -138,9 +146,10 @@ int main(void) {
     // a short SAMPLE_IDS section is refused
     file = orb_file_write(&a, &in);
     {
+        uint32_t section_count = ((const orb_file_header*)file.ptr)->section_count;
         orb_section* table = (orb_section*)(mem + (file.ptr - mem) + sizeof(orb_file_header));
 
-        for (uint32_t i = 0; i < ORB_SEC_COUNT_; i++)
+        for (uint32_t i = 0; i < section_count; i++)
             if (table[i].tag == ORB_SEC_SAMPLE_IDS) table[i].size -= 8;
     }
     CHECK(!orb_file_load(file, &out, &err));
@@ -152,6 +161,147 @@ int main(void) {
     mem[file.ptr - mem + 4] = 99; // version
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "version") != nullptr);
+
+    // levels: two tilesets, two levels, three layers, one neighbor link
+    orb_tileset_desc tilesets[1] = {
+        {.sheet = 0, .grid = 2, .spacing = 0, .padding = 0, .columns = 2, .count = 2}
+    };
+    uint16_t tiles[2 * 2 * 2 + 1 * 1] = {1, 2, 0, 2 | ORB_TILE_FLIP_X, 0, 0, 1, 0, 1};
+    uint8_t cells[2 * 2] = {0, 1, 1, 0};
+    orb_layer_desc layers[3] = {
+        {.tiles = 0,
+         .cells = ORB_NO_INDEX,
+         .tileset = 0,
+         .grid = 2,
+         .columns = 2,
+         .rows = 2,
+         .sublayers = 2},
+        {.tiles = 0, .cells = 0, .grid = 2, .columns = 2, .rows = 2, .sublayers = 0},
+        {.tiles = 8,
+         .cells = ORB_NO_INDEX,
+         .tileset = 0,
+         .grid = 2,
+         .columns = 1,
+         .rows = 1,
+         .offset_x = 3,
+         .offset_y = -1,
+         .parallax_x = 0.5f,
+         .parallax_y = 1,
+         .sublayers = 1},
+    };
+    orb_level_desc levels[2] = {
+        {.world_x = 0,
+         .world_y = 0,
+         .depth = 0,
+         .width = 4,
+         .height = 4,
+         .first_layer = 0,
+         .layer_count = 2,
+         .first_neighbor = 0,
+         .neighbor_count = 1},
+        {.world_x = 4,
+         .world_y = -8,
+         .depth = 1,
+         .width = 2,
+         .height = 2,
+         .first_layer = 2,
+         .layer_count = 1,
+         .first_neighbor = 1,
+         .neighbor_count = 0},
+    };
+    orb_neighbor_desc neighbors[1] = {{.level = 1, .dir = ORB_NEIGHBOR_E}};
+    uint64_t level_ids[2] = {88, 99}, layer_ids[3] = {1, 2, 3};
+
+    in.tilesets = tilesets;
+    in.tileset_count = 1;
+    in.levels = levels;
+    in.level_count = 2;
+    in.layers = layers;
+    in.layer_count = 3;
+    in.neighbors = neighbors;
+    in.neighbor_count = 1;
+    in.tiles = tiles;
+    in.tile_count = 9;
+    in.cells = cells;
+    in.cell_count = 4;
+    in.level_ids = level_ids;
+    in.layer_ids = layer_ids;
+
+    file = orb_file_write(&a, &in);
+    CHECK(orb_file_load(file, &out, &err));
+    CHECK_EQ(out.level_count, 2);
+    CHECK_EQ(out.levels[1].world_y, -8);
+    CHECK_EQ(out.levels[1].depth, 1);
+    CHECK_EQ(out.layer_count, 3);
+    CHECK_EQ(out.layers[2].offset_y, -1);
+    CHECK(out.layers[2].parallax_x == 0.5f);
+    CHECK_EQ(out.layers[1].cells, 0);
+    CHECK_EQ(out.layers[0].cells, ORB_NO_INDEX);
+    CHECK_EQ(out.tile_count, 9);
+    CHECK_EQ(out.tiles[3], 2 | ORB_TILE_FLIP_X);
+    CHECK_EQ(out.cell_count, 4);
+    CHECK_EQ(out.neighbor_count, 1);
+    CHECK_EQ(out.neighbors[0].dir, ORB_NEIGHBOR_E);
+    CHECK_EQ(out.level_ids[1], 99);
+    CHECK_EQ(out.layer_ids[2], 3);
+    CHECK_EQ(out.tilesets[0].count, 2);
+    CHECK(out.level_generations == nullptr);
+    CHECK(((uintptr_t)out.layers & 15) == 0);
+
+    // a level whose layers run past the layer section
+    levels[1].layer_count = 2;
+    file = orb_file_write(&a, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "level 1") != nullptr);
+    levels[1].layer_count = 1;
+
+    // a layer whose tiles run past the tile section
+    layers[2].tiles = 9;
+    file = orb_file_write(&a, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "layer 2") != nullptr);
+    layers[2].tiles = 8;
+
+    // a layer whose cells run past the cell section
+    layers[1].cells = 1;
+    file = orb_file_write(&a, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "cells") != nullptr);
+    layers[1].cells = 0;
+
+    // too many sub-layers, a missing tileset, a tile id past the tileset, a bad neighbor
+    layers[0].sublayers = 9;
+    file = orb_file_write(&a, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "sub-layers") != nullptr);
+    layers[0].sublayers = 2;
+    layers[0].tileset = 4;
+    file = orb_file_write(&a, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "tileset") != nullptr);
+    layers[0].tileset = 0;
+    tiles[1] = 3; // tileset count is 2, so ids 1 and 2 are the only valid stored values
+    file = orb_file_write(&a, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "tile") != nullptr);
+    tiles[1] = 2;
+    neighbors[0].level = 2;
+    file = orb_file_write(&a, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "neighbor") != nullptr);
+    neighbors[0].level = 1;
+    tilesets[0].sheet = 1;
+    file = orb_file_write(&a, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "sheet") != nullptr);
+    tilesets[0].sheet = 0;
+
+    // a file sealed before levels existed loads with none
+    in.tileset_count = in.level_count = in.layer_count = in.neighbor_count = 0;
+    in.tile_count = in.cell_count = 0;
+    file = orb_file_write(&a, &in);
+    CHECK(orb_file_load(file, &out, &err));
+    CHECK_EQ(out.level_count, 0);
 
     return 0;
 }

@@ -12,12 +12,21 @@ typedef struct orb_animation_state {
     uint16_t frame, ticks;
 } orb_animation_state;
 
+typedef struct orb_layer_info {
+    int grid, columns, rows;
+    bool has_tiles, has_cells;
+} orb_layer_info;
+
+typedef struct {
+    uint32_t v;
+} orb_level;
+
 typedef struct {
     uint32_t v;
 } orb_sample;
 
 typedef struct orb_size {
-    int w, h;
+    int width, height;
 } orb_size;
 
 typedef struct {
@@ -50,6 +59,19 @@ typedef struct orb_vec2f {
     float x, y;
 } orb_vec2f;
 
+typedef struct orb_rect {
+    orb_vec2 at;
+    orb_size size;
+} orb_rect;
+
+typedef struct orb_camera {
+    orb_vec2f at;     // world position of the framebuffer's top-left
+    orb_vec2f target; // world point to center
+    float lerp;       // 0 snaps to the target, 1 never moves
+    orb_rect bounds;  // zero size means no clamp
+    orb_vec2f shake;  // added after the clamp
+} orb_camera;
+
 // Opaque: a game only passes it back. Not an ORB_HANDLE_INDEX handle.
 typedef struct {
     uint32_t v;
@@ -75,7 +97,27 @@ enum {
     ORB_BTN_COUNT
 };
 
+typedef enum orb_neighbor_dir : uint8_t {
+    ORB_NEIGHBOR_N,
+    ORB_NEIGHBOR_S,
+    ORB_NEIGHBOR_E,
+    ORB_NEIGHBOR_W,
+    ORB_NEIGHBOR_NE,
+    ORB_NEIGHBOR_NW,
+    ORB_NEIGHBOR_SE,
+    ORB_NEIGHBOR_SW,
+    ORB_NEIGHBOR_LOWER,
+    ORB_NEIGHBOR_HIGHER,
+    ORB_NEIGHBOR_OVERLAP
+} orb_neighbor_dir;
+
+typedef struct orb_neighbor {
+    orb_level level;
+    orb_neighbor_dir dir;
+} orb_neighbor;
+
 #define ORB_ANIMATION(i) ((orb_animation) {(uint32_t)(i)})
+#define ORB_LEVEL(i) ((orb_level) {(uint32_t)(i)})
 #define ORB_SAMPLE(i) ((orb_sample) {(uint32_t)(i)})
 #define ORB_SONG(i) ((orb_song) {(uint32_t)(i)})
 #define ORB_SPRITE(i) ((orb_sprite) {(uint32_t)(i)})
@@ -84,6 +126,7 @@ enum {
 
 constexpr uint32_t ORB_NO_INDEX = 0xffffffu;
 constexpr orb_animation ORB_NO_ANIMATION = {ORB_NO_INDEX};
+constexpr orb_level ORB_NO_LEVEL = {ORB_NO_INDEX};
 constexpr orb_sample ORB_NO_SAMPLE = {ORB_NO_INDEX};
 constexpr orb_song ORB_NO_SONG = {ORB_NO_INDEX};
 constexpr orb_sprite ORB_NO_SPRITE = {ORB_NO_INDEX};
@@ -107,6 +150,11 @@ constexpr int ORB_AUDIO_CHANNELS = 2;
 // The render head runs ahead of the speaker by one device buffer, a few tens of
 // milliseconds. Volumes are 0..1 and start at 1. orb_sound_params.volume 0 is silence, so
 // a zero-initialized orb_sound_params plays nothing; set .volume explicitly.
+//
+// Levels. level_find("cave") is the LDtk level Cave; layer_find(level, "floor") is a layer
+// index within it, ORB_NO_INDEX when missing. layer_draw draws one layer in world space under
+// the camera; cell_get reads an IntGrid value at a world pixel, 0 outside. camera_update moves
+// an orb_camera toward its target, clamps it to its bounds, and calls camera_set with the result.
 typedef struct orb_api {
     orb_animation (*animation_find)(const char* stem, const char* tag);
     void (*animation_start)(orb_animation_state* st, orb_animation a);
@@ -115,7 +163,15 @@ typedef struct orb_api {
     bool (*button_pressed)(int button);
     bool (*button_released)(int button);
     void (*camera_set)(orb_vec2f at);
+    void (*camera_update)(orb_camera* camera);
+    int (*cell_get)(orb_level level, int layer, orb_vec2 at);
     void (*clear)(uint8_t index);
+    void (*layer_draw)(orb_level level, int layer);
+    int (*layer_find)(orb_level level, const char* name);
+    orb_layer_info (*layer_info)(orb_level level, int layer);
+    orb_rect (*level_bounds)(orb_level level);
+    orb_level (*level_find)(const char* stem);
+    int (*level_neighbors)(orb_level level, orb_neighbor* out, int max);
     void (*log)(const char* fmt, ...);
     uint32_t (*palette_get)(int i);
     void (*palette_reset)(void);

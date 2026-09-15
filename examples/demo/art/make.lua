@@ -1,10 +1,12 @@
 -- Run with: aseprite -b --script examples/demo/art/make.lua
 -- Produces the demo art next to this script. The palette is black, white,
--- and red.
+-- and red. Index 0 is the transparent index, and its alpha of 0 is what makes
+-- Aseprite write the modern palette chunk, which is the only one LDtk reads.
 
 local dir = "examples/demo/art/"
+local levels_dir = "examples/demo/levels/"
 
-local BLACK    = Color{r=0,   g=0,   b=0}
+local NONE     = Color{r=0,   g=0,   b=0, a=0}
 local BG       = Color{r=18,  g=18,  b=18}   -- background
 local RED      = Color{r=153, g=40,  b=42}   -- cloak
 local DARK_RED = Color{r=97,  g=38,  b=39}   -- cloak shadow
@@ -17,7 +19,7 @@ local function palette_file()
     local spr = Sprite(1, 1, ColorMode.INDEXED)
     local pal = Palette(8)
 
-    pal:setColor(0, BLACK)
+    pal:setColor(0, NONE)
     pal:setColor(1, BG)
     pal:setColor(2, RED)
     pal:setColor(3, WHITE)
@@ -34,7 +36,7 @@ local function player_file()
     local spr = Sprite(16, 16, ColorMode.INDEXED)
     local pal = Palette(4)
 
-    pal:setColor(0, BLACK)
+    pal:setColor(0, NONE)
     pal:setColor(1, RED)
     pal:setColor(2, WHITE)
     pal:setColor(3, DARK_RED)
@@ -58,5 +60,48 @@ local function player_file()
     spr:close()
 end
 
+local function tiles_file()
+    local spr = Sprite(64, 16, ColorMode.INDEXED)
+    local pal = Palette(8)
+
+    pal:setColor(0, NONE)
+    pal:setColor(1, BG)
+    pal:setColor(2, RED)
+    pal:setColor(3, WHITE)
+    pal:setColor(4, DARK_RED)
+    pal:setColor(5, GRAY)
+    pal:setColor(6, DIM)
+    pal:setColor(7, SHADOW)
+    spr:setPalette(pal)
+
+    local img = spr.cels[1].image
+    img:clear(0)
+
+    -- tile 0: floor in its own shade, a dot at (7,7) and (8,8)
+    for y = 0, 15 do for x = 0, 15 do img:putPixel(x, y, 7) end end
+    img:putPixel(7, 7, 6)
+    img:putPixel(8, 8, 6)
+
+    -- tile 1: the side of a wall
+    for y = 0, 15 do for x = 16, 31 do img:putPixel(x, y, 5) end end
+
+    -- tile 2: the top of a wall, drawn over the side on a wall's topmost row
+    for y = 0, 15 do for x = 32, 47 do img:putPixel(x, y, 6) end end
+
+    -- tile 3: the shadow a wall casts on the floor below it, five rows dithered
+    -- from solid to nothing: rows 0-1 solid, 2-3 checker, 4 one of four
+    for y = 0, 4 do
+        for x = 48, 63 do
+            local cx = (x - 48) % 2
+            local on = y <= 1 or (y <= 3 and (x + y) % 2 == 0) or (cx == 0 and y % 2 == 0)
+            if on then img:putPixel(x, y, 1) end
+        end
+    end
+
+    spr:saveAs(levels_dir .. "tiles.aseprite")
+    spr:close()
+end
+
 palette_file()
 player_file()
+tiles_file()

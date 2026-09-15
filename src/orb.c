@@ -6,6 +6,7 @@
 #include "cast/cast.c"
 #include "cast/inflate.c"
 #include "cast/json.c"
+#include "cast/ldtk.c"
 #include "cast/pack.c"
 #include "cast/wav.c"
 #include "core/debug.c"
@@ -29,6 +30,8 @@
 #endif
 
 #include "core/run.c"
+#include "graphics/camera.c"
 #include "graphics/framebuffer.c"
 #include "graphics/palette.c"
 #include "graphics/sprite.c"
+#include "graphics/tilemap.c"

@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <time.h>
+#include <unistd.h>
 
 void orb_os_args(int*, char***) {
 }
@@ -63,6 +64,10 @@ bool orb_os_make_dir(const char* path) {
 }
 
 // Strict POSIX hides d_type, so each entry is stat'd; one that fails is skipped.
+uint32_t orb_os_pid(void) {
+    return (uint32_t)getpid();
+}
+
 int orb_os_read_dir(const char* dir, orb_os_entry* out, int max) {
     DIR* d = opendir(dir);
 

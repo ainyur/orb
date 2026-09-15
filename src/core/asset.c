@@ -18,6 +18,7 @@ static const asset_kind asset_kinds[ORB_ASSET_KIND_COUNT] = {
     ASSET_KIND(animation, ORB_MAX_SPRITES),
     ASSET_KIND(sample, ORB_MAX_SPRITES + ORB_MAX_ANIMATIONS),
     ASSET_KIND(song, ORB_MAX_SPRITES + ORB_MAX_ANIMATIONS + ORB_MAX_SAMPLES),
+    ASSET_KIND(level, ORB_MAX_SPRITES + ORB_MAX_ANIMATIONS + ORB_MAX_SAMPLES + ORB_MAX_SONGS),
 };
 
 static uint32_t asset_count_of(const orb_assets* as, const asset_kind* k) {

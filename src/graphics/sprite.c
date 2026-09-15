@@ -44,18 +44,18 @@ void orb_sprite_draw(
 
     const orb_sprite_desc* d = &assets->sprites[index];
 
-    if (d->w == 0) return;
+    if (d->width == 0) return;
 
     const orb_sheet_desc* sheet = &assets->sheets[d->sheet];
 
-    at.x -= (int)cam.x;
-    at.y -= (int)cam.y;
-    at.x += flags & ORB_FLIP_X ? d->fw - d->ox - d->w : d->ox;
-    at.y += flags & ORB_FLIP_Y ? d->fh - d->oy - d->h : d->oy;
+    at.x -= orb_floor(cam.x);
+    at.y -= orb_floor(cam.y);
+    at.x += flags & ORB_FLIP_X ? d->frame_width - d->ox - d->width : d->ox;
+    at.y += flags & ORB_FLIP_Y ? d->frame_height - d->oy - d->height : d->oy;
 
-    const uint8_t* src = assets->pixels + sheet->pixels + d->y * sheet->w + d->x;
+    const uint8_t* src = assets->pixels + sheet->pixels + d->y * sheet->width + d->x;
 
-    orb_framebuffer_blit(fb, src, sheet->w, (orb_size) {d->w, d->h}, at, flags, remap);
+    orb_framebuffer_blit(fb, src, sheet->width, (orb_size) {d->width, d->height}, at, flags, remap);
 }
 
 uint64_t orb_sprite_id(const char* stem, int frame) {

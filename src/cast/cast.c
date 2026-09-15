@@ -5,17 +5,51 @@
 #include "aseprite.h"
 #include "file.h"
 #include "json.h"
+#include "ldtk.h"
 #include "pack.h"
 #include "wav.h"
 
 #include <stdio.h>
 #include <string.h>
 
+// dir/rel, unless rel is absolute (the rule orb_path_join uses) or dir is
+// empty, in which case rel is returned unchanged.
 static const char* cast_path(orb_arena* a, const char* dir, const char* rel) {
+#ifdef _WIN32
+    bool absolute = rel[0] == '/' || rel[0] == '\\' || (rel[0] && rel[1] == ':');
+#else
+    bool absolute = rel[0] == '/';
+#endif
+
+    if (absolute || !*dir) {
+        size_t n = strlen(rel) + 1;
+        return memcpy(orb_arena_push(a, n, 1), rel, n);
+    }
+
     size_t n = strlen(dir) + 1 + strlen(rel) + 1;
     char* p = orb_arena_push(a, n, 1);
 
     snprintf(p, n, "%s/%s", dir, rel);
+    return p;
+}
+
+// The directory part of a path, "" when there is none: cast_dir_of("levels/world.ldtk")
+// is "levels", cast_dir_of("w.ldtk") is "", cast_dir_of("/abs/dir/w.ldtk") is "/abs/dir".
+static const char* cast_dir_of(orb_arena* a, const char* rel) {
+    const char* slash = strrchr(rel, '/');
+
+#ifdef _WIN32
+    const char* backslash = strrchr(rel, '\\');
+    if (backslash && (!slash || backslash > slash)) slash = backslash;
+#endif
+
+    if (!slash) return "";
+
+    size_t n = (size_t)(slash - rel);
+    char* p = orb_arena_push(a, n + 1, 1);
+
+    memcpy(p, rel, n);
+    p[n] = 0;
     return p;
 }
 
@@ -80,7 +114,7 @@ bool orb_manifest_load(orb_arena* a, const char* game_dir, orb_manifest* m, orb_
 
     m->size = (orb_size) {(int)size->first->num, (int)size->first->next->num};
 
-    if (m->size.w < 1 || m->size.w > 4096 || m->size.h < 1 || m->size.h > 4096)
+    if (m->size.width < 1 || m->size.width > 4096 || m->size.height < 1 || m->size.height > 4096)
         return orb_error_set(err, "orb.json: \"size\" must be within 1..4096");
 
     const orb_json* headroom = orb_json_get(root, "asset_headroom");
@@ -95,7 +129,9 @@ bool orb_manifest_load(orb_arena* a, const char* game_dir, orb_manifest* m, orb_
            cast_string(root, "palette", "art/palette.aseprite", &m->palette, err) &&
            cast_string(root, "art", "art", &m->art, err) &&
            cast_string(root, "sfx", "sfx", &m->sfx, err) &&
-           cast_string(root, "music", "music", &m->music, err) && cast_song_map(a, root, m, err);
+           cast_string(root, "music", "music", &m->music, err) &&
+           cast_string(root, "world", "levels/world.ldtk", &m->world, err) &&
+           cast_song_map(a, root, m, err);
 }
 
 typedef struct cast {
@@ -283,24 +319,45 @@ static bool cast_palette(cast* c, orb_ase* master, orb_assets* as) {
 }
 
 // Every sprite file: one packed sheet each, a sprite per frame, an animation per tag.
-static bool cast_art(cast* c, const orb_ase* master, orb_assets* as) {
+// Tileset files, appended after the art files, take a plainer path: one unpacked
+// sheet each, no sprites or animations.
+static bool cast_art(
+    cast* c,
+    const orb_ase* master,
+    const orb_ldtk* world,
+    uint32_t* first_tileset_sheet,
+    orb_assets* as
+) {
     orb_arena* scratch = c->scratch;
     cast_files art;
 
     if (!cast_walk(c, c->m->art, ".aseprite", c->m->palette, &art) || !cast_unique(c, &art))
         return false;
 
-    int file_count = art.count;
-    const char** paths = art.paths;
+    int art_count = art.count;
+    int file_count = art_count + world->tileset_count;
 
-    // Generous upper bounds so tables can be filled in one pass.
+    *first_tileset_sheet = (uint32_t)art_count;
+    const char* world_dir = cast_dir_of(scratch, c->m->world);
+    const char** paths = orb_arena_push_array(scratch, const char*, file_count);
+
+    memcpy(paths, art.paths, sizeof *paths * art_count);
+
+    for (int i = 0; i < world->tileset_count; i++)
+        paths[art_count + i] = cast_path(scratch, world_dir, world->tilesets[i].path);
+
+    // Generous upper bounds so tables can be filled in one pass; tileset files
+    // add no sprites or animations.
     uint32_t max_sprites = 0, max_anims = 0;
     orb_ase* files = orb_arena_push_array(scratch, orb_ase, file_count);
 
     for (int i = 0; i < file_count; i++) {
         if (!cast_load_ase(c, paths[i], &files[i])) return false;
-        max_sprites += files[i].frame_count;
-        max_anims += files[i].tag_count;
+
+        if (i < art_count) {
+            max_sprites += files[i].frame_count;
+            max_anims += files[i].tag_count;
+        }
     }
 
     orb_sheet_desc* sheets = orb_arena_push_array(scratch, orb_sheet_desc, file_count);
@@ -314,7 +371,6 @@ static bool cast_art(cast* c, const orb_ase* master, orb_assets* as) {
 
     for (int i = 0; i < file_count; i++) {
         orb_ase* ase = &files[i];
-        const char* stem = art.stems[i];
 
         uint8_t remap[256] = {0};
 
@@ -339,17 +395,42 @@ static bool cast_art(cast* c, const orb_ase* master, orb_assets* as) {
             remap[k] = (uint8_t)master_index;
         }
 
-        size_t pixel_count = (size_t)ase->w * ase->h * ase->frame_count;
+        size_t pixel_count = (size_t)ase->width * ase->height * ase->frame_count;
 
         for (size_t p = 0; p < pixel_count; p++)
             ase->frames[p] = remap[ase->frames[p]];
 
+        if (i >= art_count) {
+            const orb_ldtk_tileset* t = &world->tilesets[i - art_count];
+
+            if (ase->frame_count != 1)
+                return orb_error_set(
+                    c->err, "%s: a tileset has one frame, this file has %u", paths[i],
+                    ase->frame_count
+                );
+            if (ase->width != t->width || ase->height != t->height)
+                return orb_error_set(
+                    c->err, "%s: %ux%u, but the project says %dx%d", paths[i], ase->width,
+                    ase->height, t->width, t->height
+                );
+
+            sheets[i] = (orb_sheet_desc) {
+                .width = ase->width, .height = ase->height, .pixels = pixel_total
+            };
+            pixel_total += (uint32_t)ase->width * ase->height;
+            continue;
+        }
+
+        const char* stem = art.stems[i];
         orb_pack* pack = &packs[i];
 
-        orb_pack_frames(scratch, ase->frames, ase->frame_count, (orb_size) {ase->w, ase->h}, pack);
-        sheets[i] =
-            (orb_sheet_desc) {.w = pack->sheet_w, .h = pack->sheet_h, .pixels = pixel_total};
-        pixel_total += (uint32_t)pack->sheet_w * pack->sheet_h;
+        orb_pack_frames(
+            scratch, ase->frames, ase->frame_count, (orb_size) {ase->width, ase->height}, pack
+        );
+        sheets[i] = (orb_sheet_desc) {
+            .width = pack->sheet_width, .height = pack->sheet_height, .pixels = pixel_total
+        };
+        pixel_total += (uint32_t)pack->sheet_width * pack->sheet_height;
 
         uint32_t first_sprite = sprite_count;
 
@@ -360,12 +441,12 @@ static bool cast_art(cast* c, const orb_ase* master, orb_assets* as) {
                 .sheet = (uint16_t)i,
                 .x = rect->x,
                 .y = rect->y,
-                .w = rect->w,
-                .h = rect->h,
+                .width = rect->width,
+                .height = rect->height,
                 .ox = pack->frames[f].ox,
                 .oy = pack->frames[f].oy,
-                .fw = ase->w,
-                .fh = ase->h
+                .frame_width = ase->width,
+                .frame_height = ase->height
             };
 
             sprite_ids[sprite_count++] = orb_sprite_id(stem, (int)f);
@@ -399,9 +480,11 @@ static bool cast_art(cast* c, const orb_ase* master, orb_assets* as) {
     uint8_t* pixels = orb_arena_push(scratch, pixel_total, 16);
 
     for (int i = 0; i < file_count; i++) {
-        memcpy(
-            pixels + sheets[i].pixels, packs[i].pixels, (size_t)packs[i].sheet_w * packs[i].sheet_h
-        );
+        const uint8_t* src = i < art_count ? packs[i].pixels : files[i].frames;
+        size_t n = i < art_count ? (size_t)packs[i].sheet_width * packs[i].sheet_height
+                                 : (size_t)files[i].width * files[i].height;
+
+        memcpy(pixels + sheets[i].pixels, src, n);
     }
 
     as->sheets = sheets;
@@ -533,15 +616,24 @@ static bool cast_audio(cast* c, orb_assets* as) {
     return true;
 }
 
+#include "world.c"
+
 static bool cast_body(cast* c) {
     orb_ase master;
+    orb_ldtk world;
     orb_assets as = {};
-    orb_info_desc info = {.w = (uint16_t)c->m->size.w, .h = (uint16_t)c->m->size.h};
+    orb_info_desc info = {
+        .width = (uint16_t)c->m->size.width, .height = (uint16_t)c->m->size.height
+    };
 
     snprintf(info.name, sizeof info.name, "%s", c->m->name);
     as.info = &info;
 
-    if (!cast_palette(c, &master, &as) || !cast_art(c, &master, &as) || !cast_audio(c, &as))
+    uint32_t first_tileset_sheet = 0;
+
+    if (!cast_palette(c, &master, &as) || !world_parse(c, &world) ||
+        !cast_art(c, &master, &world, &first_tileset_sheet, &as) ||
+        !world_cast(c, &world, first_tileset_sheet, &as) || !cast_audio(c, &as))
         return false;
 
     c->r->file = orb_file_write(c->out, &as);

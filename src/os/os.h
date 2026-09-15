@@ -52,7 +52,7 @@ static inline int orb_os_button(const uint32_t* keymap, uint32_t key) {
 static inline int orb_os_open_scale(orb_size fb, orb_size screen) {
     int scale = 3;
 
-    while (scale > 1 && (fb.w * scale > screen.w || fb.h * scale > screen.h))
+    while (scale > 1 && (fb.width * scale > screen.width || fb.height * scale > screen.height))
         scale--;
 
     return scale;
@@ -72,6 +72,7 @@ void orb_os_dlclose(orb_os_library* lib);
 void* orb_os_dlsym(orb_os_library* lib, const char* name);
 bool orb_os_copy_file(const char* from, const char* to);
 bool orb_os_make_dir(const char* path);
+uint32_t orb_os_pid(void);
 int orb_os_run(const char* command, void (*line)(const char* text));
 void orb_os_sleep(uint64_t ns);
 uint64_t orb_os_ticks(void);
