@@ -32,6 +32,9 @@ enum {
     ORB_SEC_CELLS,
     ORB_SEC_LEVEL_IDS,
     ORB_SEC_LAYER_IDS,
+    ORB_SEC_FONTS,
+    ORB_SEC_GLYPHS,
+    ORB_SEC_FONT_IDS,
     ORB_SEC_COUNT_
 };
 
@@ -41,6 +44,7 @@ constexpr uint32_t ORB_MAX_ANIMATIONS = 1 << 12;
 constexpr uint32_t ORB_MAX_SAMPLES = 1 << 10;
 constexpr uint32_t ORB_MAX_SONGS = 1 << 10;
 constexpr uint32_t ORB_MAX_LEVELS = 1 << 10;
+constexpr uint32_t ORB_MAX_FONTS = 1 << 8;
 
 // What the caster refuses and the loader checks again, since a file is untrusted.
 constexpr uint32_t ORB_MAX_RATE = 192000; // Hz
@@ -48,6 +52,10 @@ constexpr float ORB_MAX_BPM = 1000;
 constexpr uint32_t ORB_MAX_LAYERS = 1 << 12;
 constexpr uint32_t ORB_MAX_SUBLAYERS = 8;
 constexpr uint32_t ORB_MAX_TILE_ID = 16382;
+// A font covers codepoints 32 through 126; the range is fixed, so no font stores it.
+constexpr uint8_t ORB_FONT_FIRST = 32;
+constexpr uint32_t ORB_FONT_GLYPHS = 95;
+constexpr uint32_t ORB_MAX_CELL = 254; // a cell any wider overflows advance, which is width + 1
 
 // A tile is 16 bits: zero is empty, otherwise the low fourteen bits are the tile id
 // plus one and the top two bits are the flip flags.
@@ -64,6 +72,19 @@ typedef struct orb_animation_desc {
 typedef struct orb_file_header {
     uint32_t magic, version, section_count, pad;
 } orb_file_header;
+
+typedef struct orb_font_desc {
+    uint16_t sheet;
+    uint16_t first_glyph; // element offset into the glyphs section
+    uint16_t line_height; // pixels, the cell height
+    uint8_t pad[10];
+} orb_font_desc; // 16 bytes
+
+typedef struct orb_glyph_desc {
+    uint16_t x, y;          // in the sheet
+    uint8_t width, advance; // pixels
+    uint8_t pad[2];
+} orb_glyph_desc; // 8 bytes
 
 typedef struct orb_info_desc {
     uint16_t width, height;
@@ -136,6 +157,8 @@ typedef struct orb_tileset_desc {
 
 static_assert(sizeof(orb_animation_desc) == 16, "orb_animation_desc layout");
 static_assert(sizeof(orb_file_header) == 16, "orb_file_header layout");
+static_assert(sizeof(orb_font_desc) == 16, "orb_font_desc layout");
+static_assert(sizeof(orb_glyph_desc) == 8, "orb_glyph_desc layout");
 static_assert(sizeof(orb_info_desc) == 64, "orb_info_desc layout");
 static_assert(sizeof(orb_layer_desc) == 32, "orb_layer_desc layout");
 static_assert(sizeof(orb_level_desc) == 32, "orb_level_desc layout");

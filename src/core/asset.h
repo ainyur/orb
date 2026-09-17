@@ -40,11 +40,17 @@ struct orb_assets {
     uint32_t cell_count;
     const uint64_t* level_ids;
     const uint64_t* layer_ids;
+    const orb_font_desc* fonts;
+    uint32_t font_count;
+    const orb_glyph_desc* glyphs;
+    uint32_t glyph_count;
+    const uint64_t* font_ids;
     const uint8_t* sprite_generations;
     const uint8_t* animation_generations;
     const uint8_t* sample_generations;
     const uint8_t* song_generations;
     const uint8_t* level_generations;
+    const uint8_t* font_generations;
 };
 
 enum {
@@ -53,13 +59,15 @@ enum {
     ORB_ASSET_SAMPLE,
     ORB_ASSET_SONG,
     ORB_ASSET_LEVEL,
+    ORB_ASSET_FONT,
     ORB_ASSET_KIND_COUNT
 };
 
 typedef struct orb_asset_table {
     orb_assets assets;
     uint8_t generations
-        [ORB_MAX_SPRITES + ORB_MAX_ANIMATIONS + ORB_MAX_SAMPLES + ORB_MAX_SONGS + ORB_MAX_LEVELS];
+        [ORB_MAX_SPRITES + ORB_MAX_ANIMATIONS + ORB_MAX_SAMPLES + ORB_MAX_SONGS + ORB_MAX_LEVELS +
+         ORB_MAX_FONTS];
 } orb_asset_table;
 
 // The handle whose id matches, or ORB_NO_INDEX.
@@ -84,7 +92,8 @@ static inline uint32_t orb_asset_index(const uint8_t* generations, uint32_t coun
         orb_animation: orb_asset_index((as)->animation_generations, (as)->animation_count, (h).v), \
         orb_sample: orb_asset_index((as)->sample_generations, (as)->sample_count, (h).v),          \
         orb_song: orb_asset_index((as)->song_generations, (as)->song_count, (h).v),                \
-        orb_level: orb_asset_index((as)->level_generations, (as)->level_count, (h).v)              \
+        orb_level: orb_asset_index((as)->level_generations, (as)->level_count, (h).v),             \
+        orb_font: orb_asset_index((as)->font_generations, (as)->font_count, (h).v)                 \
     )
 
 void orb_asset_set(orb_asset_table* t, const orb_assets* assets);

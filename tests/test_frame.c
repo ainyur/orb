@@ -38,7 +38,10 @@ int main(void) {
 
     orb_run_draw();
 
-    CHECK_EQ(pixel(0, 0), BACKGROUND);
+    // "AB" in the fixture font: 'A' is cell 33, inked at columns 0 and 2, so column 1
+    // shows the background beneath it.
+    CHECK_EQ(pixel(0, 0), WHITE);
+    CHECK_EQ(pixel(1, 0), BACKGROUND);
 
     // the floor layer: tile 7 at cell (4,2) flipped Y puts its marker at the cell's bottom-left.
     // Cell (3,2) is under the sprite's body at boot (body x 24..31, y 12..19), so it is
@@ -173,7 +176,8 @@ int main(void) {
 
     orb_run_draw();
 
-    CHECK_EQ(pixel(0, 0), BACKGROUND);
+    CHECK_EQ(pixel(0, 0), WHITE);
+    CHECK_EQ(pixel(1, 0), BACKGROUND);
     CHECK(find(RED, &bx, &by));
 
     orb_os_close();

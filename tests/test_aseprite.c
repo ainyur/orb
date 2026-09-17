@@ -44,6 +44,12 @@ int main(void) {
     CHECK_EQ(ase.tags[0].to, 1);
     CHECK_EQ(ase.tags[0].direction, 0);
 
+    // Aseprite writes a 16x16 grid at the origin unless the file sets one.
+    CHECK_EQ(ase.grid_x, 0);
+    CHECK_EQ(ase.grid_y, 0);
+    CHECK_EQ(ase.grid_width, 16);
+    CHECK_EQ(ase.grid_height, 16);
+
     orb_span pal = {(uint8_t*)palette_ase, sizeof palette_ase};
     orb_ase p;
 

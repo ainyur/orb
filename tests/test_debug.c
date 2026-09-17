@@ -89,13 +89,15 @@ int main(void) {
     // the asset watch is what the cast read: the manifest, then every file and
     // directory it opened, so a file added to a directory recasts too
     debug_watch_assets();
-    CHECK_EQ(debug_assets.count, 10);
+    CHECK_EQ(debug_assets.count, 12);
     CHECK(strcmp(debug_assets.at[0].path, "examples/demo/orb.json") == 0);
     CHECK(strcmp(debug_assets.at[1].path, "examples/demo/art/palette.aseprite") == 0);
     CHECK(strcmp(debug_assets.at[2].path, "examples/demo/levels/world.ldtk") == 0);
-    CHECK(strcmp(debug_assets.at[3].path, "examples/demo/art") == 0);
-    CHECK(strcmp(debug_assets.at[5].path, "examples/demo/levels/tiles.aseprite") == 0);
-    CHECK(strcmp(debug_assets.at[9].path, "examples/demo/music/song.wav") == 0);
+    CHECK(strcmp(debug_assets.at[3].path, "examples/demo/fonts") == 0);
+    CHECK(strcmp(debug_assets.at[4].path, "examples/demo/fonts/body.aseprite") == 0);
+    CHECK(strcmp(debug_assets.at[5].path, "examples/demo/art") == 0);
+    CHECK(strcmp(debug_assets.at[7].path, "examples/demo/levels/tiles.aseprite") == 0);
+    CHECK(strcmp(debug_assets.at[11].path, "examples/demo/music/song.wav") == 0);
 
     debug_finish();
 

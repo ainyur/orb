@@ -3,6 +3,7 @@
 #include "../graphics/camera.h"
 #include "../graphics/palette.h"
 #include "../graphics/sprite.h"
+#include "../graphics/text.h"
 #include "../graphics/tilemap.h"
 #include "../os/os.h"
 #include "asset.h"
@@ -63,6 +64,14 @@ static int api_cell_get(orb_level level, int layer, orb_vec2 at) {
 
 static void api_clear(uint8_t index) {
     orb_framebuffer_clear(&api_framebuffer, index);
+}
+
+static orb_font api_font_find(const char* stem) {
+    uint32_t v = orb_asset_find(&api_assets, ORB_ASSET_FONT, orb_asset_id(stem, "font"));
+
+    if (v == ORB_NO_INDEX) orb_log("no font \"%s\"", stem);
+
+    return ORB_FONT(v);
 }
 
 static void api_layer_draw(orb_level level, int layer) {
@@ -206,6 +215,14 @@ static orb_sprite api_sprite_find(const char* stem, int frame) {
     return ORB_SPRITE(v);
 }
 
+static void api_text_draw(orb_font f, const char* s, orb_vec2 at, const uint8_t* remap) {
+    orb_text_draw(&api_framebuffer, &api_assets.assets, f, s, at, remap);
+}
+
+static orb_size api_text_measure(orb_font f, const char* s) {
+    return orb_text_measure(&api_assets.assets, f, s);
+}
+
 static void api_volume_set(orb_volumes v) {
     orb_mixer_volume_set(&api_mixer, v);
 }
@@ -221,6 +238,7 @@ static const orb_api api_table = {
     .camera_update = api_camera_update,
     .cell_get = api_cell_get,
     .clear = api_clear,
+    .font_find = api_font_find,
     .layer_draw = api_layer_draw,
     .layer_find = api_layer_find,
     .layer_info = api_layer_info,
@@ -243,6 +261,8 @@ static const orb_api api_table = {
     .sound_stop = api_sound_stop,
     .sprite_draw = api_sprite_draw,
     .sprite_find = api_sprite_find,
+    .text_draw = api_text_draw,
+    .text_measure = api_text_measure,
     .volume_set = api_volume_set,
 };
 

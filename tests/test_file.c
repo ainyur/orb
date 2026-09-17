@@ -303,5 +303,56 @@ int main(void) {
     CHECK(orb_file_load(file, &out, &err));
     CHECK_EQ(out.level_count, 0);
 
+    // A font whose glyphs sit inside its sheet round-trips; one that leaves it is refused.
+    orb_sheet_desc font_sheets[] = {{64, 8, 0}};
+    orb_font_desc fonts[] = {{.sheet = 0, .first_glyph = 0, .line_height = 8}};
+    orb_glyph_desc glyphs[ORB_FONT_GLYPHS] = {};
+    uint64_t font_ids[] = {orb_asset_id("body", "font")};
+
+    for (uint32_t i = 0; i < ORB_FONT_GLYPHS; i++)
+        glyphs[i] = (orb_glyph_desc) {.x = 0, .y = 0, .width = 4, .advance = 5};
+
+    orb_assets font_in = {
+        .info = &info,
+        .palette = palette,
+        .sheets = font_sheets,
+        .sheet_count = 1,
+        .fonts = fonts,
+        .font_count = 1,
+        .glyphs = glyphs,
+        .glyph_count = ORB_FONT_GLYPHS,
+        .font_ids = font_ids
+    };
+    orb_assets font_out = {};
+    orb_span font_file = orb_file_write(&a, &font_in);
+
+    CHECK(orb_file_load(font_file, &font_out, &err));
+    CHECK_EQ(font_out.font_count, 1);
+    CHECK_EQ(font_out.glyph_count, ORB_FONT_GLYPHS);
+    CHECK_EQ(font_out.fonts[0].line_height, 8);
+    CHECK_EQ(font_out.glyphs[7].advance, 5);
+    CHECK_EQ(font_out.font_ids[0], orb_asset_id("body", "font"));
+
+    glyphs[3].x = 61; // 61 + 4 leaves a 64-wide sheet
+    orb_arena_reset(&a);
+    CHECK(!orb_file_load(orb_file_write(&a, &font_in), &font_out, &err));
+
+    glyphs[3].x = 0;
+    fonts[0].line_height = 0;
+    orb_arena_reset(&a);
+    CHECK(!orb_file_load(orb_file_write(&a, &font_in), &font_out, &err));
+
+    fonts[0].line_height = 8;
+    fonts[0].sheet = 1; // only one sheet exists
+    orb_arena_reset(&a);
+    CHECK(!orb_file_load(orb_file_write(&a, &font_in), &font_out, &err));
+
+    fonts[0].sheet = 0;
+    fonts[0].first_glyph = 1; // 95 glyphs from index 1 leave the 95-element section
+    orb_arena_reset(&a);
+    CHECK(!orb_file_load(orb_file_write(&a, &font_in), &font_out, &err));
+
+    fonts[0].first_glyph = 0;
+
     return 0;
 }

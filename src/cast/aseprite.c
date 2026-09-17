@@ -39,6 +39,10 @@ bool orb_ase_parse(orb_arena* a, orb_span file, orb_ase* out, orb_error* err) {
     out->height = orb_bytes_u16(p + 10);
     out->transparent = orb_bytes_u8(p + 28);
     out->color_count = orb_bytes_u16(p + 32);
+    out->grid_x = orb_bytes_i16(p + 36);
+    out->grid_y = orb_bytes_i16(p + 38);
+    out->grid_width = orb_bytes_u16(p + 40);
+    out->grid_height = orb_bytes_u16(p + 42);
 
     if (out->color_count == 0) out->color_count = 256;
 

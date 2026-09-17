@@ -9,6 +9,7 @@
 #include "pack.h"
 #include "wav.h"
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -128,6 +129,7 @@ bool orb_manifest_load(orb_arena* a, const char* game_dir, orb_manifest* m, orb_
            cast_string(root, "name", nullptr, &m->name, err) &&
            cast_string(root, "palette", "art/palette.aseprite", &m->palette, err) &&
            cast_string(root, "art", "art", &m->art, err) &&
+           cast_string(root, "fonts", "fonts", &m->fonts, err) &&
            cast_string(root, "sfx", "sfx", &m->sfx, err) &&
            cast_string(root, "music", "music", &m->music, err) &&
            cast_string(root, "world", "levels/world.ldtk", &m->world, err) &&
@@ -184,6 +186,10 @@ typedef struct cast_files {
     const char** paths; // relative to game_dir, in walk order: sorted at each level
     const char** stems; // one per path, what the asset is found by
     int count;
+    int16_t* grid_x; // a font's Aseprite grid, filled by cast_art; null otherwise
+    int16_t* grid_y;
+    uint16_t* grid_width;
+    uint16_t* grid_height;
 } cast_files;
 
 // Every file with the suffix under rel, recursing, but the one path to skip. A
@@ -239,6 +245,10 @@ static bool cast_walk(
     files->paths = orb_arena_push_array(c->scratch, const char*, ORB_CAST_MAX_READS);
     files->stems = orb_arena_push_array(c->scratch, const char*, ORB_CAST_MAX_READS);
     files->count = 0;
+    files->grid_x = nullptr;
+    files->grid_y = nullptr;
+    files->grid_width = nullptr;
+    files->grid_height = nullptr;
     return cast_walk_into(c, rel, suffix, skip, files);
 }
 
@@ -319,12 +329,14 @@ static bool cast_palette(cast* c, orb_ase* master, orb_assets* as) {
 }
 
 // Every sprite file: one packed sheet each, a sprite per frame, an animation per tag.
-// Tileset files, appended after the art files, take a plainer path: one unpacked
-// sheet each, no sprites or animations.
+// Font and tileset files, appended after the art files, take a plainer path: one
+// unpacked sheet each, no sprites or animations.
 static bool cast_art(
     cast* c,
     const orb_ase* master,
     const orb_ldtk* world,
+    cast_files* fonts,
+    uint32_t* first_font_sheet,
     uint32_t* first_tileset_sheet,
     orb_assets* as
 ) {
@@ -335,16 +347,24 @@ static bool cast_art(
         return false;
 
     int art_count = art.count;
-    int file_count = art_count + world->tileset_count;
-
-    *first_tileset_sheet = (uint32_t)art_count;
+    int font_count = fonts->count;
+    int file_count = art_count + font_count + world->tileset_count;
     const char* world_dir = cast_dir_of(scratch, c->m->world);
     const char** paths = orb_arena_push_array(scratch, const char*, file_count);
 
     memcpy(paths, art.paths, sizeof *paths * art_count);
+    memcpy(paths + art_count, fonts->paths, sizeof *paths * font_count);
 
     for (int i = 0; i < world->tileset_count; i++)
-        paths[art_count + i] = cast_path(scratch, world_dir, world->tilesets[i].path);
+        paths[art_count + font_count + i] = cast_path(scratch, world_dir, world->tilesets[i].path);
+
+    *first_font_sheet = (uint32_t)art_count;
+    *first_tileset_sheet = (uint32_t)(art_count + font_count);
+
+    fonts->grid_x = orb_arena_push_array(scratch, int16_t, font_count);
+    fonts->grid_y = orb_arena_push_array(scratch, int16_t, font_count);
+    fonts->grid_width = orb_arena_push_array(scratch, uint16_t, font_count);
+    fonts->grid_height = orb_arena_push_array(scratch, uint16_t, font_count);
 
     // Generous upper bounds so tables can be filled in one pass; tileset files
     // add no sprites or animations.
@@ -400,8 +420,22 @@ static bool cast_art(
         for (size_t p = 0; p < pixel_count; p++)
             ase->frames[p] = remap[ase->frames[p]];
 
-        if (i >= art_count) {
-            const orb_ldtk_tileset* t = &world->tilesets[i - art_count];
+        if (i >= art_count && i < art_count + font_count) {
+            if (ase->frame_count != 1)
+                return orb_error_set(
+                    c->err, "%s: a font has one frame, this file has %u", paths[i], ase->frame_count
+                );
+
+            int fi = i - art_count;
+
+            fonts->grid_x[fi] = ase->grid_x;
+            fonts->grid_y[fi] = ase->grid_y;
+            fonts->grid_width[fi] = ase->grid_width;
+            fonts->grid_height[fi] = ase->grid_height;
+        }
+
+        if (i >= art_count + font_count) {
+            const orb_ldtk_tileset* t = &world->tilesets[i - art_count - font_count];
 
             if (ase->frame_count != 1)
                 return orb_error_set(
@@ -413,7 +447,9 @@ static bool cast_art(
                     c->err, "%s: %ux%u, but the project says %dx%d", paths[i], ase->width,
                     ase->height, t->width, t->height
                 );
+        }
 
+        if (i >= art_count) {
             sheets[i] = (orb_sheet_desc) {
                 .width = ase->width, .height = ase->height, .pixels = pixel_total
             };
@@ -526,9 +562,11 @@ static bool cast_audio(cast* c, orb_assets* as) {
 
     if (!cast_walk_into(c, m->music, ".wav", "", &wavs)) return false;
 
-    cast_files sounds = {wavs.paths, wavs.stems, (int)sound_count};
+    cast_files sounds = {.paths = wavs.paths, .stems = wavs.stems, .count = (int)sound_count};
     cast_files music = {
-        wavs.paths + sound_count, wavs.stems + sound_count, wavs.count - (int)sound_count
+        .paths = wavs.paths + sound_count,
+        .stems = wavs.stems + sound_count,
+        .count = wavs.count - (int)sound_count
     };
 
     if (!cast_unique(c, &sounds) || !cast_unique(c, &music)) return false;
@@ -618,6 +656,8 @@ static bool cast_audio(cast* c, orb_assets* as) {
 
 #include "world.c"
 
+#include "font.c"
+
 static bool cast_body(cast* c) {
     orb_ase master;
     orb_ldtk world;
@@ -629,10 +669,13 @@ static bool cast_body(cast* c) {
     snprintf(info.name, sizeof info.name, "%s", c->m->name);
     as.info = &info;
 
-    uint32_t first_tileset_sheet = 0;
+    cast_files fonts;
+    uint32_t first_font_sheet = 0, first_tileset_sheet = 0;
 
     if (!cast_palette(c, &master, &as) || !world_parse(c, &world) ||
-        !cast_art(c, &master, &world, &first_tileset_sheet, &as) ||
+        !cast_walk(c, c->m->fonts, ".aseprite", "", &fonts) || !cast_unique(c, &fonts) ||
+        !cast_art(c, &master, &world, &fonts, &first_font_sheet, &first_tileset_sheet, &as) ||
+        !font_cast(c, &fonts, first_font_sheet, &as) ||
         !world_cast(c, &world, first_tileset_sheet, &as) || !cast_audio(c, &as))
         return false;
 

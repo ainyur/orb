@@ -34,4 +34,5 @@
 #include "graphics/framebuffer.c"
 #include "graphics/palette.c"
 #include "graphics/sprite.c"
+#include "graphics/text.c"
 #include "graphics/tilemap.c"

@@ -52,6 +52,9 @@ static const file_row file_rows[] = {
     FILE_ROW(CELLS, uint8_t, cells, cell_count, 0),
     FILE_IDS(LEVEL_IDS, level_ids, level_count),
     FILE_IDS(LAYER_IDS, layer_ids, layer_count),
+    FILE_ROW(FONTS, orb_font_desc, fonts, font_count, ORB_MAX_FONTS),
+    FILE_ROW(GLYPHS, orb_glyph_desc, glyphs, glyph_count, 0),
+    FILE_IDS(FONT_IDS, font_ids, font_count),
 };
 
 constexpr uint32_t FILE_ROW_COUNT = sizeof file_rows / sizeof *file_rows;
@@ -97,6 +100,33 @@ orb_span orb_file_write(orb_arena* a, const orb_assets* in) {
     }
 
     return (orb_span) {base, (size_t)(a->base + a->used - base)};
+}
+
+static bool file_check_fonts(const orb_assets* out, orb_error* err) {
+    for (uint32_t i = 0; i < out->font_count; i++) {
+        const orb_font_desc* f = &out->fonts[i];
+
+        if (f->sheet >= out->sheet_count)
+            return orb_error_set(err, "orb file: font %u names a bad sheet", i);
+
+        const orb_sheet_desc* sheet = &out->sheets[f->sheet];
+
+        if (f->line_height == 0 || f->line_height > sheet->height)
+            return orb_error_set(err, "orb file: font %u has a bad line height", i);
+
+        if ((uint64_t)f->first_glyph + ORB_FONT_GLYPHS > out->glyph_count)
+            return orb_error_set(err, "orb file: font %u leaves the glyphs section", i);
+
+        for (uint32_t g = 0; g < ORB_FONT_GLYPHS; g++) {
+            const orb_glyph_desc* d = &out->glyphs[f->first_glyph + g];
+
+            if ((uint32_t)d->x + d->width > sheet->width ||
+                (uint32_t)d->y + f->line_height > sheet->height)
+                return orb_error_set(err, "orb file: font %u glyph %u leaves its sheet", i, g);
+        }
+    }
+
+    return true;
 }
 
 static bool file_check_levels(const orb_assets* out, orb_error* err) {
@@ -251,5 +281,5 @@ bool orb_file_load(orb_span file, orb_assets* out, orb_error* err) {
         }
     }
 
-    return file_check_levels(out, err);
+    return file_check_levels(out, err) && file_check_fonts(out, err);
 }

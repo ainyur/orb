@@ -37,6 +37,7 @@ int main(void) {
         "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
         " \"asset_headroom\": 1048576, \"palette\": \"" ART "art/palette.aseprite\",\n"
         " \"art\": \"" ART "art\", \"sfx\": \"" ART "sfx\", \"music\": \"" ART "music\",\n"
+        " \"fonts\": \"" ART "fonts\",\n"
         " \"world\": \"" ART "levels/world.ldtk\",\n"
         " \"songs\": {\"loop\": 120}}\n";
 
@@ -54,24 +55,28 @@ int main(void) {
 
     // every file and directory the cast read, once each: what scry watches, so a
     // file added to a directory recasts without touching orb.json. The world
-    // casts before the art, so the project, its two level files, and the
-    // tileset all appear ahead of the art walk.
-    CHECK_EQ(r.read_count, 12);
+    // casts before the fonts and the art, so the project and its two level
+    // files come first; the font directory and its file follow, ahead of the
+    // art walk and the tileset it pulls in.
+    CHECK_EQ(r.read_count, 14);
     CHECK(strcmp(r.reads[0], "orb.json") == 0);
     CHECK(strcmp(r.reads[1], ART "art/palette.aseprite") == 0);
     CHECK(strcmp(r.reads[2], ART "levels/world.ldtk") == 0);
     CHECK(strcmp(r.reads[3], ART "levels/world/Room.ldtkl") == 0);
     CHECK(strcmp(r.reads[4], ART "levels/world/Annex.ldtkl") == 0);
-    CHECK(strcmp(r.reads[5], ART "art") == 0);
-    CHECK(strcmp(r.reads[6], ART "art/player.aseprite") == 0);
-    CHECK(strcmp(r.reads[7], ART "levels/tiles.aseprite") == 0);
-    CHECK(strcmp(r.reads[11], ART "music/loop.wav") == 0);
+    CHECK(strcmp(r.reads[5], ART "fonts") == 0);
+    CHECK(strcmp(r.reads[6], ART "fonts/body.aseprite") == 0);
+    CHECK(strcmp(r.reads[7], ART "art") == 0);
+    CHECK(strcmp(r.reads[8], ART "art/player.aseprite") == 0);
+    CHECK(strcmp(r.reads[9], ART "levels/tiles.aseprite") == 0);
+    CHECK(strcmp(r.reads[13], ART "music/loop.wav") == 0);
 
     orb_assets as;
     CHECK(orb_file_load(r.file, &as, &err));
     CHECK_EQ(as.palette[1 * 4 + 2], 64);
     CHECK_EQ(as.palette[2 * 4 + 0], 255);
-    CHECK_EQ(as.sheet_count, 2); // the art sheet, then the world's tileset sheet
+    // sprites, then the font sheet, then the world's tileset sheet
+    CHECK_EQ(as.sheet_count, 3);
     CHECK_EQ(as.sprite_count, 2);
     CHECK_EQ(as.sprites[0].width, 8);
     CHECK_EQ(as.sprites[0].ox, 4);
@@ -120,16 +125,16 @@ int main(void) {
     CHECK(as.sample_ids[1] == orb_asset_id("loop", "song"));
     CHECK(as.song_ids[0] == orb_asset_id("LOOP", ""));
 
-    // the world: one tileset sheet after the art sheet, two levels, six layers
-    CHECK_EQ(as.sheet_count, 2);
+    // the world: one tileset sheet after the art and font sheets, two levels, six layers
+    CHECK_EQ(as.sheet_count, 3);
     CHECK_EQ(as.tileset_count, 1);
-    CHECK_EQ(as.tilesets[0].sheet, 1);
+    CHECK_EQ(as.tilesets[0].sheet, 2);
     CHECK_EQ(as.tilesets[0].grid, 8);
     CHECK_EQ(as.tilesets[0].columns, 4);
     CHECK_EQ(as.tilesets[0].count, 8);
-    CHECK_EQ(as.sheets[1].width, 32);
-    CHECK_EQ(as.pixels[as.sheets[1].pixels + 8 * 32 + 24], 6); // tile 7's marker at its (0,0)
-    CHECK_EQ(as.pixels[as.sheets[1].pixels + 8 * 32 + 25], 5); // tile 7's body
+    CHECK_EQ(as.sheets[2].width, 32);
+    CHECK_EQ(as.pixels[as.sheets[2].pixels + 8 * 32 + 24], 6); // tile 7's marker at its (0,0)
+    CHECK_EQ(as.pixels[as.sheets[2].pixels + 8 * 32 + 25], 5); // tile 7's body
     CHECK_EQ(as.level_count, 2);
     CHECK_EQ(as.level_ids[0], orb_asset_id("room", ""));
     CHECK_EQ(as.level_ids[1], orb_asset_id("Annex", ""));
@@ -181,8 +186,8 @@ int main(void) {
     CHECK_EQ(as.neighbors[0].dir, ORB_NEIGHBOR_E);
     CHECK_EQ(as.neighbors[1].dir, ORB_NEIGHBOR_HIGHER);
 
-    // scratch peaks at the packed PCM plus the largest file plus the art and the world
-    CHECK(scratch.peak < 2 * as.pcm_count * sizeof(int16_t) + (112 << 10));
+    // scratch peaks at the packed PCM plus the largest file plus the art, the font, and the world
+    CHECK(scratch.peak < 2 * as.pcm_count * sizeof(int16_t) + (135 << 10));
 
     // no project: no levels, and the directory is watched so its creation recasts
     const char* no_project =
@@ -387,13 +392,14 @@ int main(void) {
     CHECK(orb_file_load(r.file, &as, &err));
     CHECK_EQ(as.sprite_count, 2);
     CHECK_EQ(as.sample_count, 0); // no sfx or music directory is no error, and both are watched
-    CHECK_EQ(r.read_count, 8);    // "levels" too: no project at the default path, but it is watched
+    CHECK_EQ(r.read_count, 9);    // "levels" and "fonts" too: missing, but both are watched
     CHECK(strcmp(r.reads[2], "levels") == 0);
-    CHECK(strcmp(r.reads[3], "art") == 0);
-    CHECK(strcmp(r.reads[4], "art/sub") == 0);
-    CHECK(strcmp(r.reads[5], "art/sub/hero.aseprite") == 0);
-    CHECK(strcmp(r.reads[6], "sfx") == 0);
-    CHECK(strcmp(r.reads[7], "music") == 0);
+    CHECK(strcmp(r.reads[3], "fonts") == 0);
+    CHECK(strcmp(r.reads[4], "art") == 0);
+    CHECK(strcmp(r.reads[5], "art/sub") == 0);
+    CHECK(strcmp(r.reads[6], "art/sub/hero.aseprite") == 0);
+    CHECK(strcmp(r.reads[7], "sfx") == 0);
+    CHECK(strcmp(r.reads[8], "music") == 0);
     CHECK(orb_os_write_file(DIR "/art/hero.aseprite", player));
     CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
     CHECK(strstr(err.text, "art/hero.aseprite") != nullptr);

@@ -13,6 +13,8 @@ typedef struct orb_ase_tag {
 typedef struct orb_ase {
     uint16_t width, height, frame_count, tag_count, color_count;
     uint8_t transparent;
+    int16_t grid_x, grid_y;
+    uint16_t grid_width, grid_height;
     uint8_t rgb[256][3];
     uint8_t* frames;     // frame_count * width * height composited indices
     uint16_t* durations; // milliseconds

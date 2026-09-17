@@ -5,6 +5,7 @@ typedef struct {
     bool flip;
     orb_animation_state animation;
     orb_sprite sprite;
+    orb_font font;
     orb_level room;
     int floor, collision;
 } game_state;
@@ -32,6 +33,7 @@ static void reload(void* state, const orb_api* orb) {
     game_state* g = state;
 
     g->animation.animation = orb->animation_find("player", "walk");
+    g->font = orb->font_find("body");
     g->room = orb->level_find("room");
     g->floor = orb->layer_find(g->room, "floor");
     g->collision = orb->layer_find(g->room, "collision");
@@ -71,6 +73,7 @@ static void draw(void* state, const orb_api* orb) {
     orb->clear(1);
     orb->layer_draw(g->room, g->floor);
     orb->sprite_draw(g->sprite, (orb_vec2) {g->x, g->y}, g->flip ? ORB_FLIP_X : 0, nullptr);
+    orb->text_draw(g->font, "AB", (orb_vec2) {0, 0}, nullptr);
 }
 
 static const orb_game game = {config, init, reload, update, draw};

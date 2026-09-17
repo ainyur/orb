@@ -12,6 +12,10 @@ typedef struct orb_animation_state {
     uint16_t frame, ticks;
 } orb_animation_state;
 
+typedef struct {
+    uint32_t v;
+} orb_font;
+
 typedef struct orb_layer_info {
     int grid, columns, rows;
     bool has_tiles, has_cells;
@@ -117,6 +121,7 @@ typedef struct orb_neighbor {
 } orb_neighbor;
 
 #define ORB_ANIMATION(i) ((orb_animation) {(uint32_t)(i)})
+#define ORB_FONT(i) ((orb_font) {(uint32_t)(i)})
 #define ORB_LEVEL(i) ((orb_level) {(uint32_t)(i)})
 #define ORB_SAMPLE(i) ((orb_sample) {(uint32_t)(i)})
 #define ORB_SONG(i) ((orb_song) {(uint32_t)(i)})
@@ -126,6 +131,7 @@ typedef struct orb_neighbor {
 
 constexpr uint32_t ORB_NO_INDEX = 0xffffffu;
 constexpr orb_animation ORB_NO_ANIMATION = {ORB_NO_INDEX};
+constexpr orb_font ORB_NO_FONT = {ORB_NO_INDEX};
 constexpr orb_level ORB_NO_LEVEL = {ORB_NO_INDEX};
 constexpr orb_sample ORB_NO_SAMPLE = {ORB_NO_INDEX};
 constexpr orb_song ORB_NO_SONG = {ORB_NO_INDEX};
@@ -155,6 +161,11 @@ constexpr int ORB_AUDIO_CHANNELS = 2;
 // index within it, ORB_NO_INDEX when missing. layer_draw draws one layer in world space under
 // the camera; cell_get reads an IntGrid value at a world pixel, 0 outside. camera_update moves
 // an orb_camera toward its target, clamps it to its bounds, and calls camera_set with the result.
+//
+// Text. font_find("body") is body.aseprite from the manifest's fonts. text_draw puts a
+// string on the framebuffer in screen space, ignoring the camera; bytes outside 32 to 126
+// draw nothing and do not advance. text_measure is the string's pixel width and the font's
+// line height, for centring.
 typedef struct orb_api {
     orb_animation (*animation_find)(const char* stem, const char* tag);
     void (*animation_start)(orb_animation_state* st, orb_animation a);
@@ -166,6 +177,7 @@ typedef struct orb_api {
     void (*camera_update)(orb_camera* camera);
     int (*cell_get)(orb_level level, int layer, orb_vec2 at);
     void (*clear)(uint8_t index);
+    orb_font (*font_find)(const char* stem);
     void (*layer_draw)(orb_level level, int layer);
     int (*layer_find)(orb_level level, const char* name);
     orb_layer_info (*layer_info)(orb_level level, int layer);
@@ -188,6 +200,8 @@ typedef struct orb_api {
     void (*sound_stop)(orb_voice v);
     void (*sprite_draw)(orb_sprite s, orb_vec2 at, uint32_t flags, const uint8_t* remap);
     orb_sprite (*sprite_find)(const char* stem, int frame);
+    void (*text_draw)(orb_font f, const char* s, orb_vec2 at, const uint8_t* remap);
+    orb_size (*text_measure)(orb_font f, const char* s);
     void (*volume_set)(orb_volumes v);
 } orb_api;
 

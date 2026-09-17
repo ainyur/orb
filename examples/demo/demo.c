@@ -15,6 +15,7 @@
 #define IDLE_TICKS (3 * 60)
 #define IDLE_SPEED_X 2.0f
 #define IDLE_SPEED_Y 1.5f
+#define HINT_TICKS (10 * 60)
 
 #define BG 1
 #define RED 2
@@ -32,6 +33,9 @@ typedef struct {
     int floor, walls, shadow;
     int grid; // the walls layer's cell size, what a hit snaps to
     orb_camera camera;
+    orb_font font;
+    bool paused; // no call reports whether the song is playing
+    bool hint;
 } game_state;
 
 static orb_config config(void) {
@@ -50,6 +54,7 @@ static void init(void* state, const orb_api* orb) {
     g->x = 48;
     g->y = 48;
     g->camera.lerp = 0.85f;
+    g->hint = true;
     orb->song_play(orb->song_find("song"), true);
 }
 
@@ -64,6 +69,7 @@ static void reload(void* state, const orb_api* orb) {
     g->shadow = orb->layer_find(g->room, "shadow");
     g->grid = orb->layer_info(g->room, g->walls).grid;
     g->camera.bounds = orb->level_bounds(g->room);
+    g->font = orb->font_find("body");
 }
 
 static float clampf(float v, float lo, float hi) {
@@ -124,7 +130,7 @@ static void update(void* state, const orb_api* orb) {
     if (dx || dy) {
         g->idle = 0;
         wandering = false;
-    } else if (g->idle < IDLE_TICKS)
+    } else if (g->idle < HINT_TICKS)
         g->idle++;
 
     if (dx) g->flip = dx < 0;
@@ -149,6 +155,21 @@ static void update(void* state, const orb_api* orb) {
     float hit_x = move_axis(orb, g, &g->x, &g->vx, g->y, true, keep);
     float hit_y = move_axis(orb, g, &g->y, &g->vy, g->x, false, keep);
     float hit = hit_x > hit_y ? hit_x : hit_y;
+
+    if (orb->button_pressed(ORB_BTN_SELECT)) {
+        g->paused = !g->paused;
+
+        if (g->paused)
+            orb->song_pause();
+        else
+            orb->song_resume();
+    }
+
+    // The wander never stops, so a long idle outranks motion or the hint would never return.
+    if (g->idle >= HINT_TICKS)
+        g->hint = true;
+    else if (g->vx != 0 || g->vy != 0)
+        g->hint = false;
 
     if (hit > 0 && (wandering || hit >= FLASH_SPEED)) {
         float pan = (g->x - g->camera.at.x + FRAME / 2) / (SCREEN_W / 2.0f) - 1;
@@ -182,6 +203,15 @@ static void draw(void* state, const orb_api* orb) {
         g->sprite, (orb_vec2) {(int)g->x, (int)g->y}, g->flip ? ORB_FLIP_X : 0,
         g->flash > 0 ? remap : nullptr
     );
+
+    if (g->hint) {
+        const char* hint = "Arrows to move and Tab toggles music";
+
+        orb->text_draw(
+            g->font, hint, (orb_vec2) {(SCREEN_W - orb->text_measure(g->font, hint).width) / 2, 16},
+            nullptr
+        );
+    }
 }
 
 static const orb_game game = {config, init, reload, update, draw};
