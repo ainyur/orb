@@ -2,7 +2,11 @@
 #define ORB_OS_HEADLESS 1
 #include "../src/orb.c"
 
-static void debug_swallow(const char* line) {
+#ifndef _WIN32
+#include <fcntl.h>
+#endif
+
+static void ignore_line(const char* line) {
     (void)line;
 }
 
@@ -51,7 +55,7 @@ int main(void) {
     CHECK(orb_os_write_file(path, (orb_span) {a, 1}));
     CHECK(!orb_watch_poll(&w, 3400000000));
     CHECK(orb_watch_poll(&w, 3700000000));
-    CHECK_EQ(orb_os_run("make -s -C examples/demo build/game" ORB_OS_LIB_SUFFIX, debug_swallow), 0);
+    CHECK_EQ(orb_os_run("make -s -C examples/demo build/game" ORB_OS_LIB_SUFFIX, ignore_line), 0);
 
     // the copy is named per process, and a leftover at that name is replaced by a
     // new file rather than truncated, since another orb may have it mapped
@@ -62,17 +66,24 @@ int main(void) {
     orb_path_join(leftover, "examples/demo/build", copy_name);
     CHECK(orb_os_write_file(leftover, (orb_span) {a, 1}));
 #ifndef _WIN32
-    struct stat before;
-    CHECK_EQ(stat(leftover, &before), 0);
+    // Held open across the boot. Inode numbers cannot express this: a freed one may be
+    // reused, so an equal number proves nothing either way.
+    int held = open(leftover, O_RDONLY);
+
+    CHECK(held >= 0);
 #endif
     CHECK_EQ(debug_boot("examples/demo"), 0);
     CHECK(strcmp(debug_so_path, "examples/demo/build/game" ORB_OS_LIB_SUFFIX) == 0);
     CHECK(strcmp(debug_copy_path, leftover) == 0);
     CHECK(orb_os_file_mtime(debug_copy_path) != 0);
 #ifndef _WIN32
-    struct stat after;
-    CHECK_EQ(stat(debug_copy_path, &after), 0);
-    CHECK(after.st_ino != before.st_ino);
+    // orb_os_copy_file opens with "wb", so without the loader's remove() this descriptor
+    // would read the new library instead of the byte the leftover was written with.
+    uint8_t held_byte = 0;
+
+    CHECK_EQ(pread(held, &held_byte, 1, 0), 1);
+    CHECK_EQ(held_byte, a[0]);
+    CHECK_EQ(close(held), 0);
 #endif
 
     // the asset watch is what the cast read: the manifest, then every file and
