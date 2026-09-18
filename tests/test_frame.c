@@ -49,6 +49,24 @@ int main(void) {
     CHECK_EQ(pixel(4 * 8, 2 * 8 + 7), YELLOW);
     CHECK_EQ(pixel(4 * 8, 2 * 8), WHITE);
 
+    // the manifest binds select to M, resolved through the headless US layout
+    in.keys[ORB_KEY_M] = true;
+    orb_os_headless_set_input(&in);
+    CHECK(orb_run_tick());
+    CHECK_EQ(orb_api_table()->key_pressed_any(), ORB_KEY_M);
+    CHECK(orb_api_table()->key_down(ORB_KEY_M));
+    CHECK(
+        strcmp(orb_api_table()->key_name(orb_api_table()->button_source(ORB_BTN_SELECT)), "m") == 0
+    );
+    CHECK(orb_api_table()->button_down(ORB_BTN_SELECT));
+    in.keys[ORB_KEY_M] = false;
+    in.keys[ORB_KEY_TAB] = true;
+    orb_os_headless_set_input(&in);
+    CHECK(orb_run_tick());
+    CHECK(!orb_api_table()->button_down(ORB_BTN_SELECT));
+    in = (orb_input) {0};
+    orb_os_headless_set_input(&in);
+
     // sounds and the song play through the API table into the headless render
     const orb_api* api = orb_api_table();
     orb_sample beep = api->sample_find("beep");
@@ -107,7 +125,7 @@ int main(void) {
     CHECK_EQ(pixel(bx - 1, by), BACKGROUND);
     CHECK_EQ(pixel(bx + 8, by), BACKGROUND);
 
-    in.down[ORB_BTN_RIGHT] = true;
+    in.keys[ORB_KEY_RIGHT] = true;
     orb_os_headless_set_input(&in);
 
     for (int i = 0; i < 10; i++)
@@ -120,8 +138,8 @@ int main(void) {
     CHECK_EQ(pixel(bx + 19, by), GREEN);
     CHECK_EQ(pixel(bx + 20, by), BACKGROUND);
 
-    in.down[ORB_BTN_RIGHT] = false;
-    in.down[ORB_BTN_LEFT] = true;
+    in.keys[ORB_KEY_RIGHT] = false;
+    in.keys[ORB_KEY_LEFT] = true;
     orb_os_headless_set_input(&in);
 
     CHECK(orb_run_tick());
@@ -132,7 +150,9 @@ int main(void) {
     CHECK_EQ(pixel(bx + 14, by), GREEN);
     CHECK_EQ(pixel(bx + 15, by), BACKGROUND);
 
+    api->button_bind(ORB_BTN_SELECT, ORB_KEY_TAB);
     CHECK(orb_run_recast(&err));
+    CHECK_EQ(api->button_source(ORB_BTN_SELECT), ORB_KEY_M); // the manifest's, again
 
     orb_run_draw();
 
@@ -142,7 +162,7 @@ int main(void) {
     CHECK(api->sound_play(beep, (orb_sound_params) {.volume = 1}, 0).v != ORB_NO_VOICE.v);
 
     in = (orb_input) {0};
-    in.down[ORB_BTN_LEFT] = true;
+    in.keys[ORB_KEY_LEFT] = true;
     orb_os_headless_set_input(&in);
 
     for (int i = 0; i < 40; i++)

@@ -35,6 +35,7 @@ enum {
     ORB_SEC_FONTS,
     ORB_SEC_GLYPHS,
     ORB_SEC_FONT_IDS,
+    ORB_SEC_BINDINGS,
     ORB_SEC_COUNT_
 };
 
@@ -68,6 +69,10 @@ typedef struct orb_animation_desc {
     uint16_t count;
     uint8_t pad[6];
 } orb_animation_desc;
+
+typedef struct orb_binding_desc {
+    orb_key_symbol symbol; // UTF-8, NUL-terminated
+} orb_binding_desc;        // 24 bytes
 
 typedef struct orb_file_header {
     uint32_t magic, version, section_count, pad;
@@ -156,6 +161,7 @@ typedef struct orb_tileset_desc {
 } orb_tileset_desc; // 16 bytes
 
 static_assert(sizeof(orb_animation_desc) == 16, "orb_animation_desc layout");
+static_assert(sizeof(orb_binding_desc) == 24, "orb_binding_desc layout");
 static_assert(sizeof(orb_file_header) == 16, "orb_file_header layout");
 static_assert(sizeof(orb_font_desc) == 16, "orb_font_desc layout");
 static_assert(sizeof(orb_glyph_desc) == 8, "orb_glyph_desc layout");

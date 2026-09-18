@@ -354,5 +354,37 @@ int main(void) {
 
     fonts[0].first_glyph = 0;
 
+    // bindings: twelve records round-trip, zero load, anything else is refused
+    orb_binding_desc bindings[ORB_BTN_COUNT] = {};
+
+    for (int i = 0; i < ORB_BTN_COUNT; i++)
+        snprintf(bindings[i].symbol, sizeof bindings[i].symbol, "%s", orb_button_names[i]);
+
+    orb_assets binding_in = {
+        .info = &info, .palette = palette, .bindings = bindings, .binding_count = ORB_BTN_COUNT
+    };
+    orb_assets binding_out = {};
+
+    orb_arena_reset(&a);
+    CHECK(orb_file_load(orb_file_write(&a, &binding_in), &binding_out, &err));
+    CHECK_EQ(binding_out.binding_count, ORB_BTN_COUNT);
+    CHECK(strcmp(binding_out.bindings[ORB_BTN_SELECT].symbol, "select") == 0);
+
+    binding_in.binding_count = 0;
+    orb_arena_reset(&a);
+    CHECK(orb_file_load(orb_file_write(&a, &binding_in), &binding_out, &err));
+    CHECK_EQ(binding_out.binding_count, 0);
+
+    binding_in.binding_count = 5;
+    orb_arena_reset(&a);
+    CHECK(!orb_file_load(orb_file_write(&a, &binding_in), &binding_out, &err));
+    CHECK(strstr(err.text, "0 or 12 are valid") != nullptr);
+
+    binding_in.binding_count = ORB_BTN_COUNT;
+    memset(bindings[3].symbol, 'x', sizeof bindings[3].symbol);
+    orb_arena_reset(&a);
+    CHECK(!orb_file_load(orb_file_write(&a, &binding_in), &binding_out, &err));
+    CHECK(strstr(err.text, "binding 3 has no terminator") != nullptr);
+
     return 0;
 }

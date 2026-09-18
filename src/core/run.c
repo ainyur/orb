@@ -36,6 +36,7 @@ static bool run_open(orb_error* err) {
 
     if (!orb_os_open(&cfg)) return orb_error_set(err, "cannot open a window");
 
+    orb_input_resolve(orb_api_assets());
     run_game->init(run_state.base, orb_api_table());
     run_game->reload(run_state.base, orb_api_table());
     return true;
@@ -171,6 +172,7 @@ void orb_run_loop(void (*poll)(void)) {
 bool orb_run_recast(orb_error* err) {
     if (!run_cast(1 - run_live_half, err)) return false;
 
+    orb_input_resolve(orb_api_assets());
     run_game->reload(run_state.base, orb_api_table());
     return true;
 }

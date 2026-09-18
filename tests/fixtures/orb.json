@@ -3,5 +3,6 @@
   "name": "Fixture",
   "size": [64, 32],
   "asset_headroom": 2097152,
-  "songs": {"loop": 120}
+  "songs": {"loop": 120},
+  "buttons": {"select": "m"}
 }

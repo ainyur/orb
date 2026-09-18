@@ -21,6 +21,7 @@ typedef struct orb_manifest_song {
 // art/palette.aseprite, art/, fonts/, sfx/, music/, and levels/world.ldtk, and
 // 16 MB of headroom. The directories are walked recursively at cast, so only
 // songs list files, one stem to tempo each, since a rendered file carries none.
+// buttons maps a button name to a key symbol.
 typedef struct orb_manifest {
     const char* id;
     const char* name;
@@ -32,6 +33,7 @@ typedef struct orb_manifest {
     const char* world;
     const orb_manifest_song* songs;
     int song_count;
+    orb_key_symbol buttons[ORB_BTN_COUNT]; // empty where the manifest named none
     orb_size size;
     size_t asset_headroom;
 } orb_manifest;

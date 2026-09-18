@@ -1,6 +1,8 @@
 #include "test.h"
 #define ORB_OS_HEADLESS 1
 #include "../src/orb.c"
+#include "../src/os/gdi_keys.h"
+#include "../src/os/x11_keys.h"
 
 static char run_lines[8][64];
 static int run_line_count;
@@ -21,22 +23,17 @@ int main(int argc, char** argv) {
 
     orb_arena_init(&a, "test", mem, sizeof mem);
 
-    // input edges
-    orb_input in = {0};
-
-    orb_input_step(&in);
-    in.down[ORB_BTN_A] = true;
-    orb_input_step(&in);
-    CHECK(orb_button_down(ORB_BTN_A));
-    CHECK(orb_button_pressed(ORB_BTN_A));
-    CHECK(!orb_button_released(ORB_BTN_A));
-    orb_input_step(&in);
-    CHECK(orb_button_down(ORB_BTN_A));
-    CHECK(!orb_button_pressed(ORB_BTN_A));
-    in.down[ORB_BTN_A] = false;
-    orb_input_step(&in);
-    CHECK(!orb_button_down(ORB_BTN_A));
-    CHECK(orb_button_released(ORB_BTN_A));
+    // the key tables: evdev codes and set-1 scancodes land on HID positions
+    CHECK_EQ(x11_keys[30], 4);   // KEY_A
+    CHECK_EQ(x11_keys[103], 82); // KEY_UP
+    CHECK_EQ(x11_keys[28], 40);  // KEY_ENTER
+    CHECK_EQ(x11_keys[0], 0);
+    CHECK_EQ(gdi_keys[0x1e], 4);        // A
+    CHECK_EQ(gdi_keys[128 + 0x48], 82); // extended up
+    CHECK_EQ(gdi_keys[128 + 0x45], 83); // num lock, extended too
+    CHECK_EQ(gdi_keys[0x1c], 40);       // return
+    CHECK_EQ(gdi_keys[0x48], 96);       // keypad 8, the unextended code
+    CHECK_EQ(gdi_keys[0], 0);
 
     // files
     uint8_t bytes[] = {1, 2, 3};
@@ -114,13 +111,13 @@ int main(int argc, char** argv) {
     CHECK(orb_os_open(&cfg));
     orb_input scripted = {0};
 
-    scripted.down[ORB_BTN_RIGHT] = true;
+    scripted.keys[ORB_KEY_RIGHT] = true;
     orb_os_headless_set_input(&scripted);
 
     orb_input pumped;
 
     CHECK(orb_os_pump(&pumped));
-    CHECK(pumped.down[ORB_BTN_RIGHT]);
+    CHECK(pumped.keys[ORB_KEY_RIGHT]);
 
     uint32_t rgb[8] = {0xff0000, 1, 2, 3, 4, 5, 6, 0x0000ff};
 

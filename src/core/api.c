@@ -231,14 +231,21 @@ static const orb_api api_table = {
     .animation_find = api_animation_find,
     .animation_start = orb_animation_start,
     .animation_step = api_animation_step,
+    .button_bind = orb_button_bind,
     .button_down = orb_button_down,
     .button_pressed = orb_button_pressed,
     .button_released = orb_button_released,
+    .button_source = orb_button_source,
     .camera_set = api_camera_set,
     .camera_update = api_camera_update,
     .cell_get = api_cell_get,
     .clear = api_clear,
     .font_find = api_font_find,
+    .key_down = orb_key_down,
+    .key_name = orb_key_name,
+    .key_pressed = orb_key_pressed,
+    .key_pressed_any = orb_key_pressed_any,
+    .key_released = orb_key_released,
     .layer_draw = api_layer_draw,
     .layer_find = api_layer_find,
     .layer_info = api_layer_info,
@@ -265,6 +272,10 @@ static const orb_api api_table = {
     .text_measure = api_text_measure,
     .volume_set = api_volume_set,
 };
+
+const orb_assets* orb_api_assets(void) {
+    return &api_assets.assets;
+}
 
 const orb_framebuffer* orb_api_framebuffer(void) {
     return &api_framebuffer;

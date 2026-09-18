@@ -2,13 +2,13 @@
 #include "../core/macros.h"
 #include "os.h"
 #include "posix.c"
+#include "x11_keys.h"
 
 #include "alsa.c"
 
 #include <X11/XKBlib.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
-#include <X11/keysym.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -19,13 +19,31 @@ static XImage* x11_image;
 static uint32_t* x11_pixels;
 static orb_size x11_screen, x11_win, x11_fb;
 static Atom x11_wm_delete;
-static bool x11_keys[ORB_BTN_COUNT];
+static bool x11_down[ORB_KEY_COUNT];
 static bool x11_resized;
 
-// The key for each button, in ORB_BTN order.
-static const uint32_t x11_keymap[ORB_BTN_COUNT] = {XK_Up, XK_Down, XK_Left,   XK_Right,
-                                                   XK_z,  XK_x,    XK_a,      XK_s,
-                                                   XK_q,  XK_w,    XK_Return, XK_Tab};
+// A keysym is a Latin-1 codepoint in 0x20..0x7e and 0xa0..0xff, or a codepoint
+// under the 0x01000000 prefix; anything else has no single symbol.
+int orb_os_key_position(uint32_t codepoint) {
+    KeySym sym = codepoint < 0x100 ? codepoint : (0x01000000u | codepoint);
+    KeyCode code = XKeysymToKeycode(x11_display, sym);
+
+    return code >= 8 ? x11_keys[code - 8] : ORB_KEY_NONE;
+}
+
+uint32_t orb_os_key_symbol(int key) {
+    int code = orb_os_key_code(x11_keys, key);
+
+    if (code < 0) return 0;
+
+    KeySym sym = XkbKeycodeToKeysym(x11_display, (KeyCode)(code + 8), 0, 0);
+
+    if ((sym >= 0x20 && sym <= 0x7e) || (sym >= 0xa0 && sym <= 0xff)) return (uint32_t)sym;
+    if ((sym & 0xff000000u) == 0x01000000u && (sym & 0xffffffu) <= 0x10ffff)
+        return (uint32_t)(sym & 0xffffffu);
+
+    return 0;
+}
 
 bool orb_os_open(const orb_os_config* cfg) {
     x11_display = XOpenDisplay(nullptr);
@@ -119,9 +137,10 @@ bool orb_os_pump(orb_input* out) {
         XNextEvent(x11_display, &ev);
 
         if (ev.type == KeyPress || ev.type == KeyRelease) {
-            int button = orb_os_button(x11_keymap, (uint32_t)XLookupKeysym(&ev.xkey, 0));
+            unsigned code = ev.xkey.keycode;
+            int key = code >= 8 && code < 8 + 256 ? x11_keys[code - 8] : ORB_KEY_NONE;
 
-            if (button >= 0) x11_keys[button] = ev.type == KeyPress;
+            if (key) x11_down[key] = ev.type == KeyPress;
         } else if (ev.type == ConfigureNotify) {
             x11_win = (orb_size) {ev.xconfigure.width, ev.xconfigure.height};
             x11_resized = true;
@@ -130,7 +149,7 @@ bool orb_os_pump(orb_input* out) {
         }
     }
 
-    memcpy(out->down, x11_keys, sizeof x11_keys);
+    memcpy(out->keys, x11_down, sizeof x11_down);
 
     return true;
 }

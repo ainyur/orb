@@ -1,5 +1,6 @@
 #include "cast.h"
 #include "../core/asset.h"
+#include "../core/input.h"
 #include "../graphics/sprite.h"
 #include "../os/os.h"
 #include "aseprite.h"
@@ -96,6 +97,36 @@ static bool cast_song_map(orb_arena* a, const orb_json* root, orb_manifest* m, o
     return true;
 }
 
+// "buttons": {"select": "m", "a": "space"}: a key symbol per button it names.
+static bool cast_button_map(const orb_json* root, orb_manifest* m, orb_error* err) {
+    const orb_json* map = orb_json_get(root, "buttons");
+
+    if (!map) return true;
+
+    if (map->kind != ORB_JSON_OBJECT)
+        return orb_error_set(err, "orb.json: \"buttons\" must be an object of button to key");
+
+    for (const orb_json* b = map->first; b; b = b->next) {
+        int button = -1;
+
+        for (int i = 0; i < ORB_BTN_COUNT; i++)
+            if (strcmp(b->key, orb_button_names[i]) == 0) button = i;
+
+        if (button < 0)
+            return orb_error_set(err, "orb.json: \"buttons\" names no button \"%s\"", b->key);
+        if (m->buttons[button][0])
+            return orb_error_set(err, "orb.json: \"buttons\" names \"%s\" twice", b->key);
+        if (b->kind != ORB_JSON_STRING || !orb_input_symbol_valid(b->str))
+            return orb_error_set(
+                err, "orb.json: \"buttons.%s\" must be a key name or one character", b->key
+            );
+
+        snprintf(m->buttons[button], sizeof m->buttons[button], "%s", b->str);
+    }
+
+    return true;
+}
+
 bool orb_manifest_load(orb_arena* a, const char* game_dir, orb_manifest* m, orb_error* err) {
     orb_span text;
     const char* path = cast_path(a, game_dir, "orb.json");
@@ -133,7 +164,7 @@ bool orb_manifest_load(orb_arena* a, const char* game_dir, orb_manifest* m, orb_
            cast_string(root, "sfx", "sfx", &m->sfx, err) &&
            cast_string(root, "music", "music", &m->music, err) &&
            cast_string(root, "world", "levels/world.ldtk", &m->world, err) &&
-           cast_song_map(a, root, m, err);
+           cast_song_map(a, root, m, err) && cast_button_map(root, m, err);
 }
 
 typedef struct cast {
@@ -678,6 +709,17 @@ static bool cast_body(cast* c) {
         !font_cast(c, &fonts, first_font_sheet, &as) ||
         !world_cast(c, &world, first_tileset_sheet, &as) || !cast_audio(c, &as))
         return false;
+
+    orb_binding_desc bindings[ORB_BTN_COUNT] = {};
+
+    for (int i = 0; i < ORB_BTN_COUNT; i++)
+        snprintf(
+            bindings[i].symbol, sizeof bindings[i].symbol, "%s",
+            c->m->buttons[i][0] ? c->m->buttons[i] : orb_button_defaults[i]
+        );
+
+    as.bindings = bindings;
+    as.binding_count = ORB_BTN_COUNT;
 
     c->r->file = orb_file_write(c->out, &as);
     return true;

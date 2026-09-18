@@ -39,6 +39,7 @@ int main(void) {
         " \"art\": \"" ART "art\", \"sfx\": \"" ART "sfx\", \"music\": \"" ART "music\",\n"
         " \"fonts\": \"" ART "fonts\",\n"
         " \"world\": \"" ART "levels/world.ldtk\",\n"
+        " \"buttons\": {\"select\": \"m\", \"a\": \"space\"},\n"
         " \"songs\": {\"loop\": 120}}\n";
 
     CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)manifest, strlen(manifest)}));
@@ -51,6 +52,9 @@ int main(void) {
     CHECK_EQ(m.size.height, 32);
     CHECK_EQ(m.asset_headroom, 1048576);
     CHECK_EQ(m.song_count, 1);
+    CHECK(strcmp(m.buttons[ORB_BTN_SELECT], "m") == 0);
+    CHECK(strcmp(m.buttons[ORB_BTN_A], "space") == 0);
+    CHECK_EQ(m.buttons[ORB_BTN_UP][0], 0);
     CHECK(r.file.ptr >= out_mem && r.file.ptr < out_mem + sizeof out_mem);
 
     // every file and directory the cast read, once each: what scry watches, so a
@@ -73,6 +77,10 @@ int main(void) {
 
     orb_assets as;
     CHECK(orb_file_load(r.file, &as, &err));
+    CHECK_EQ(as.binding_count, ORB_BTN_COUNT);
+    CHECK(strcmp(as.bindings[ORB_BTN_UP].symbol, "up") == 0); // the default's symbol
+    CHECK(strcmp(as.bindings[ORB_BTN_A].symbol, "space") == 0);
+    CHECK(strcmp(as.bindings[ORB_BTN_SELECT].symbol, "m") == 0);
     CHECK_EQ(as.palette[1 * 4 + 2], 64);
     CHECK_EQ(as.palette[2 * 4 + 0], 255);
     // sprites, then the font sheet, then the world's tileset sheet
@@ -472,6 +480,32 @@ int main(void) {
     CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
     CHECK(strstr(err.text, "loop.wav") != nullptr);
     CHECK(strstr(err.text, "mono") != nullptr);
+
+    // buttons: an unknown button, a repeated button, a bad symbol, and a non-string
+    // value are cast errors
+    const char* bad_buttons[] = {
+        "{\"id\": \"b\", \"name\": \"B\", \"size\": [64, 32], \"buttons\": {\"meta\": \"m\"}}",
+        "{\"id\": \"b\", \"name\": \"B\", \"size\": [64, 32], \"buttons\": {\"select\": \"m\", "
+        "\"select\": \"n\"}}",
+        "{\"id\": \"b\", \"name\": \"B\", \"size\": [64, 32], \"buttons\": {\"select\": \"meta\"}}",
+        "{\"id\": \"b\", \"name\": \"B\", \"size\": [64, 32], \"buttons\": {\"select\": 5}}",
+    };
+    const char* bad_reason[] = {
+        "names no button \"meta\"", "names \"select\" twice",
+        "\"buttons.select\" must be a key name or one character",
+        "\"buttons.select\" must be a key name or one character"
+    };
+
+    for (int i = 0; i < 4; i++) {
+        CHECK(orb_os_write_file(
+            DIR "/orb.json", (orb_span) {(uint8_t*)bad_buttons[i], strlen(bad_buttons[i])}
+        ));
+        orb_arena_reset(&scratch);
+        orb_arena_reset(&out);
+        CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
+        CHECK(strstr(err.text, bad_reason[i]) != nullptr);
+    }
+
     CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)manifest, strlen(manifest)}));
 
     CHECK(!orb_manifest_load(&scratch, "build/scratch", &m, &err));

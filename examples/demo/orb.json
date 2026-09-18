@@ -3,5 +3,8 @@
   "name": "Demo",
   "size": [320, 180],
   "asset_headroom": 16777216,
-  "songs": {"song": 120}
+  "songs": {"song": 120},
+  "buttons": {
+      "select": "m"
+  }
 }

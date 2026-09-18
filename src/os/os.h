@@ -42,9 +42,12 @@ static inline bool orb_has_suffix(const char* path, const char* suffix) {
     return n >= m && strcmp(path + n - m, suffix) == 0;
 }
 
-static inline int orb_os_button(const uint32_t* keymap, uint32_t key) {
-    for (int b = 0; b < ORB_BTN_COUNT; b++)
-        if (keymap[b] == key) return b;
+// The native code a backend's table maps to a position, -1 when none does.
+static inline int orb_os_key_code(const uint8_t* table, int key) {
+    if (key <= 0) return -1;
+
+    for (int code = 0; code < 256; code++)
+        if (table[code] == key) return code;
 
     return -1;
 }
@@ -66,6 +69,11 @@ bool orb_os_open(const orb_os_config* cfg);
 void orb_os_close(void);
 void orb_os_present(const uint32_t* rgb);
 bool orb_os_pump(orb_input* out);
+
+// The layout's unshifted codepoint for a printable position, 0 when it has none, and
+// the position the layout produces a codepoint from, ORB_KEY_NONE when none does.
+uint32_t orb_os_key_symbol(int key);
+int orb_os_key_position(uint32_t codepoint);
 
 orb_os_library* orb_os_dlopen(const char* path);
 void orb_os_dlclose(orb_os_library* lib);

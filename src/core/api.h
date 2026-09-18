@@ -4,6 +4,7 @@
 #include "../graphics/framebuffer.h"
 #include "../orb.h"
 
+const orb_assets* orb_api_assets(void);
 const orb_framebuffer* orb_api_framebuffer(void);
 void orb_api_init(orb_arena* a, orb_size size);
 void orb_api_poll(void); // once a tick: reports dropped audio commands

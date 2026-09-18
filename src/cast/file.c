@@ -55,6 +55,7 @@ static const file_row file_rows[] = {
     FILE_ROW(FONTS, orb_font_desc, fonts, font_count, ORB_MAX_FONTS),
     FILE_ROW(GLYPHS, orb_glyph_desc, glyphs, glyph_count, 0),
     FILE_IDS(FONT_IDS, font_ids, font_count),
+    FILE_ROW(BINDINGS, orb_binding_desc, bindings, binding_count, ORB_BTN_COUNT),
 };
 
 constexpr uint32_t FILE_ROW_COUNT = sizeof file_rows / sizeof *file_rows;
@@ -100,6 +101,19 @@ orb_span orb_file_write(orb_arena* a, const orb_assets* in) {
     }
 
     return (orb_span) {base, (size_t)(a->base + a->used - base)};
+}
+
+static bool file_check_bindings(const orb_assets* out, orb_error* err) {
+    if (out->binding_count != 0 && out->binding_count != ORB_BTN_COUNT)
+        return orb_error_set(
+            err, "orb file: %u bindings, 0 or %u are valid", out->binding_count, ORB_BTN_COUNT
+        );
+
+    for (uint32_t i = 0; i < out->binding_count; i++)
+        if (!memchr(out->bindings[i].symbol, 0, sizeof out->bindings[i].symbol))
+            return orb_error_set(err, "orb file: binding %u has no terminator", i);
+
+    return true;
 }
 
 static bool file_check_fonts(const orb_assets* out, orb_error* err) {
@@ -281,5 +295,6 @@ bool orb_file_load(orb_span file, orb_assets* out, orb_error* err) {
         }
     }
 
-    return file_check_levels(out, err) && file_check_fonts(out, err);
+    return file_check_levels(out, err) && file_check_fonts(out, err) &&
+           file_check_bindings(out, err);
 }

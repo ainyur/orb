@@ -205,7 +205,7 @@ static void draw(void* state, const orb_api* orb) {
     );
 
     if (g->hint) {
-        const char* hint = "Arrows to move and Tab toggles music";
+        const char* hint = "Arrows to move and M toggles music";
 
         orb->text_draw(
             g->font, hint, (orb_vec2) {(SCREEN_W - orb->text_measure(g->font, hint).width) / 2, 16},

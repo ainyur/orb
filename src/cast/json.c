@@ -1,4 +1,5 @@
 #include "json.h"
+#include "../core/bytes.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -68,32 +69,6 @@ static long json_code_point(json_parser* j, const char** q) {
     return 0x10000 + ((cp - 0xd800) << 10) + (low - 0xdc00);
 }
 
-static int json_utf8(long cp, char* out) {
-    if (cp < 0x80) {
-        out[0] = (char)cp;
-        return 1;
-    }
-
-    if (cp < 0x800) {
-        out[0] = (char)(0xc0 | cp >> 6);
-        out[1] = (char)(0x80 | (cp & 0x3f));
-        return 2;
-    }
-
-    if (cp < 0x10000) {
-        out[0] = (char)(0xe0 | cp >> 12);
-        out[1] = (char)(0x80 | (cp >> 6 & 0x3f));
-        out[2] = (char)(0x80 | (cp & 0x3f));
-        return 3;
-    }
-
-    out[0] = (char)(0xf0 | cp >> 18);
-    out[1] = (char)(0x80 | (cp >> 12 & 0x3f));
-    out[2] = (char)(0x80 | (cp >> 6 & 0x3f));
-    out[3] = (char)(0x80 | (cp & 0x3f));
-    return 4;
-}
-
 // Decoded straight into the arena: pushes of alignment 1 are contiguous, so the
 // string is wherever the arena stood when the scan began.
 static bool json_string(json_parser* j, const char** out) {
@@ -132,7 +107,7 @@ static bool json_string(json_parser* j, const char** out) {
 
                 if (cp < 0) return json_fail(j, "bad \\u escape");
 
-                n = json_utf8(cp, buf);
+                n = orb_bytes_utf8((uint32_t)cp, buf);
             } else
                 buf[0] = c;
         }

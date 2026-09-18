@@ -101,6 +101,125 @@ enum {
     ORB_BTN_COUNT
 };
 
+// Physical positions, as USB HID keyboard usage IDs. A position without an
+// enumerator is still a position.
+enum {
+    ORB_KEY_NONE = 0,
+    ORB_KEY_A = 4,
+    ORB_KEY_B,
+    ORB_KEY_C,
+    ORB_KEY_D,
+    ORB_KEY_E,
+    ORB_KEY_F,
+    ORB_KEY_G,
+    ORB_KEY_H,
+    ORB_KEY_I,
+    ORB_KEY_J,
+    ORB_KEY_K,
+    ORB_KEY_L,
+    ORB_KEY_M,
+    ORB_KEY_N,
+    ORB_KEY_O,
+    ORB_KEY_P,
+    ORB_KEY_Q,
+    ORB_KEY_R,
+    ORB_KEY_S,
+    ORB_KEY_T,
+    ORB_KEY_U,
+    ORB_KEY_V,
+    ORB_KEY_W,
+    ORB_KEY_X,
+    ORB_KEY_Y,
+    ORB_KEY_Z,
+    ORB_KEY_1 = 30,
+    ORB_KEY_2,
+    ORB_KEY_3,
+    ORB_KEY_4,
+    ORB_KEY_5,
+    ORB_KEY_6,
+    ORB_KEY_7,
+    ORB_KEY_8,
+    ORB_KEY_9,
+    ORB_KEY_0,
+    ORB_KEY_RETURN = 40,
+    ORB_KEY_ESCAPE,
+    ORB_KEY_BACKSPACE,
+    ORB_KEY_TAB,
+    ORB_KEY_SPACE,
+    ORB_KEY_MINUS = 45,
+    ORB_KEY_EQUALS,
+    ORB_KEY_LEFT_BRACKET,
+    ORB_KEY_RIGHT_BRACKET,
+    ORB_KEY_BACKSLASH,
+    ORB_KEY_NON_US_HASH,
+    ORB_KEY_SEMICOLON,
+    ORB_KEY_APOSTROPHE,
+    ORB_KEY_GRAVE,
+    ORB_KEY_COMMA,
+    ORB_KEY_PERIOD,
+    ORB_KEY_SLASH,
+    ORB_KEY_CAPS_LOCK = 57,
+    ORB_KEY_F1 = 58,
+    ORB_KEY_F2,
+    ORB_KEY_F3,
+    ORB_KEY_F4,
+    ORB_KEY_F5,
+    ORB_KEY_F6,
+    ORB_KEY_F7,
+    ORB_KEY_F8,
+    ORB_KEY_F9,
+    ORB_KEY_F10,
+    ORB_KEY_F11,
+    ORB_KEY_F12,
+    ORB_KEY_PRINT_SCREEN = 70,
+    ORB_KEY_SCROLL_LOCK,
+    ORB_KEY_PAUSE,
+    ORB_KEY_INSERT,
+    ORB_KEY_HOME,
+    ORB_KEY_PAGE_UP,
+    ORB_KEY_DELETE,
+    ORB_KEY_END,
+    ORB_KEY_PAGE_DOWN,
+    ORB_KEY_RIGHT,
+    ORB_KEY_LEFT,
+    ORB_KEY_DOWN,
+    ORB_KEY_UP,
+    ORB_KEY_NUM_LOCK = 83,
+    ORB_KEY_KP_DIVIDE,
+    ORB_KEY_KP_MULTIPLY,
+    ORB_KEY_KP_MINUS,
+    ORB_KEY_KP_PLUS,
+    ORB_KEY_KP_ENTER,
+    ORB_KEY_KP_1,
+    ORB_KEY_KP_2,
+    ORB_KEY_KP_3,
+    ORB_KEY_KP_4,
+    ORB_KEY_KP_5,
+    ORB_KEY_KP_6,
+    ORB_KEY_KP_7,
+    ORB_KEY_KP_8,
+    ORB_KEY_KP_9,
+    ORB_KEY_KP_0,
+    ORB_KEY_KP_PERIOD,
+    ORB_KEY_NON_US_BACKSLASH = 100,
+    ORB_KEY_APPLICATION,
+    ORB_KEY_LEFT_CTRL = 224,
+    ORB_KEY_LEFT_SHIFT,
+    ORB_KEY_LEFT_ALT,
+    ORB_KEY_LEFT_GUI,
+    ORB_KEY_RIGHT_CTRL,
+    ORB_KEY_RIGHT_SHIFT,
+    ORB_KEY_RIGHT_ALT,
+    ORB_KEY_RIGHT_GUI,
+    ORB_KEY_COUNT = 256
+};
+
+// A button's source: a key position, or a pad button once the gamepad lands.
+constexpr int ORB_SOURCE_NONE = 0;
+constexpr int ORB_SOURCE_PAD = 512;
+
+typedef char orb_key_symbol[24]; // a key's name or one UTF-8 codepoint, NUL-terminated
+
 typedef enum orb_neighbor_dir : uint8_t {
     ORB_NEIGHBOR_N,
     ORB_NEIGHBOR_S,
@@ -166,18 +285,34 @@ constexpr int ORB_AUDIO_CHANNELS = 2;
 // string on the framebuffer in screen space, ignoring the camera; bytes outside 32 to 126
 // draw nothing and do not advance. text_measure is the string's pixel width and the font's
 // line height, for centring.
+//
+// Input. A key is a physical position (ORB_KEY_*, HID usage IDs) and a button is a
+// binding to one: the manifest's buttons map sets it, button_bind changes it in memory,
+// button_source reads it. key_down, key_pressed and key_released read any position, exact
+// per tick; key_pressed_any is the lowest position that went down this tick, ORB_KEY_NONE
+// when none did, for capturing a binding. key_name is a named key's name ("tab",
+// "page_up") or the layout's symbol for a printable one ("m", ","), "" for a position with
+// neither; the string is valid until the next call. A recast resets bindings to the
+// manifest's, so re-apply your own in reload.
 typedef struct orb_api {
     orb_animation (*animation_find)(const char* stem, const char* tag);
     void (*animation_start)(orb_animation_state* st, orb_animation a);
     orb_sprite (*animation_step)(orb_animation_state* st);
+    void (*button_bind)(int button, int source);
     bool (*button_down)(int button);
     bool (*button_pressed)(int button);
     bool (*button_released)(int button);
+    int (*button_source)(int button);
     void (*camera_set)(orb_vec2f at);
     void (*camera_update)(orb_camera* camera);
     int (*cell_get)(orb_level level, int layer, orb_vec2 at);
     void (*clear)(uint8_t index);
     orb_font (*font_find)(const char* stem);
+    bool (*key_down)(int key);
+    const char* (*key_name)(int key);
+    bool (*key_pressed)(int key);
+    int (*key_pressed_any)(void);
+    bool (*key_released)(int key);
     void (*layer_draw)(orb_level level, int layer);
     int (*layer_find)(orb_level level, const char* name);
     orb_layer_info (*layer_info)(orb_level level, int layer);
