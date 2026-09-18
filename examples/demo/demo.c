@@ -15,7 +15,6 @@
 #define IDLE_TICKS (3 * 60)
 #define IDLE_SPEED_X 2.0f
 #define IDLE_SPEED_Y 1.5f
-#define HINT_TICKS (10 * 60)
 
 #define BG 1
 #define RED 2
@@ -129,8 +128,9 @@ static void update(void* state, const orb_api* orb) {
 
     if (dx || dy) {
         g->idle = 0;
+        g->hint = false;
         wandering = false;
-    } else if (g->idle < HINT_TICKS)
+    } else if (g->idle < IDLE_TICKS)
         g->idle++;
 
     if (dx) g->flip = dx < 0;
@@ -157,6 +157,7 @@ static void update(void* state, const orb_api* orb) {
     float hit = hit_x > hit_y ? hit_x : hit_y;
 
     if (orb->button_pressed(ORB_BTN_SELECT)) {
+        g->hint = false;
         g->paused = !g->paused;
 
         if (g->paused)
@@ -164,12 +165,6 @@ static void update(void* state, const orb_api* orb) {
         else
             orb->song_resume();
     }
-
-    // The wander never stops, so a long idle outranks motion or the hint would never return.
-    if (g->idle >= HINT_TICKS)
-        g->hint = true;
-    else if (g->vx != 0 || g->vy != 0)
-        g->hint = false;
 
     if (hit > 0 && (wandering || hit >= FLASH_SPEED)) {
         float pan = (g->x - g->camera.at.x + FRAME / 2) / (SCREEN_W / 2.0f) - 1;
@@ -205,7 +200,7 @@ static void draw(void* state, const orb_api* orb) {
     );
 
     if (g->hint) {
-        const char* hint = "Arrows to move and M toggles music";
+        const char* hint = "Arrows to move and 'M' toggles music";
 
         orb->text_draw(
             g->font, hint, (orb_vec2) {(SCREEN_W - orb->text_measure(g->font, hint).width) / 2, 16},
