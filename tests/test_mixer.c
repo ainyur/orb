@@ -70,7 +70,7 @@ int main(void) {
     // a one-shot plays its 8 frames at full scale on both sides, then frees its voice
     v = orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), full, 0);
     CHECK_EQ(MIXER_VOICE_INDEX(v), ORB_GAME_VOICE_FIRST);
-    CHECK_EQ(MIXER_VOICE_GENERATION(v), 1);
+    CHECK_EQ(MIXER_VOICE_GEN(v), 1);
     CHECK_EQ(playing_count(), 1);
     render(8);
     CHECK_EQ(out[0], 1000);
@@ -135,7 +135,7 @@ int main(void) {
     CHECK_EQ(orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), full, 3).v, ORB_NO_VOICE.v);
     v = orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), full, 5);
     CHECK_EQ(MIXER_VOICE_INDEX(v), ORB_GAME_VOICE_FIRST); // the oldest priority-5 voice
-    CHECK_EQ(MIXER_VOICE_GENERATION(v), MIXER_VOICE_GENERATION(held[0]) + 1);
+    CHECK_EQ(MIXER_VOICE_GEN(v), MIXER_VOICE_GEN(held[0]) + 1);
     v = orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), full, 9);
     CHECK_EQ(MIXER_VOICE_INDEX(v), ORB_GAME_VOICE_FIRST + 1); // 5 before 9; the first is newest now
     orb_mixer_sound_stop(&mixer, held[0]); // stale: the first voice belongs to a newer claim
@@ -157,7 +157,7 @@ int main(void) {
 
     CHECK_EQ(MIXER_VOICE_INDEX(w), ORB_GAME_VOICE_FIRST);
     mixer_voice_end(first); // the old sound ends before the play is consumed
-    CHECK_EQ(atomic_load(&first->playing), MIXER_VOICE_GENERATION(w));
+    CHECK_EQ(atomic_load(&first->playing), MIXER_VOICE_GEN(w));
     render(1);
     CHECK_EQ(out[0], 16000); // all sixteen at their first frame
     render(20);
@@ -287,8 +287,8 @@ int main(void) {
     CHECK_EQ(out[0], 0);
 
     // handles carry generations: one from before a recast plays nothing
-    static const uint8_t generations[3] = {0, 1, 0};
-    assets.sample_generations = generations;
+    static const uint8_t gens[3] = {0, 1, 0};
+    assets.sample_gens = gens;
     orb_mixer_set_assets(&mixer, &assets);
     CHECK_EQ(orb_mixer_sound_play(&mixer, ORB_SAMPLE(1), full, 0).v, ORB_NO_VOICE.v);
     CHECK(orb_mixer_sound_play(&mixer, ORB_SAMPLE(1 | 1u << 24), full, 0).v != ORB_NO_VOICE.v);

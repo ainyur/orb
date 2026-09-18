@@ -1,10 +1,20 @@
-#include "framebuffer.h"
+#include "fb.h"
 #include "../core/macros.h"
 
 #include <string.h>
 
-void orb_framebuffer_blit(
-    orb_framebuffer* fb,
+void orb_fb_init(orb_fb* fb, orb_arena* a, orb_size size) {
+    fb->width = size.width;
+    fb->height = size.height;
+    fb->px = orb_arena_push(a, (size_t)size.width * size.height, 16);
+}
+
+void orb_fb_clear(orb_fb* fb, uint8_t index) {
+    memset(fb->px, index, (size_t)fb->width * fb->height);
+}
+
+void orb_fb_blit(
+    orb_fb* fb,
     const uint8_t* src,
     int stride,
     orb_size size,
@@ -29,17 +39,7 @@ void orb_framebuffer_blit(
     }
 }
 
-void orb_framebuffer_clear(orb_framebuffer* fb, uint8_t index) {
-    memset(fb->px, index, (size_t)fb->width * fb->height);
-}
-
-void orb_framebuffer_init(orb_framebuffer* fb, orb_arena* a, orb_size size) {
-    fb->width = size.width;
-    fb->height = size.height;
-    fb->px = orb_arena_push(a, (size_t)size.width * size.height, 16);
-}
-
-void orb_framebuffer_resolve(const orb_framebuffer* fb, const uint32_t* live, uint32_t* rgb) {
+void orb_fb_resolve(const orb_fb* fb, const uint32_t* live, uint32_t* rgb) {
     size_t n = (size_t)fb->width * fb->height;
 
     for (size_t i = 0; i < n; i++)

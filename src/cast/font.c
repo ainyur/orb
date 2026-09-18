@@ -1,6 +1,16 @@
 // A font's cells come from its own Aseprite grid; a glyph's rect is the inked span of
 // its cell and its advance that width plus one.
-static bool font_fail(cast* c, const char* path, const char* fmt, ...);
+static bool font_fail(cast* c, const char* path, const char* fmt, ...) {
+    va_list args;
+
+    va_start(args, fmt);
+
+    char detail[160];
+
+    vsnprintf(detail, sizeof detail, fmt, args);
+    va_end(args);
+    return orb_error_set(c->err, "%s: %s", path, detail);
+}
 
 static bool font_cast(cast* c, const cast_files* fonts, uint32_t first_sheet, orb_assets* as) {
     if ((uint32_t)fonts->count > ORB_MAX_FONTS)
@@ -81,16 +91,4 @@ static bool font_cast(cast* c, const cast_files* fonts, uint32_t first_sheet, or
     as->glyph_count = (uint32_t)fonts->count * ORB_FONT_GLYPHS;
     as->font_ids = ids;
     return true;
-}
-
-static bool font_fail(cast* c, const char* path, const char* fmt, ...) {
-    va_list args;
-
-    va_start(args, fmt);
-
-    char detail[160];
-
-    vsnprintf(detail, sizeof detail, fmt, args);
-    va_end(args);
-    return orb_error_set(c->err, "%s: %s", path, detail);
 }

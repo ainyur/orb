@@ -13,6 +13,13 @@ void orb_arena_init(orb_arena* a, const char* name, void* mem, size_t size) {
     a->overflow = 0;
 }
 
+orb_arena orb_arena_carve(orb_arena* parent, const char* name, size_t size) {
+    orb_arena child;
+
+    orb_arena_init(&child, name, orb_arena_push(parent, size, 16), size);
+    return child;
+}
+
 void* orb_arena_push(orb_arena* a, size_t size, size_t align) {
     size_t start = (a->used + align - 1) & ~(align - 1);
 
@@ -38,11 +45,4 @@ void* orb_arena_push(orb_arena* a, size_t size, size_t align) {
 
 void orb_arena_reset(orb_arena* a) {
     a->used = 0;
-}
-
-orb_arena orb_arena_carve(orb_arena* parent, const char* name, size_t size) {
-    orb_arena child;
-
-    orb_arena_init(&child, name, orb_arena_push(parent, size, 16), size);
-    return child;
 }

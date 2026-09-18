@@ -4,15 +4,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-bool orb_error_set(orb_error* e, const char* fmt, ...) {
-    va_list ap;
-
-    va_start(ap, fmt);
-    vsnprintf(e->text, sizeof e->text, fmt, ap);
-    va_end(ap);
-    return false;
-}
-
 // Formats into a local buffer and writes it with one fputs, so a line from the
 // audio thread cannot interleave with a main-thread line between the text and
 // its newline.
@@ -31,6 +22,15 @@ void orb_log(const char* fmt, ...) {
     line[len] = '\n';
     line[len + 1] = '\0';
     fputs(line, stderr);
+}
+
+bool orb_error_set(orb_error* e, const char* fmt, ...) {
+    va_list ap;
+
+    va_start(ap, fmt);
+    vsnprintf(e->text, sizeof e->text, fmt, ap);
+    va_end(ap);
+    return false;
 }
 
 [[noreturn]] void orb_fatal(const char* fmt, ...) {

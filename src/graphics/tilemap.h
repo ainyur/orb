@@ -2,11 +2,20 @@
 
 #include "../core/asset.h"
 #include "../orb.h"
-#include "framebuffer.h"
+#include "fb.h"
 
 int orb_tilemap_cell(const orb_assets* assets, orb_level level, int layer, orb_vec2 at);
+int orb_tilemap_layer_find(const orb_assets* assets, orb_level level, const char* name);
+orb_layer_info orb_tilemap_layer_info(const orb_assets* assets, orb_level level, int layer);
+orb_rect orb_tilemap_level_bounds(const orb_assets* assets, orb_level level);
+int orb_tilemap_level_neighbors(
+    const orb_assets* assets,
+    orb_level level,
+    orb_neighbor* out,
+    int max
+);
 void orb_tilemap_draw(
-    orb_framebuffer* fb,
+    orb_fb* fb,
     const orb_assets* assets,
     orb_vec2f cam,
     orb_level level,

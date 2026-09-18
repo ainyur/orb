@@ -7,11 +7,11 @@ int main(void) {
     static alignas(16) uint8_t mem[1 << 20];
     orb_arena_init(&a, "test", mem, sizeof mem);
 
-    uint8_t palette[256 * 4] = {0};
+    uint8_t pal[256 * 4] = {0};
 
-    palette[4] = 32;
-    palette[5] = 32;
-    palette[6] = 64;
+    pal[4] = 32;
+    pal[5] = 32;
+    pal[6] = 64;
 
     orb_sheet_desc sheets[1] = {{.width = 4, .height = 2, .pixels = 0}};
     uint8_t pixels[8] = {1, 2, 3, 4, 5, 6, 7, 8};
@@ -27,9 +27,9 @@ int main(void) {
          .frame_height = 8},
         {.sheet = 0, .x = 2, .y = 0, .width = 2, .height = 2, .frame_width = 8, .frame_height = 8}
     };
-    orb_animation_desc animations[1] = {{.first_sprite = 0, .first_duration = 0, .count = 2}};
+    orb_anim_desc anims[1] = {{.first_sprite = 0, .first_duration = 0, .count = 2}};
     uint16_t durations[2] = {6, 12};
-    uint64_t sprite_ids[2] = {11, 22}, animation_ids[1] = {44};
+    uint64_t sprite_ids[2] = {11, 22}, anim_ids[1] = {44};
     // a mono sample of 4 frames, then a stereo one of 2 frames, interleaved
     int16_t pcm[8] = {100, 200, 300, 400, 1000, -1000, 2000, -2000};
     orb_sample_desc samples[2] = {
@@ -41,19 +41,19 @@ int main(void) {
     orb_info_desc info = {.width = 64, .height = 32, .name = "fixture"};
     orb_assets in = {
         .info = &info,
-        .palette = palette,
+        .pal = pal,
         .sheets = sheets,
         .sheet_count = 1,
         .pixels = pixels,
         .pixel_count = 8,
         .sprites = sprites,
         .sprite_count = 2,
-        .animations = animations,
-        .animation_count = 1,
+        .anims = anims,
+        .anim_count = 1,
         .durations = durations,
         .duration_count = 2,
         .sprite_ids = sprite_ids,
-        .animation_ids = animation_ids,
+        .anim_ids = anim_ids,
         .samples = samples,
         .sample_count = 2,
         .pcm = pcm,
@@ -74,7 +74,7 @@ int main(void) {
     CHECK_EQ(out.info->width, 64);
     CHECK_EQ(out.info->height, 32);
     CHECK(strcmp(out.info->name, "fixture") == 0);
-    CHECK_EQ(out.palette[6], 64);
+    CHECK_EQ(out.pal[6], 64);
     CHECK_EQ(out.sheet_count, 1);
     CHECK_EQ(out.sheets[0].width, 4);
     CHECK_EQ(out.pixel_count, 8);
@@ -82,14 +82,14 @@ int main(void) {
     CHECK_EQ(out.sprite_count, 2);
     CHECK_EQ(out.sprites[1].x, 2);
     CHECK_EQ(out.sprites[0].ox, 1);
-    CHECK_EQ(out.animation_count, 1);
-    CHECK_EQ(out.animations[0].count, 2);
+    CHECK_EQ(out.anim_count, 1);
+    CHECK_EQ(out.anims[0].count, 2);
     CHECK_EQ(out.duration_count, 2);
     CHECK_EQ(out.durations[1], 12);
     CHECK(((uintptr_t)out.sprites & 15) == 0);
     CHECK_EQ(out.sprite_ids[1], 22);
-    CHECK_EQ(out.animation_ids[0], 44);
-    CHECK(out.sprite_generations == nullptr); // a loaded file carries no runtime generations
+    CHECK_EQ(out.anim_ids[0], 44);
+    CHECK(out.sprite_gens == nullptr); // a loaded file carries no runtime generations
     CHECK_EQ(out.sample_count, 2);
     CHECK_EQ(out.samples[1].first, 4);
     CHECK_EQ(out.samples[1].channels, 2);
@@ -101,7 +101,7 @@ int main(void) {
     CHECK_EQ(out.songs[0].sample, 1);
     CHECK_EQ(out.sample_ids[1], 66);
     CHECK_EQ(out.song_ids[0], 77);
-    CHECK(out.sample_generations == nullptr);
+    CHECK(out.sample_gens == nullptr);
 
     // a sample that runs past the PCM section and a song naming a missing sample are refused
     samples[1].count = 3;
@@ -245,7 +245,7 @@ int main(void) {
     CHECK_EQ(out.level_ids[1], 99);
     CHECK_EQ(out.layer_ids[2], 3);
     CHECK_EQ(out.tilesets[0].count, 2);
-    CHECK(out.level_generations == nullptr);
+    CHECK(out.level_gens == nullptr);
     CHECK(((uintptr_t)out.layers & 15) == 0);
 
     // a level whose layers run past the layer section
@@ -314,7 +314,7 @@ int main(void) {
 
     orb_assets font_in = {
         .info = &info,
-        .palette = palette,
+        .pal = pal,
         .sheets = font_sheets,
         .sheet_count = 1,
         .fonts = fonts,
@@ -361,7 +361,7 @@ int main(void) {
         snprintf(bindings[i].symbol, sizeof bindings[i].symbol, "%s", orb_button_names[i]);
 
     orb_assets binding_in = {
-        .info = &info, .palette = palette, .bindings = bindings, .binding_count = ORB_BTN_COUNT
+        .info = &info, .pal = pal, .bindings = bindings, .binding_count = ORB_BTN_COUNT
     };
     orb_assets binding_out = {};
 

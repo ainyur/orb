@@ -30,7 +30,7 @@ static const orb_game test_game = {test_config, test_init, test_reload, test_upd
 int main(void) {
     orb_error err;
 
-    if (!orb_run_boot(&test_game, "examples/demo", (orb_span) {}, &err)) {
+    if (!orb_boot(&test_game, "examples/demo", (orb_span) {}, &err)) {
         fprintf(stderr, "boot: %s\n", err.text);
         return 1;
     }
@@ -40,23 +40,23 @@ int main(void) {
     CHECK_EQ(test_reload_count, 1);
 
     // same size and version
-    orb_run_set_game(&test_game);
+    orb_set_game(&test_game);
     CHECK_EQ(test_init_count, 1);
     CHECK_EQ(test_reload_count, 2);
 
     // the state struct grew (a field was added) without a version bump
     // orb treats that as a new version, resets the state, and keeps the session alive
     test_state_size = 64 + 16;
-    orb_run_set_game(&test_game);
+    orb_set_game(&test_game);
     CHECK_EQ(test_init_count, 2);
     CHECK_EQ(test_reload_count, 3);
 
     // shrinking is a layout change too
     test_state_size = 64 - 8;
-    orb_run_set_game(&test_game);
+    orb_set_game(&test_game);
     CHECK_EQ(test_init_count, 3);
 
-    orb_os_close();
+    orb_quit();
 
     return 0;
 }

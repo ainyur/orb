@@ -5,7 +5,7 @@
 static const uint8_t player_ase[] = {
 #embed "fixtures/art/player.aseprite"
 };
-static const uint8_t palette_ase[] = {
+static const uint8_t pal_ase[] = {
 #embed "fixtures/art/palette.aseprite"
 };
 
@@ -50,7 +50,7 @@ int main(void) {
     CHECK_EQ(ase.grid_width, 16);
     CHECK_EQ(ase.grid_height, 16);
 
-    orb_span pal = {(uint8_t*)palette_ase, sizeof palette_ase};
+    orb_span pal = {(uint8_t*)pal_ase, sizeof pal_ase};
     orb_ase p;
 
     CHECK(orb_ase_parse(&a, pal, &p, &err));

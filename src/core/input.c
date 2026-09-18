@@ -13,9 +13,6 @@ const char* const orb_button_defaults[ORB_BTN_COUNT] = {"up", "down", "left",   
                                                         "z",  "x",    "a",      "s",
                                                         "q",  "w",    "return", "tab"};
 
-static orb_input input_now, input_before;
-static int input_bindings[ORB_BTN_COUNT]; // set by orb_input_resolve before any query
-
 // Named keys hold their position on every layout; the enumerator, lowercased.
 static const char* const input_names[ORB_KEY_COUNT] = {
     [ORB_KEY_RETURN] = "return",
@@ -77,27 +74,17 @@ static const char* const input_names[ORB_KEY_COUNT] = {
     "right_alt",
     "right_gui",
 };
-static char input_name[8]; // orb_key_name's buffer for a printable key's UTF-8
 
-static int input_utf8_decode(const char* s, uint32_t* out);
-
-static bool input_button_ok(int button) {
-    return button >= 0 && button < ORB_BTN_COUNT;
-}
+static orb_input input_now, input_before;
+static int input_bindings[ORB_BTN_COUNT]; // set by orb_input_resolve before any query
+static char input_name[8];                // orb_key_name's buffer for a printable key's UTF-8
 
 static bool input_key_ok(int key) {
     return key > ORB_KEY_NONE && key < ORB_KEY_COUNT;
 }
 
-// A symbol is a named key's name, else one codepoint above space; returns the name's
-// position, 0 for a lone codepoint (with it in *codepoint), or -1 for neither.
-static int input_symbol_parse(const char* symbol, uint32_t* codepoint) {
-    for (int key = 1; key < ORB_KEY_COUNT; key++)
-        if (input_names[key] && strcmp(input_names[key], symbol) == 0) return key;
-
-    int n = input_utf8_decode(symbol, codepoint);
-
-    return n && symbol[n] == 0 && *codepoint > 0x20 ? 0 : -1;
+static bool input_button_ok(int button) {
+    return button >= 0 && button < ORB_BTN_COUNT;
 }
 
 // Bytes consumed by one well-formed codepoint at s, 0 for none or a bad sequence.
@@ -126,6 +113,48 @@ static int input_utf8_decode(const char* s, uint32_t* out) {
     return n;
 }
 
+// A symbol is a named key's name, else one codepoint above space; returns the name's
+// position, 0 for a lone codepoint (with it in *codepoint), or -1 for neither.
+static int input_symbol_parse(const char* symbol, uint32_t* codepoint) {
+    for (int key = 1; key < ORB_KEY_COUNT; key++)
+        if (input_names[key] && strcmp(input_names[key], symbol) == 0) return key;
+
+    int n = input_utf8_decode(symbol, codepoint);
+
+    return n && symbol[n] == 0 && *codepoint > 0x20 ? 0 : -1;
+}
+
+bool orb_key_down(int key) {
+    return input_key_ok(key) && input_now.keys[key];
+}
+
+bool orb_key_pressed(int key) {
+    return input_key_ok(key) && input_now.keys[key] && !input_before.keys[key];
+}
+
+bool orb_key_released(int key) {
+    return input_key_ok(key) && !input_now.keys[key] && input_before.keys[key];
+}
+
+int orb_key_pressed_any(void) {
+    for (int key = 1; key < ORB_KEY_COUNT; key++)
+        if (input_now.keys[key] && !input_before.keys[key]) return key;
+
+    return ORB_KEY_NONE;
+}
+
+const char* orb_key_name(int key) {
+    if (!input_key_ok(key)) return "";
+    if (input_names[key]) return input_names[key];
+
+    uint32_t codepoint = orb_os_key_symbol(key);
+
+    if (!codepoint) return "";
+
+    input_name[orb_bytes_utf8(codepoint, input_name)] = 0;
+    return input_name;
+}
+
 void orb_button_bind(int button, int source) {
     if (!input_button_ok(button) || (source != ORB_SOURCE_NONE && !input_key_ok(source))) return;
 
@@ -148,25 +177,6 @@ int orb_button_source(int button) {
     return input_button_ok(button) ? input_bindings[button] : ORB_SOURCE_NONE;
 }
 
-void orb_input_resolve(const orb_assets* assets) {
-    bool sealed = assets->binding_count == ORB_BTN_COUNT;
-
-    for (int i = 0; i < ORB_BTN_COUNT; i++) {
-        const char* symbol = sealed ? assets->bindings[i].symbol : orb_button_defaults[i];
-        int key = orb_input_symbol_position(symbol);
-
-        if (key == ORB_KEY_NONE)
-            orb_log("no key \"%s\" for %s on this layout", symbol, orb_button_names[i]);
-
-        input_bindings[i] = key;
-    }
-}
-
-void orb_input_step(const orb_input* next) {
-    input_before = input_now;
-    input_now = *next;
-}
-
 int orb_input_symbol_position(const char* symbol) {
     uint32_t codepoint;
     int key = input_symbol_parse(symbol, &codepoint);
@@ -185,33 +195,21 @@ bool orb_input_symbol_valid(const char* symbol) {
     return input_symbol_parse(symbol, &codepoint) >= 0;
 }
 
-bool orb_key_down(int key) {
-    return input_key_ok(key) && input_now.keys[key];
+void orb_input_resolve(const orb_assets* assets) {
+    bool sealed = assets->binding_count == ORB_BTN_COUNT;
+
+    for (int i = 0; i < ORB_BTN_COUNT; i++) {
+        const char* symbol = sealed ? assets->bindings[i].symbol : orb_button_defaults[i];
+        int key = orb_input_symbol_position(symbol);
+
+        if (key == ORB_KEY_NONE)
+            orb_log("no key \"%s\" for %s on this layout", symbol, orb_button_names[i]);
+
+        input_bindings[i] = key;
+    }
 }
 
-const char* orb_key_name(int key) {
-    if (!input_key_ok(key)) return "";
-    if (input_names[key]) return input_names[key];
-
-    uint32_t codepoint = orb_os_key_symbol(key);
-
-    if (!codepoint) return "";
-
-    input_name[orb_bytes_utf8(codepoint, input_name)] = 0;
-    return input_name;
-}
-
-bool orb_key_pressed(int key) {
-    return input_key_ok(key) && input_now.keys[key] && !input_before.keys[key];
-}
-
-int orb_key_pressed_any(void) {
-    for (int key = 1; key < ORB_KEY_COUNT; key++)
-        if (input_now.keys[key] && !input_before.keys[key]) return key;
-
-    return ORB_KEY_NONE;
-}
-
-bool orb_key_released(int key) {
-    return input_key_ok(key) && !input_now.keys[key] && input_before.keys[key];
+void orb_input_step(const orb_input* next) {
+    input_before = input_now;
+    input_now = *next;
 }

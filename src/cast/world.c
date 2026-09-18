@@ -1,12 +1,82 @@
 // World casting: the LDtk project into the level sections. Textually included by
 // cast.c, so it sees cast, cast_path, cast_dir_of, cast_read, and cast_note.
 
+// The LDtk project and its external level files, parsed but not yet cast. A
+// missing project is an empty world; its directory (or "." when the path names
+// no directory) is watched so creating the file recasts.
+static bool world_parse(cast* c, orb_ldtk* world) {
+    const char* rel = c->m->world;
+    const char* path = cast_path(c->scratch, c->game_dir, rel);
+    orb_os_info info;
+
+    memset(world, 0, sizeof *world);
+
+    if (!orb_os_stat(path, &info)) {
+        const char* dir = cast_dir_of(c->scratch, rel);
+        return cast_note(c, *dir ? dir : ".");
+    }
+
+    orb_span text;
+
+    if (!cast_read(c, rel, &text)) return false;
+
+    orb_error inner;
+
+    if (!orb_ldtk_parse(c->scratch, text, rel, world, &inner))
+        return orb_error_set(c->err, "%s", inner.text);
+
+    const char* dir = cast_dir_of(c->scratch, rel);
+
+    for (int i = 0; i < world->level_count; i++) {
+        orb_ldtk_level* level = &world->levels[i];
+
+        if (!level->external_path) continue;
+
+        const char* level_rel = cast_path(c->scratch, dir, level->external_path);
+
+        if (!cast_read(c, level_rel, &text)) return false;
+        if (!orb_ldtk_parse_level(c->scratch, text, level_rel, world, level, &inner))
+            return orb_error_set(c->err, "%s", inner.text);
+    }
+
+    return true;
+}
+
+// The maximum number of tiles any one cell of the layer receives, counted with
+// a per-cell counter pushed and popped from scratch. A cell over ORB_MAX_SUBLAYERS
+// is an error naming the level, the layer, and the cell.
 static bool world_sublayers(
     cast* c,
     const orb_ldtk_level* level,
     const orb_ldtk_layer* layer,
     uint32_t* out
-);
+) {
+    orb_arena* scratch = c->scratch;
+    uint32_t area = (uint32_t)layer->columns * layer->rows;
+    size_t mark = scratch->used;
+    uint8_t* counts = orb_arena_push_array(scratch, uint8_t, area);
+    uint32_t max_depth = 0;
+
+    for (int i = 0; i < layer->tile_count; i++) {
+        const orb_ldtk_tile* tile = &layer->tiles[i];
+        uint32_t cell = (uint32_t)tile->cell_y * (uint32_t)layer->columns + tile->cell_x;
+        uint32_t depth = ++counts[cell];
+
+        if (depth > max_depth) max_depth = depth;
+
+        if (depth > ORB_MAX_SUBLAYERS) {
+            scratch->used = mark;
+            return orb_error_set(
+                c->err, "level %s: layer %s: cell (%d, %d) stacks more than %u tiles (sub-layers)",
+                level->name, layer->name, tile->cell_x, tile->cell_y, ORB_MAX_SUBLAYERS
+            );
+        }
+    }
+
+    scratch->used = mark;
+    *out = max_depth;
+    return true;
+}
 
 // The level sections: tilesets, levels, layers, neighbors, tiles, and cells.
 // Sized by one counting pass, then filled by a second.
@@ -214,82 +284,5 @@ static bool world_cast(
     as->cell_count = cell_total;
     as->level_ids = level_ids;
     as->layer_ids = layer_ids;
-    return true;
-}
-
-// The LDtk project and its external level files, parsed but not yet cast. A
-// missing project is an empty world; its directory (or "." when the path names
-// no directory) is watched so creating the file recasts.
-static bool world_parse(cast* c, orb_ldtk* world) {
-    const char* rel = c->m->world;
-    const char* path = cast_path(c->scratch, c->game_dir, rel);
-    orb_os_info info;
-
-    memset(world, 0, sizeof *world);
-
-    if (!orb_os_stat(path, &info)) {
-        const char* dir = cast_dir_of(c->scratch, rel);
-        return cast_note(c, *dir ? dir : ".");
-    }
-
-    orb_span text;
-
-    if (!cast_read(c, rel, &text)) return false;
-
-    orb_error inner;
-
-    if (!orb_ldtk_parse(c->scratch, text, rel, world, &inner))
-        return orb_error_set(c->err, "%s", inner.text);
-
-    const char* dir = cast_dir_of(c->scratch, rel);
-
-    for (int i = 0; i < world->level_count; i++) {
-        orb_ldtk_level* level = &world->levels[i];
-
-        if (!level->external_path) continue;
-
-        const char* level_rel = cast_path(c->scratch, dir, level->external_path);
-
-        if (!cast_read(c, level_rel, &text)) return false;
-        if (!orb_ldtk_parse_level(c->scratch, text, level_rel, world, level, &inner))
-            return orb_error_set(c->err, "%s", inner.text);
-    }
-
-    return true;
-}
-
-// The maximum number of tiles any one cell of the layer receives, counted with
-// a per-cell counter pushed and popped from scratch. A cell over ORB_MAX_SUBLAYERS
-// is an error naming the level, the layer, and the cell.
-static bool world_sublayers(
-    cast* c,
-    const orb_ldtk_level* level,
-    const orb_ldtk_layer* layer,
-    uint32_t* out
-) {
-    orb_arena* scratch = c->scratch;
-    uint32_t area = (uint32_t)layer->columns * layer->rows;
-    size_t mark = scratch->used;
-    uint8_t* counts = orb_arena_push_array(scratch, uint8_t, area);
-    uint32_t max_depth = 0;
-
-    for (int i = 0; i < layer->tile_count; i++) {
-        const orb_ldtk_tile* tile = &layer->tiles[i];
-        uint32_t cell = (uint32_t)tile->cell_y * (uint32_t)layer->columns + tile->cell_x;
-        uint32_t depth = ++counts[cell];
-
-        if (depth > max_depth) max_depth = depth;
-
-        if (depth > ORB_MAX_SUBLAYERS) {
-            scratch->used = mark;
-            return orb_error_set(
-                c->err, "level %s: layer %s: cell (%d, %d) stacks more than %u tiles (sub-layers)",
-                level->name, layer->name, tile->cell_x, tile->cell_y, ORB_MAX_SUBLAYERS
-            );
-        }
-    }
-
-    scratch->used = mark;
-    *out = max_depth;
     return true;
 }

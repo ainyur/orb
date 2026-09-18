@@ -31,14 +31,14 @@ constexpr uint16_t FILE_NO_COUNT = 0xffff;
 
 static const file_row file_rows[] = {
     FILE_ONE(INFO, orb_info_desc, info),
-    FILE_ONE(PALETTE, uint8_t[256 * 4], palette),
+    FILE_ONE(PAL, uint8_t[256 * 4], pal),
     FILE_ROW(SHEETS, orb_sheet_desc, sheets, sheet_count, 0),
     FILE_ROW(PIXELS, uint8_t, pixels, pixel_count, 0),
     FILE_ROW(SPRITES, orb_sprite_desc, sprites, sprite_count, ORB_MAX_SPRITES),
-    FILE_ROW(ANIMATIONS, orb_animation_desc, animations, animation_count, ORB_MAX_ANIMATIONS),
+    FILE_ROW(ANIMS, orb_anim_desc, anims, anim_count, ORB_MAX_ANIMS),
     FILE_ROW(DURATIONS, uint16_t, durations, duration_count, 0),
     FILE_IDS(SPRITE_IDS, sprite_ids, sprite_count),
-    FILE_IDS(ANIMATION_IDS, animation_ids, animation_count),
+    FILE_IDS(ANIM_IDS, anim_ids, anim_count),
     FILE_ROW(SAMPLES, orb_sample_desc, samples, sample_count, ORB_MAX_SAMPLES),
     FILE_ROW(PCM, int16_t, pcm, pcm_count, 0),
     FILE_IDS(SAMPLE_IDS, sample_ids, sample_count),
@@ -103,46 +103,6 @@ orb_span orb_file_write(orb_arena* a, const orb_assets* in) {
     return (orb_span) {base, (size_t)(a->base + a->used - base)};
 }
 
-static bool file_check_bindings(const orb_assets* out, orb_error* err) {
-    if (out->binding_count != 0 && out->binding_count != ORB_BTN_COUNT)
-        return orb_error_set(
-            err, "orb file: %u bindings, 0 or %u are valid", out->binding_count, ORB_BTN_COUNT
-        );
-
-    for (uint32_t i = 0; i < out->binding_count; i++)
-        if (!memchr(out->bindings[i].symbol, 0, sizeof out->bindings[i].symbol))
-            return orb_error_set(err, "orb file: binding %u has no terminator", i);
-
-    return true;
-}
-
-static bool file_check_fonts(const orb_assets* out, orb_error* err) {
-    for (uint32_t i = 0; i < out->font_count; i++) {
-        const orb_font_desc* f = &out->fonts[i];
-
-        if (f->sheet >= out->sheet_count)
-            return orb_error_set(err, "orb file: font %u names a bad sheet", i);
-
-        const orb_sheet_desc* sheet = &out->sheets[f->sheet];
-
-        if (f->line_height == 0 || f->line_height > sheet->height)
-            return orb_error_set(err, "orb file: font %u has a bad line height", i);
-
-        if ((uint64_t)f->first_glyph + ORB_FONT_GLYPHS > out->glyph_count)
-            return orb_error_set(err, "orb file: font %u leaves the glyphs section", i);
-
-        for (uint32_t g = 0; g < ORB_FONT_GLYPHS; g++) {
-            const orb_glyph_desc* d = &out->glyphs[f->first_glyph + g];
-
-            if ((uint32_t)d->x + d->width > sheet->width ||
-                (uint32_t)d->y + f->line_height > sheet->height)
-                return orb_error_set(err, "orb file: font %u glyph %u leaves its sheet", i, g);
-        }
-    }
-
-    return true;
-}
-
 static bool file_check_levels(const orb_assets* out, orb_error* err) {
     for (uint32_t i = 0; i < out->tileset_count; i++) {
         const orb_tileset_desc* t = &out->tilesets[i];
@@ -199,6 +159,46 @@ static bool file_check_levels(const orb_assets* out, orb_error* err) {
     return true;
 }
 
+static bool file_check_fonts(const orb_assets* out, orb_error* err) {
+    for (uint32_t i = 0; i < out->font_count; i++) {
+        const orb_font_desc* f = &out->fonts[i];
+
+        if (f->sheet >= out->sheet_count)
+            return orb_error_set(err, "orb file: font %u names a bad sheet", i);
+
+        const orb_sheet_desc* sheet = &out->sheets[f->sheet];
+
+        if (f->line_height == 0 || f->line_height > sheet->height)
+            return orb_error_set(err, "orb file: font %u has a bad line height", i);
+
+        if ((uint64_t)f->first_glyph + ORB_FONT_GLYPHS > out->glyph_count)
+            return orb_error_set(err, "orb file: font %u leaves the glyphs section", i);
+
+        for (uint32_t g = 0; g < ORB_FONT_GLYPHS; g++) {
+            const orb_glyph_desc* d = &out->glyphs[f->first_glyph + g];
+
+            if ((uint32_t)d->x + d->width > sheet->width ||
+                (uint32_t)d->y + f->line_height > sheet->height)
+                return orb_error_set(err, "orb file: font %u glyph %u leaves its sheet", i, g);
+        }
+    }
+
+    return true;
+}
+
+static bool file_check_bindings(const orb_assets* out, orb_error* err) {
+    if (out->binding_count != 0 && out->binding_count != ORB_BTN_COUNT)
+        return orb_error_set(
+            err, "orb file: %u bindings, 0 or %u are valid", out->binding_count, ORB_BTN_COUNT
+        );
+
+    for (uint32_t i = 0; i < out->binding_count; i++)
+        if (!memchr(out->bindings[i].symbol, 0, sizeof out->bindings[i].symbol))
+            return orb_error_set(err, "orb file: binding %u has no terminator", i);
+
+    return true;
+}
+
 bool orb_file_load(orb_span file, orb_assets* out, orb_error* err) {
     if (file.len < sizeof(orb_file_header)) return orb_error_set(err, "orb file: too short");
 
@@ -242,8 +242,7 @@ bool orb_file_load(orb_span file, orb_assets* out, orb_error* err) {
     if (out->info && !memchr((const char*)out->info + 4, 0, sizeof(orb_info_desc) - 4))
         return orb_error_set(err, "orb file: bad info section");
 
-    if (!out->info || !out->palette)
-        return orb_error_set(err, "orb file: no info or palette section");
+    if (!out->info || !out->pal) return orb_error_set(err, "orb file: no info or palette section");
 
     for (uint32_t i = 0; i < FILE_ROW_COUNT; i++) {
         const file_row* row = &file_rows[i];

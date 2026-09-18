@@ -1,7 +1,6 @@
 #include "orb.c"
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #ifdef ORB_RELEASE
@@ -13,13 +12,15 @@ int main(void) {
     orb_error err;
     orb_span sealed = {main_sealed, sizeof main_sealed};
 
-    if (!orb_run_boot(orb_game_main(), nullptr, sealed, &err)) {
+    if (!orb_boot(orb_game_main(), nullptr, sealed, &err)) {
         orb_log("%s", err.text);
         return 1;
     }
 
-    orb_run_loop(nullptr);
-    orb_os_close();
+    while (orb_frame())
+        continue;
+
+    orb_quit();
 
     return 0;
 }
@@ -43,63 +44,6 @@ static int usage(FILE* to) {
     return to == stdout ? 0 : 2;
 }
 
-static int cast_once(const char* dir, bool seal, const char* out_path) {
-    static uint8_t boot_mem[1 << 18];
-    orb_arena boot;
-    orb_arena_init(&boot, "boot", boot_mem, sizeof boot_mem);
-    orb_error err;
-    orb_manifest m;
-
-    if (!orb_manifest_load(&boot, dir, &m, &err)) {
-        orb_log("orb: %s", err.text);
-        return 1;
-    }
-
-    orb_arena scratch, out;
-
-    orb_arena_init(&scratch, "cast scratch", malloc(m.asset_headroom), m.asset_headroom);
-    orb_arena_init(&out, "asset", malloc(m.asset_headroom), m.asset_headroom);
-
-    orb_cast_result result;
-    orb_assets as;
-
-    if (!orb_cast_game(&scratch, &out, dir, &m, &result, &err) ||
-        !orb_file_load(result.file, &as, &err)) {
-        orb_log("orb: %s", err.text);
-        return 1;
-    }
-
-    orb_path bin, name, sealed;
-
-    if (seal && !out_path) {
-        orb_path_join(bin, dir, "bin");
-
-        if (!orb_os_make_dir(bin)) {
-            orb_log("orb: cannot create %s", bin);
-            return 1;
-        }
-
-        snprintf(name, sizeof name, "%s.orb", m.id);
-        orb_path_join(sealed, bin, name);
-        out_path = sealed;
-    }
-
-    if (out_path && !orb_os_write_file(out_path, result.file)) {
-        orb_log("orb: cannot write %s", out_path);
-        return 1;
-    }
-
-    printf(
-        "%s %u sprites, %u animations, %u levels, %u layers, %u samples, %u songs, %u fonts, "
-        "%u glyphs (%zu bytes; scratch peaked at %zu of the %zu asset_headroom)\n",
-        out_path ? "sealed" : "cast", as.sprite_count, as.animation_count, as.level_count,
-        as.layer_count, as.sample_count, as.song_count, as.font_count, as.glyph_count,
-        result.file.len, scratch.peak, scratch.size
-    );
-
-    return 0;
-}
-
 int main(int argc, char** argv) {
     orb_os_args(&argc, &argv);
 
@@ -118,9 +62,9 @@ int main(int argc, char** argv) {
 
     if (strcmp(verb, "scry") == 0 && argc <= 3) return orb_debug_scry(dir);
     if (strcmp(verb, "run") == 0 && argc <= 3) return orb_debug_run(dir);
-    if (strcmp(verb, "cast") == 0 && argc <= 3) return cast_once(dir, false, nullptr);
+    if (strcmp(verb, "cast") == 0 && argc <= 3) return orb_debug_cast(dir, false, nullptr);
     if (strcmp(verb, "seal") == 0 && argc <= 4)
-        return cast_once(dir, true, argc == 4 ? argv[3] : nullptr);
+        return orb_debug_cast(dir, true, argc == 4 ? argv[3] : nullptr);
 
     orb_log("orb: unknown verb or arguments");
 

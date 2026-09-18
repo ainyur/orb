@@ -1,23 +1,20 @@
 #include "orb.h"
+
+// Boot order, not alphabetical: each module before the ones that call it.
+// clang-format off
+#include "core/arena.c"
+#include "core/log.c"
+#include "core/asset.c"
 #include "cast/file.c"
-
-#ifndef ORB_RELEASE
-#include "cast/aseprite.c"
-#include "cast/cast.c"
-#include "cast/inflate.c"
-#include "cast/json.c"
-#include "cast/ldtk.c"
-#include "cast/pack.c"
-#include "cast/wav.c"
-#include "core/debug.c"
-#endif
-
+#include "core/input.c"
+#include "graphics/fb.c"
+#include "graphics/pal.c"
+#include "graphics/sprite.c"
+#include "graphics/text.c"
+#include "graphics/tilemap.c"
+#include "graphics/camera.c"
 #include "audio/mixer.c"
 #include "core/api.c"
-#include "core/arena.c"
-#include "core/asset.c"
-#include "core/input.c"
-#include "core/log.c"
 
 #if defined(ORB_OS_X11)
 #include "os/x11.c"
@@ -29,10 +26,16 @@
 #error "define ORB_OS_X11, ORB_OS_GDI, or ORB_OS_HEADLESS"
 #endif
 
-#include "core/run.c"
-#include "graphics/camera.c"
-#include "graphics/framebuffer.c"
-#include "graphics/palette.c"
-#include "graphics/sprite.c"
-#include "graphics/text.c"
-#include "graphics/tilemap.c"
+#include "core/host.c"
+
+#ifndef ORB_RELEASE
+#include "cast/json.c"
+#include "cast/inflate.c"
+#include "cast/aseprite.c"
+#include "cast/pack.c"
+#include "cast/wav.c"
+#include "cast/ldtk.c"
+#include "cast/cast.c"
+#include "core/debug.c"
+#endif
+// clang-format on

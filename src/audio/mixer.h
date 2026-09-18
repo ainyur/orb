@@ -25,9 +25,9 @@ enum {
 typedef struct orb_mixer_command {
     uint8_t kind;
     uint8_t voice;
-    uint16_t generation; // play, set, stop: the handle's
-    uint32_t index;      // play: the sample; song_play: the song, resolved on the audio thread
-    uint64_t id;         // its id, so a swapped asset is caught
+    uint16_t gen;   // play, set, stop: the handle's
+    uint32_t index; // play: the sample; song_play: the song, resolved on the audio thread
+    uint64_t id;    // its id, so a swapped asset is caught
     union {
         orb_sound_params params; // play, set
         bool loop;               // song_play
@@ -43,7 +43,7 @@ typedef struct orb_mixer_command {
 // thread's, written only while rendering.
 typedef struct orb_voice_state {
     atomic_uint playing;
-    uint16_t generation; // from the last play this voice applied
+    uint16_t gen; // from the last play this voice applied
     uint32_t sample;
     uint64_t sample_id;
     uint32_t song; // the song voice: what it streams
@@ -76,19 +76,20 @@ typedef struct orb_mixer {
 // published to it before anything else runs.
 #define ORB_MIXER_INIT {.song_position = {-1, -1}, .volumes = {1, 1, 1}}
 
+// Returns the render to wait for, 0 if none.
+uint32_t orb_mixer_set_assets(orb_mixer* m, const orb_assets* assets);
+orb_voice orb_mixer_sound_play(orb_mixer* m, orb_sample s, orb_sound_params p, int priority);
+void orb_mixer_sound_set(orb_mixer* m, orb_voice v, orb_sound_params p);
+void orb_mixer_sound_stop(orb_mixer* m, orb_voice v);
+void orb_mixer_song_play(orb_mixer* m, orb_song s, bool loop);
+void orb_mixer_song_stop(orb_mixer* m, int fade_ms);
+void orb_mixer_song_pause(orb_mixer* m, bool paused);
+orb_song_position orb_mixer_song_position(const orb_mixer* m);
+void orb_mixer_volume_set(orb_mixer* m, orb_volumes v);
+
+void orb_mixer_render(orb_mixer* m, int16_t* out, int frames); // the audio thread; the rest is main
+bool orb_mixer_rendered(const orb_mixer* m, uint32_t render);
 // With no device: renders silence in chunks until *rendered frames cover
 // elapsed_ns, so sounds end, the ring drains, and song_position keeps real time.
 // True once a second, when the OS layer should try its device again.
 bool orb_mixer_idle(orb_mixer* m, uint64_t elapsed_ns, uint64_t* rendered);
-void orb_mixer_render(orb_mixer* m, int16_t* out, int frames); // the audio thread; the rest is main
-bool orb_mixer_rendered(const orb_mixer* m, uint32_t render);
-// Returns the render to wait for, 0 if none.
-uint32_t orb_mixer_set_assets(orb_mixer* m, const orb_assets* assets);
-void orb_mixer_song_pause(orb_mixer* m, bool paused);
-void orb_mixer_song_play(orb_mixer* m, orb_song s, bool loop);
-orb_song_position orb_mixer_song_position(const orb_mixer* m);
-void orb_mixer_song_stop(orb_mixer* m, int fade_ms);
-orb_voice orb_mixer_sound_play(orb_mixer* m, orb_sample s, orb_sound_params p, int priority);
-void orb_mixer_sound_set(orb_mixer* m, orb_voice v, orb_sound_params p);
-void orb_mixer_sound_stop(orb_mixer* m, orb_voice v);
-void orb_mixer_volume_set(orb_mixer* m, orb_volumes v);

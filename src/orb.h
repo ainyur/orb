@@ -5,12 +5,12 @@
 
 typedef struct {
     uint32_t v;
-} orb_animation;
+} orb_anim;
 
-typedef struct orb_animation_state {
-    orb_animation animation;
+typedef struct orb_anim_state {
+    orb_anim anim;
     uint16_t frame, ticks;
-} orb_animation_state;
+} orb_anim_state;
 
 typedef struct {
     uint32_t v;
@@ -214,6 +214,11 @@ enum {
     ORB_KEY_COUNT = 256
 };
 
+// The keyboard as the OS layer reports it each tick.
+typedef struct orb_input {
+    bool keys[ORB_KEY_COUNT]; // by position
+} orb_input;
+
 // A button's source: a key position, or a pad button once the gamepad lands.
 constexpr int ORB_SOURCE_NONE = 0;
 constexpr int ORB_SOURCE_PAD = 512;
@@ -239,17 +244,17 @@ typedef struct orb_neighbor {
     orb_neighbor_dir dir;
 } orb_neighbor;
 
-#define ORB_ANIMATION(i) ((orb_animation) {(uint32_t)(i)})
+#define ORB_ANIM(i) ((orb_anim) {(uint32_t)(i)})
 #define ORB_FONT(i) ((orb_font) {(uint32_t)(i)})
 #define ORB_LEVEL(i) ((orb_level) {(uint32_t)(i)})
 #define ORB_SAMPLE(i) ((orb_sample) {(uint32_t)(i)})
 #define ORB_SONG(i) ((orb_song) {(uint32_t)(i)})
 #define ORB_SPRITE(i) ((orb_sprite) {(uint32_t)(i)})
 #define ORB_HANDLE_INDEX(h) ((h).v & ORB_NO_INDEX) // v = handle index (24 bits) | generation << 24
-#define ORB_HANDLE_GENERATION(h) ((h).v >> 24)
+#define ORB_HANDLE_GEN(h) ((h).v >> 24)
 
 constexpr uint32_t ORB_NO_INDEX = 0xffffffu;
-constexpr orb_animation ORB_NO_ANIMATION = {ORB_NO_INDEX};
+constexpr orb_anim ORB_NO_ANIM = {ORB_NO_INDEX};
 constexpr orb_font ORB_NO_FONT = {ORB_NO_INDEX};
 constexpr orb_level ORB_NO_LEVEL = {ORB_NO_INDEX};
 constexpr orb_sample ORB_NO_SAMPLE = {ORB_NO_INDEX};
@@ -259,6 +264,7 @@ constexpr orb_voice ORB_NO_VOICE = {0xffffu};
 
 constexpr uint32_t ORB_FLIP_X = 1;
 constexpr uint32_t ORB_FLIP_Y = 2;
+constexpr uint64_t ORB_NS_PER_SECOND = 1000000000;
 constexpr int ORB_TICK_RATE = 60; // update calls per second
 constexpr float ORB_TICK_SECONDS = 1.0f / ORB_TICK_RATE;
 
@@ -295,49 +301,56 @@ constexpr int ORB_AUDIO_CHANNELS = 2;
 // neither; the string is valid until the next call. A recast resets bindings to the
 // manifest's, so re-apply your own in reload.
 typedef struct orb_api {
-    orb_animation (*animation_find)(const char* stem, const char* tag);
-    void (*animation_start)(orb_animation_state* st, orb_animation a);
-    orb_sprite (*animation_step)(orb_animation_state* st);
+    void (*pal_reset)(void);
+    void (*pal_set)(int i, uint8_t r, uint8_t g, uint8_t b);
+    uint32_t (*pal_get)(int i);
+
+    void (*clear)(uint8_t index);
+    void (*camera_set)(orb_vec2f at);
+    void (*camera_update)(orb_camera* camera);
+
+    orb_sprite (*sprite_find)(const char* stem, int frame);
+    void (*sprite_draw)(orb_sprite s, orb_vec2 at, uint32_t flags, const uint8_t* remap);
+    orb_anim (*anim_find)(const char* stem, const char* tag);
+    void (*anim_start)(orb_anim_state* st, orb_anim a);
+    orb_sprite (*anim_step)(orb_anim_state* st);
+
+    int (*layer_find)(orb_level level, const char* name);
+    orb_layer_info (*layer_info)(orb_level level, int layer);
+    void (*layer_draw)(orb_level level, int layer);
+    orb_level (*level_find)(const char* stem);
+    orb_rect (*level_bounds)(orb_level level);
+    int (*level_neighbors)(orb_level level, orb_neighbor* out, int max);
+    int (*cell_get)(orb_level level, int layer, orb_vec2 at);
+
+    orb_font (*font_find)(const char* stem);
+    orb_size (*text_measure)(orb_font f, const char* s);
+    void (*text_draw)(orb_font f, const char* s, orb_vec2 at, const uint8_t* remap);
+
+    orb_sample (*sample_find)(const char* stem);
+    orb_voice (*sound_play)(orb_sample s, orb_sound_params p, int priority);
+    void (*sound_set)(orb_voice v, orb_sound_params p);
+    void (*sound_stop)(orb_voice v);
+    orb_song (*song_find)(const char* stem);
+    void (*song_play)(orb_song s, bool loop);
+    orb_song_position (*song_position)(void);
+    void (*song_pause)(void);
+    void (*song_resume)(void);
+    void (*song_stop)(int fade_ms);
+    void (*volume_set)(orb_volumes v);
+
     void (*button_bind)(int button, int source);
     bool (*button_down)(int button);
     bool (*button_pressed)(int button);
     bool (*button_released)(int button);
     int (*button_source)(int button);
-    void (*camera_set)(orb_vec2f at);
-    void (*camera_update)(orb_camera* camera);
-    int (*cell_get)(orb_level level, int layer, orb_vec2 at);
-    void (*clear)(uint8_t index);
-    orb_font (*font_find)(const char* stem);
     bool (*key_down)(int key);
-    const char* (*key_name)(int key);
     bool (*key_pressed)(int key);
-    int (*key_pressed_any)(void);
     bool (*key_released)(int key);
-    void (*layer_draw)(orb_level level, int layer);
-    int (*layer_find)(orb_level level, const char* name);
-    orb_layer_info (*layer_info)(orb_level level, int layer);
-    orb_rect (*level_bounds)(orb_level level);
-    orb_level (*level_find)(const char* stem);
-    int (*level_neighbors)(orb_level level, orb_neighbor* out, int max);
+    int (*key_pressed_any)(void);
+    const char* (*key_name)(int key);
+
     void (*log)(const char* fmt, ...);
-    uint32_t (*palette_get)(int i);
-    void (*palette_reset)(void);
-    void (*palette_set)(int i, uint8_t r, uint8_t g, uint8_t b);
-    orb_sample (*sample_find)(const char* stem);
-    orb_song (*song_find)(const char* stem);
-    void (*song_pause)(void);
-    void (*song_play)(orb_song s, bool loop);
-    orb_song_position (*song_position)(void);
-    void (*song_resume)(void);
-    void (*song_stop)(int fade_ms);
-    orb_voice (*sound_play)(orb_sample s, orb_sound_params p, int priority);
-    void (*sound_set)(orb_voice v, orb_sound_params p);
-    void (*sound_stop)(orb_voice v);
-    void (*sprite_draw)(orb_sprite s, orb_vec2 at, uint32_t flags, const uint8_t* remap);
-    orb_sprite (*sprite_find)(const char* stem, int frame);
-    void (*text_draw)(orb_font f, const char* s, orb_vec2 at, const uint8_t* remap);
-    orb_size (*text_measure)(orb_font f, const char* s);
-    void (*volume_set)(orb_volumes v);
 } orb_api;
 
 // Reload rules. orb reloads game code and recasts art while the game runs, and
@@ -349,13 +362,13 @@ typedef struct orb_api {
 //     not string literals, not static const tables. Store handles and indices,
 //     and re-bind behavior in reload.
 //  3. Assets are found by name: sprite_find("player", 0) is frame 0 of
-//     player.aseprite, animation_find("player", "walk") its "walk" tag. reload
+//     player.aseprite, anim_find("player", "walk") its "walk" tag. reload
 //     runs at boot after init, after every code reload, and after every art
 //     recast, so it is the one place to find things and store the handles.
 // A handle is an index plus a generation. A recast that puts different art at
 // an index bumps its generation, so a handle found before it draws and plays
 // nothing until reload finds it again. A find that misses logs the name and
-// returns ORB_NO_SPRITE, ORB_NO_ANIMATION, ORB_NO_SAMPLE, or ORB_NO_SONG.
+// returns ORB_NO_SPRITE, ORB_NO_ANIM, ORB_NO_SAMPLE, or ORB_NO_SONG.
 typedef struct orb_config {
     size_t arena_size;
     size_t state_size;

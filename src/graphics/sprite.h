@@ -2,12 +2,12 @@
 
 #include "../core/asset.h"
 #include "../orb.h"
-#include "framebuffer.h"
+#include "fb.h"
 
-void orb_animation_start(orb_animation_state* st, orb_animation a);
-orb_sprite orb_animation_step(const orb_assets* assets, orb_animation_state* st);
+void orb_anim_start(orb_anim_state* st, orb_anim a);
+orb_sprite orb_anim_step(const orb_assets* assets, orb_anim_state* st);
 void orb_sprite_draw(
-    orb_framebuffer* fb,
+    orb_fb* fb,
     const orb_assets* assets,
     orb_vec2f cam,
     orb_sprite s,

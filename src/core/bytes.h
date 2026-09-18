@@ -19,6 +19,22 @@ static inline uint64_t orb_bytes_u64(const uint8_t* ptr) {
     return orb_bytes_u32(ptr) | (uint64_t)orb_bytes_u32(ptr + 4) << 32;
 }
 
+static inline int8_t orb_bytes_i8(const uint8_t* ptr) {
+    return (int8_t)ptr[0];
+}
+
+static inline int16_t orb_bytes_i16(const uint8_t* ptr) {
+    return (int16_t)orb_bytes_u16(ptr);
+}
+
+static inline int32_t orb_bytes_i32(const uint8_t* ptr) {
+    return (int32_t)orb_bytes_u32(ptr);
+}
+
+static inline int64_t orb_bytes_i64(const uint8_t* ptr) {
+    return (int64_t)orb_bytes_u64(ptr);
+}
+
 // Writes cp as UTF-8 without a terminator and returns the byte count, 1 to 4.
 static inline int orb_bytes_utf8(uint32_t cp, char* out) {
     if (cp < 0x80) {
@@ -44,20 +60,4 @@ static inline int orb_bytes_utf8(uint32_t cp, char* out) {
     out[2] = (char)(0x80 | (cp >> 6 & 0x3f));
     out[3] = (char)(0x80 | (cp & 0x3f));
     return 4;
-}
-
-static inline int8_t orb_bytes_i8(const uint8_t* ptr) {
-    return (int8_t)ptr[0];
-}
-
-static inline int16_t orb_bytes_i16(const uint8_t* ptr) {
-    return (int16_t)orb_bytes_u16(ptr);
-}
-
-static inline int32_t orb_bytes_i32(const uint8_t* ptr) {
-    return (int32_t)orb_bytes_u32(ptr);
-}
-
-static inline int64_t orb_bytes_i64(const uint8_t* ptr) {
-    return (int64_t)orb_bytes_u64(ptr);
 }

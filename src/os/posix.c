@@ -15,6 +15,23 @@
 void orb_os_args(int*, char***) {
 }
 
+bool orb_os_stat(const char* path, orb_os_info* out) {
+    struct stat st;
+
+    if (stat(path, &st) != 0) return false;
+
+    *out = (orb_os_info) {
+        .size = (uint64_t)st.st_size,
+        .mtime = (uint64_t)st.st_mtim.tv_sec * ORB_NS_PER_SECOND + (uint64_t)st.st_mtim.tv_nsec,
+        .dir = S_ISDIR(st.st_mode)
+    };
+    return true;
+}
+
+FILE* orb_os_fopen(const char* path, const char* mode) {
+    return fopen(path, mode);
+}
+
 bool orb_os_copy_file(const char* from, const char* to) {
     FILE* in = fopen(from, "rb");
 
@@ -43,31 +60,11 @@ bool orb_os_copy_file(const char* from, const char* to) {
     return ok;
 }
 
-orb_os_library* orb_os_dlopen(const char* path) {
-    return (orb_os_library*)dlopen(path, RTLD_NOW | RTLD_LOCAL);
-}
-
-void orb_os_dlclose(orb_os_library* lib) {
-    dlclose(lib);
-}
-
-void* orb_os_dlsym(orb_os_library* lib, const char* name) {
-    return dlsym(lib, name);
-}
-
-FILE* orb_os_fopen(const char* path, const char* mode) {
-    return fopen(path, mode);
-}
-
 bool orb_os_make_dir(const char* path) {
     return mkdir(path, 0777) == 0 || errno == EEXIST;
 }
 
 // Strict POSIX hides d_type, so each entry is stat'd; one that fails is skipped.
-uint32_t orb_os_pid(void) {
-    return (uint32_t)getpid();
-}
-
 int orb_os_read_dir(const char* dir, orb_os_entry* out, int max) {
     DIR* d = opendir(dir);
 
@@ -93,23 +90,16 @@ int orb_os_read_dir(const char* dir, orb_os_entry* out, int max) {
     return count;
 }
 
-int orb_os_run(const char* command, void (*line)(const char* text)) {
-    char piped[1024];
-    snprintf(piped, sizeof piped, "%s 2>&1", command);
-    FILE* p = popen(piped, "r");
+orb_os_library* orb_os_dlopen(const char* path) {
+    return (orb_os_library*)dlopen(path, RTLD_NOW | RTLD_LOCAL);
+}
 
-    if (!p) return -1;
+void orb_os_dlclose(orb_os_library* lib) {
+    dlclose(lib);
+}
 
-    char text[1024];
-
-    while (fgets(text, sizeof text, p)) {
-        text[strcspn(text, "\n")] = 0;
-        line(text);
-    }
-
-    int status = pclose(p);
-
-    return status == -1 ? -1 : WEXITSTATUS(status);
+void* orb_os_dlsym(orb_os_library* lib, const char* name) {
+    return dlsym(lib, name);
 }
 
 void orb_os_sleep(uint64_t ns) {
@@ -128,17 +118,27 @@ uint64_t orb_os_ticks(void) {
     return (uint64_t)ts.tv_sec * ORB_NS_PER_SECOND + (uint64_t)ts.tv_nsec;
 }
 
-bool orb_os_stat(const char* path, orb_os_info* out) {
-    struct stat st;
+uint32_t orb_os_pid(void) {
+    return (uint32_t)getpid();
+}
 
-    if (stat(path, &st) != 0) return false;
+int orb_os_run(const char* command, void (*line)(const char* text)) {
+    char piped[1024];
+    snprintf(piped, sizeof piped, "%s 2>&1", command);
+    FILE* p = popen(piped, "r");
 
-    *out = (orb_os_info) {
-        .size = (uint64_t)st.st_size,
-        .mtime = (uint64_t)st.st_mtim.tv_sec * ORB_NS_PER_SECOND + (uint64_t)st.st_mtim.tv_nsec,
-        .dir = S_ISDIR(st.st_mode)
-    };
-    return true;
+    if (!p) return -1;
+
+    char text[1024];
+
+    while (fgets(text, sizeof text, p)) {
+        text[strcspn(text, "\n")] = 0;
+        line(text);
+    }
+
+    int status = pclose(p);
+
+    return status == -1 ? -1 : WEXITSTATUS(status);
 }
 
 #include "stdio.c"

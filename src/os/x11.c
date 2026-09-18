@@ -22,29 +22,6 @@ static Atom x11_wm_delete;
 static bool x11_down[ORB_KEY_COUNT];
 static bool x11_resized;
 
-// A keysym is a Latin-1 codepoint in 0x20..0x7e and 0xa0..0xff, or a codepoint
-// under the 0x01000000 prefix; anything else has no single symbol.
-int orb_os_key_position(uint32_t codepoint) {
-    KeySym sym = codepoint < 0x100 ? codepoint : (0x01000000u | codepoint);
-    KeyCode code = XKeysymToKeycode(x11_display, sym);
-
-    return code >= 8 ? x11_keys[code - 8] : ORB_KEY_NONE;
-}
-
-uint32_t orb_os_key_symbol(int key) {
-    int code = orb_os_key_code(x11_keys, key);
-
-    if (code < 0) return 0;
-
-    KeySym sym = XkbKeycodeToKeysym(x11_display, (KeyCode)(code + 8), 0, 0);
-
-    if ((sym >= 0x20 && sym <= 0x7e) || (sym >= 0xa0 && sym <= 0xff)) return (uint32_t)sym;
-    if ((sym & 0xff000000u) == 0x01000000u && (sym & 0xffffffu) <= 0x10ffff)
-        return (uint32_t)(sym & 0xffffffu);
-
-    return 0;
-}
-
 bool orb_os_open(const orb_os_config* cfg) {
     x11_display = XOpenDisplay(nullptr);
 
@@ -91,11 +68,28 @@ bool orb_os_open(const orb_os_config* cfg) {
     return true;
 }
 
-void orb_os_close(void) {
-    alsa_close();
-    XDestroyImage(x11_image); // also frees x11_pixels
-    XDestroyWindow(x11_display, x11_window);
-    XCloseDisplay(x11_display);
+bool orb_os_pump(orb_input* out) {
+    while (XPending(x11_display)) {
+        XEvent ev;
+
+        XNextEvent(x11_display, &ev);
+
+        if (ev.type == KeyPress || ev.type == KeyRelease) {
+            unsigned code = ev.xkey.keycode;
+            int key = code >= 8 && code < 8 + 256 ? x11_keys[code - 8] : ORB_KEY_NONE;
+
+            if (key) x11_down[key] = ev.type == KeyPress;
+        } else if (ev.type == ConfigureNotify) {
+            x11_win = (orb_size) {ev.xconfigure.width, ev.xconfigure.height};
+            x11_resized = true;
+        } else if (ev.type == ClientMessage && (Atom)ev.xclient.data.l[0] == x11_wm_delete) {
+            return false;
+        }
+    }
+
+    memcpy(out->keys, x11_down, sizeof x11_down);
+
+    return true;
 }
 
 void orb_os_present(const uint32_t* rgb) {
@@ -130,26 +124,32 @@ void orb_os_present(const uint32_t* rgb) {
     XFlush(x11_display);
 }
 
-bool orb_os_pump(orb_input* out) {
-    while (XPending(x11_display)) {
-        XEvent ev;
+uint32_t orb_os_key_symbol(int key) {
+    int code = orb_os_key_code(x11_keys, key);
 
-        XNextEvent(x11_display, &ev);
+    if (code < 0) return 0;
 
-        if (ev.type == KeyPress || ev.type == KeyRelease) {
-            unsigned code = ev.xkey.keycode;
-            int key = code >= 8 && code < 8 + 256 ? x11_keys[code - 8] : ORB_KEY_NONE;
+    KeySym sym = XkbKeycodeToKeysym(x11_display, (KeyCode)(code + 8), 0, 0);
 
-            if (key) x11_down[key] = ev.type == KeyPress;
-        } else if (ev.type == ConfigureNotify) {
-            x11_win = (orb_size) {ev.xconfigure.width, ev.xconfigure.height};
-            x11_resized = true;
-        } else if (ev.type == ClientMessage && (Atom)ev.xclient.data.l[0] == x11_wm_delete) {
-            return false;
-        }
-    }
+    if ((sym >= 0x20 && sym <= 0x7e) || (sym >= 0xa0 && sym <= 0xff)) return (uint32_t)sym;
+    if ((sym & 0xff000000u) == 0x01000000u && (sym & 0xffffffu) <= 0x10ffff)
+        return (uint32_t)(sym & 0xffffffu);
 
-    memcpy(out->keys, x11_down, sizeof x11_down);
+    return 0;
+}
 
-    return true;
+// A keysym is a Latin-1 codepoint in 0x20..0x7e and 0xa0..0xff, or a codepoint
+// under the 0x01000000 prefix; anything else has no single symbol.
+int orb_os_key_position(uint32_t codepoint) {
+    KeySym sym = codepoint < 0x100 ? codepoint : (0x01000000u | codepoint);
+    KeyCode code = XKeysymToKeycode(x11_display, sym);
+
+    return code >= 8 ? x11_keys[code - 8] : ORB_KEY_NONE;
+}
+
+void orb_os_close(void) {
+    alsa_close();
+    XDestroyImage(x11_image); // also frees x11_pixels
+    XDestroyWindow(x11_display, x11_window);
+    XCloseDisplay(x11_display);
 }

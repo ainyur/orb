@@ -36,14 +36,6 @@ static bool wav_format(orb_span chunk, orb_wav* out, orb_error* err) {
     return true;
 }
 
-void orb_wav_decode(const orb_wav* w, int16_t* out) {
-    size_t total = (size_t)w->count * w->channels;
-
-    for (size_t i = 0; i < total; i++)
-        out[i] = w->bits == 8 ? (int16_t)((w->data.ptr[i] - 128) * 256)
-                              : orb_bytes_i16(w->data.ptr + i * 2);
-}
-
 bool orb_wav_parse(orb_span file, orb_wav* out, orb_error* err) {
     memset(out, 0, sizeof *out);
 
@@ -90,4 +82,12 @@ bool orb_wav_parse(orb_span file, orb_wav* out, orb_error* err) {
     if (out->has_loop && out->loop_end > out->count) out->loop_end = out->count;
 
     return true;
+}
+
+void orb_wav_decode(const orb_wav* w, int16_t* out) {
+    size_t total = (size_t)w->count * w->channels;
+
+    for (size_t i = 0; i < total; i++)
+        out[i] = w->bits == 8 ? (int16_t)((w->data.ptr[i] - 128) * 256)
+                              : orb_bytes_i16(w->data.ptr + i * 2);
 }

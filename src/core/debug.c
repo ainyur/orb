@@ -1,7 +1,8 @@
 #include "debug.h"
+#include "../cast/file.h"
 #include "../os/os.h"
+#include "host.h"
 #include "log.h"
-#include "run.h"
 
 #include <ctype.h>
 #include <stdio.h>
@@ -12,6 +13,18 @@ constexpr uint64_t DEBUG_SETTLE_NS = 200000000;
 constexpr int DEBUG_MAX_WATCHES = 1024;
 
 static_assert(DEBUG_MAX_WATCHES >= ORB_CAST_MAX_READS, "every cast read fits the asset watch");
+
+typedef struct debug_watches {
+    orb_watch at[DEBUG_MAX_WATCHES];
+    int count;
+} debug_watches;
+
+static orb_os_library* debug_lib;
+static int debug_copy_count;
+static orb_path debug_dir, debug_so_path, debug_copy_path;
+static orb_watch debug_so_watch;
+static debug_watches debug_assets, debug_sources;
+static uint8_t debug_depfile_mem[1 << 16];
 
 void orb_watch_init(orb_watch* w, const char* path) {
     snprintf(w->path, sizeof w->path, "%s", path);
@@ -42,18 +55,6 @@ bool orb_watch_poll(orb_watch* w, uint64_t now) {
     w->pending_mtime = 0;
     return true;
 }
-
-static orb_os_library* debug_lib;
-static int debug_copy_count;
-static orb_path debug_dir, debug_so_path, debug_copy_path;
-static orb_watch debug_so_watch;
-typedef struct debug_watches {
-    orb_watch at[DEBUG_MAX_WATCHES];
-    int count;
-} debug_watches;
-
-static debug_watches debug_assets, debug_sources;
-static uint8_t debug_depfile_mem[1 << 16];
 
 // Copy the game library to a fresh name and load the copy, so the compiler can overwrite
 // the original while it is loaded (Windows locks loaded DLLs; the copy keeps
@@ -94,12 +95,12 @@ static const orb_game* debug_load_game(void) {
         return nullptr;
     }
 
-    // Install the new game before the old library goes away, so run_game
+    // Install the new game before the old library goes away, so the host
     // never points at unmapped memory, even for an instant.
     const orb_game* game = entry();
 
     if (debug_lib) {
-        orb_run_set_game(game);
+        orb_set_game(game);
         orb_os_dlclose(debug_lib);
         remove(debug_copy_path);
     }
@@ -134,7 +135,7 @@ static bool debug_watch_any(debug_watches* w, uint64_t now) {
 
 // Watch what the last cast read, the way sources are watched through what the build read.
 static void debug_watch_assets(void) {
-    const orb_cast_result* r = orb_run_cast_result();
+    const orb_cast_result* r = orb_last_cast();
 
     debug_assets.count = 0;
 
@@ -238,7 +239,7 @@ static void debug_poll_reload(void) {
     if (debug_watch_any(&debug_assets, now)) {
         orb_error err;
 
-        if (orb_run_recast(&err)) {
+        if (orb_recast(&err)) {
             orb_log("scry: recast assets");
             debug_watch_assets();
         } else
@@ -246,12 +247,12 @@ static void debug_poll_reload(void) {
     }
 }
 
-// Every sixth tick: a stat per watched file at 60 Hz would be most of a frame
+// Every sixth frame: a stat per watched file at 60 Hz would be most of a frame
 // once a game has hundreds, and the settle window is time-based anyway.
 static void debug_poll_scry(void) {
-    static unsigned tick;
+    static unsigned frame;
 
-    if (tick++ % 6) return;
+    if (frame++ % 6) return;
 
     uint64_t now = orb_os_ticks();
 
@@ -275,7 +276,7 @@ static int debug_boot(const char* game_dir) {
 
     orb_error err;
 
-    if (!orb_run_boot(game, game_dir, (orb_span) {}, &err)) {
+    if (!orb_boot(game, game_dir, (orb_span) {}, &err)) {
         orb_log("%s", err.text);
         return 1;
     }
@@ -284,16 +285,75 @@ static int debug_boot(const char* game_dir) {
 }
 
 static int debug_finish(void) {
-    orb_os_close();
+    orb_quit();
     orb_os_dlclose(debug_lib);
     remove(debug_copy_path);
+    return 0;
+}
+
+int orb_debug_cast(const char* dir, bool seal, const char* out_path) {
+    static uint8_t boot_mem[1 << 18];
+    orb_arena boot;
+    orb_arena_init(&boot, "boot", boot_mem, sizeof boot_mem);
+    orb_error err;
+    orb_manifest m;
+
+    if (!orb_manifest_load(&boot, dir, &m, &err)) {
+        orb_log("orb: %s", err.text);
+        return 1;
+    }
+
+    orb_arena scratch, out;
+
+    orb_arena_init(&scratch, "cast scratch", malloc(m.asset_headroom), m.asset_headroom);
+    orb_arena_init(&out, "asset", malloc(m.asset_headroom), m.asset_headroom);
+
+    orb_cast_result result;
+    orb_assets as;
+
+    if (!orb_cast_game(&scratch, &out, dir, &m, &result, &err) ||
+        !orb_file_load(result.file, &as, &err)) {
+        orb_log("orb: %s", err.text);
+        return 1;
+    }
+
+    orb_path bin, name, sealed;
+
+    if (seal && !out_path) {
+        orb_path_join(bin, dir, "bin");
+
+        if (!orb_os_make_dir(bin)) {
+            orb_log("orb: cannot create %s", bin);
+            return 1;
+        }
+
+        snprintf(name, sizeof name, "%s.orb", m.id);
+        orb_path_join(sealed, bin, name);
+        out_path = sealed;
+    }
+
+    if (out_path && !orb_os_write_file(out_path, result.file)) {
+        orb_log("orb: cannot write %s", out_path);
+        return 1;
+    }
+
+    printf(
+        "%s %u sprites, %u animations, %u levels, %u layers, %u samples, %u songs, %u fonts, "
+        "%u glyphs (%zu bytes; scratch peaked at %zu of the %zu asset_headroom)\n",
+        out_path ? "sealed" : "cast", as.sprite_count, as.anim_count, as.level_count,
+        as.layer_count, as.sample_count, as.song_count, as.font_count, as.glyph_count,
+        result.file.len, scratch.peak, scratch.size
+    );
+
     return 0;
 }
 
 int orb_debug_run(const char* game_dir) {
     if (debug_boot(game_dir)) return 1;
 
-    orb_run_loop(nullptr);
+    while (orb_frame())
+        continue;
+
     return debug_finish();
 }
 
@@ -309,6 +369,8 @@ int orb_debug_scry(const char* game_dir) {
         "scry: watching %d source files and %d asset files", debug_sources.count, debug_assets.count
     );
 
-    orb_run_loop(debug_poll_scry);
+    while (orb_frame())
+        debug_poll_scry();
+
     return debug_finish();
 }

@@ -67,9 +67,9 @@ int main(void) {
     CHECK(orb_manifest_load(&world_arena, DIR, &wm, &err));
     CHECK(strcmp(wm.world, "maps/w.ldtk") == 0);
 
-    CHECK(write_manifest("[64, 32]")); // restore for orb_run_boot below
+    CHECK(write_manifest("[64, 32]")); // restore for orb_boot below
 
-    if (!orb_run_boot(&test_game, DIR, (orb_span) {}, &err)) {
+    if (!orb_boot(&test_game, DIR, (orb_span) {}, &err)) {
         fprintf(stderr, "boot: %s\n", err.text);
         return 1;
     }
@@ -78,42 +78,42 @@ int main(void) {
 
     api->clear(0);
     api->sprite_draw(ORB_SPRITE(2), (orb_vec2) {0, 0}, 0, nullptr);
-    CHECK_EQ(orb_api_framebuffer()->px[4 * 64 + 4], 0);
+    CHECK_EQ(orb_api_fb()->px[4 * 64 + 4], 0);
 
     // a file added to the art directory is picked up by a recast without touching orb.json
     CHECK(copy_player(DIR "/zed.aseprite"));
-    CHECK(orb_run_recast(&err));
+    CHECK(orb_recast(&err));
 
     orb_assets as;
 
-    CHECK(orb_file_load(orb_run_cast_result()->file, &as, &err));
+    CHECK(orb_file_load(orb_last_cast()->file, &as, &err));
     CHECK_EQ(as.sprite_count, 4); // two frames from each of two files
     api->clear(0);
     api->sprite_draw(ORB_SPRITE(2), (orb_vec2) {0, 0}, 0, nullptr);
-    CHECK_EQ(orb_api_framebuffer()->px[4 * 64 + 4], 2);
+    CHECK_EQ(orb_api_fb()->px[4 * 64 + 4], 2);
 
     remove(DIR "/player.aseprite");
     remove(DIR "/zed.aseprite");
     CHECK(copy_player(DIR "/hero.aseprite"));
-    CHECK(orb_run_recast(&err));
+    CHECK(orb_recast(&err));
 
     api->clear(0);
     api->sprite_draw(ORB_SPRITE(0), (orb_vec2) {0, 0}, 0, nullptr);
 
-    CHECK_EQ(orb_api_framebuffer()->px[4 * 64 + 4], 0);
+    CHECK_EQ(orb_api_fb()->px[4 * 64 + 4], 0);
     CHECK_EQ(api->sprite_find("player", 0).v, ORB_NO_SPRITE.v); // gone by that name
 
     // finding by the new name, as reload does, yields the live handle
     api->clear(0);
     api->sprite_draw(api->sprite_find("hero", 0), (orb_vec2) {0, 0}, 0, nullptr);
 
-    CHECK_EQ(orb_api_framebuffer()->px[4 * 64 + 4], 2);
+    CHECK_EQ(orb_api_fb()->px[4 * 64 + 4], 2);
 
     CHECK(write_manifest("[128, 32]"));
-    CHECK(!orb_run_recast(&err));
+    CHECK(!orb_recast(&err));
     CHECK(strstr(err.text, "restart") != nullptr);
 
-    orb_os_close();
+    orb_quit();
 
     return 0;
 }

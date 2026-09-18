@@ -117,10 +117,10 @@ int main(void) {
     CHECK_EQ(orb_text_measure(&table.assets, f, "\n\t").width, 0);
     CHECK_EQ(orb_text_measure(&table.assets, f, "\n\t").height, 6);
 
-    orb_framebuffer fb;
+    orb_fb fb;
 
-    orb_framebuffer_init(&fb, &out, (orb_size) {16, 8});
-    orb_framebuffer_clear(&fb, 0);
+    orb_fb_init(&fb, &out, (orb_size) {16, 8});
+    orb_fb_clear(&fb, 0);
     orb_text_draw(&fb, &table.assets, f, "\"", (orb_vec2) {0, 0}, nullptr);
 
     // Cell 2 inks all four columns for the cell's full height.
@@ -131,23 +131,23 @@ int main(void) {
     CHECK_EQ(fb.px[6 * 16], 0);
 
     // Clipped at the top-left: columns 2..3 and rows 3..5 land at 0..1, 0..2.
-    orb_framebuffer_clear(&fb, 0);
+    orb_fb_clear(&fb, 0);
     orb_text_draw(&fb, &table.assets, f, "\"", (orb_vec2) {-2, -3}, nullptr);
     CHECK(fb.px[0] != 0);
 
     // Clipped at the bottom-right: no wrap into the next row.
-    orb_framebuffer_clear(&fb, 0);
+    orb_fb_clear(&fb, 0);
     orb_text_draw(&fb, &table.assets, f, "\"", (orb_vec2) {14, 5}, nullptr);
     CHECK(fb.px[5 * 16 + 15] != 0);
     CHECK_EQ(fb.px[6 * 16], 0);
 
     // Wholly off the left edge: the blitter clips, the pen still advances.
-    orb_framebuffer_clear(&fb, 0);
+    orb_fb_clear(&fb, 0);
     orb_text_draw(&fb, &table.assets, f, "\"\"", (orb_vec2) {-5, 0}, nullptr);
     CHECK(fb.px[0] != 0); // the second glyph starts at -5 + 5 = 0
 
     // Wholly outside: nothing drawn, no crash.
-    orb_framebuffer_clear(&fb, 0);
+    orb_fb_clear(&fb, 0);
     orb_text_draw(&fb, &table.assets, f, "\"", (orb_vec2) {100, 100}, nullptr);
     CHECK_EQ(fb.px[0], 0);
 

@@ -88,33 +88,6 @@ static LRESULT CALLBACK gdi_proc(HWND window, UINT msg, WPARAM w, LPARAM l) {
     }
 }
 
-int orb_os_key_position(uint32_t codepoint) {
-    if (codepoint > 0xffff) return ORB_KEY_NONE;
-
-    SHORT scan = VkKeyScan((WCHAR)codepoint);
-
-    if (scan == -1) return ORB_KEY_NONE;
-
-    UINT code = MapVirtualKey((UINT)(scan & 0xff), MAPVK_VK_TO_VSC);
-
-    return code < 128 ? gdi_keys[code] : ORB_KEY_NONE;
-}
-
-uint32_t orb_os_key_symbol(int key) {
-    int code = orb_os_key_code(gdi_keys, key);
-
-    if (code < 0) return 0;
-
-    UINT scan = code < 128 ? (UINT)code : 0xe000u | (UINT)(code - 128);
-    UINT vk = MapVirtualKey(scan, MAPVK_VSC_TO_VK_EX);
-    BYTE state[256] = {0};
-    WCHAR text[4];
-    // Flag 4 leaves any dead-key state alone.
-    int n = ToUnicode(vk, scan, state, text, 4, 4);
-
-    return n == 1 && text[0] > 0x20 ? (uint32_t)text[0] : 0;
-}
-
 bool orb_os_open(const orb_os_config* cfg) {
     orb_size screen = {GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)};
     int scale = orb_os_open_scale(cfg->size, screen);
@@ -165,11 +138,15 @@ bool orb_os_open(const orb_os_config* cfg) {
     return true;
 }
 
-void orb_os_close(void) {
-    wasapi_close();
+bool orb_os_pump(orb_input* out) {
+    for (MSG msg; PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE);) {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+    }
 
-    DestroyWindow(gdi_window);
-    UnregisterClass(MAKEINTATOM(gdi_class), GetModuleHandle(nullptr));
+    memcpy(out->keys, gdi_down, sizeof gdi_down);
+
+    return !gdi_closed;
 }
 
 void orb_os_present(const uint32_t* rgb) {
@@ -180,13 +157,36 @@ void orb_os_present(const uint32_t* rgb) {
     ReleaseDC(gdi_window, dc);
 }
 
-bool orb_os_pump(orb_input* out) {
-    for (MSG msg; PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE);) {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
-    }
+uint32_t orb_os_key_symbol(int key) {
+    int code = orb_os_key_code(gdi_keys, key);
 
-    memcpy(out->keys, gdi_down, sizeof gdi_down);
+    if (code < 0) return 0;
 
-    return !gdi_closed;
+    UINT scan = code < 128 ? (UINT)code : 0xe000u | (UINT)(code - 128);
+    UINT vk = MapVirtualKey(scan, MAPVK_VSC_TO_VK_EX);
+    BYTE state[256] = {0};
+    WCHAR text[4];
+    // Flag 4 leaves any dead-key state alone.
+    int n = ToUnicode(vk, scan, state, text, 4, 4);
+
+    return n == 1 && text[0] > 0x20 ? (uint32_t)text[0] : 0;
+}
+
+int orb_os_key_position(uint32_t codepoint) {
+    if (codepoint > 0xffff) return ORB_KEY_NONE;
+
+    SHORT scan = VkKeyScan((WCHAR)codepoint);
+
+    if (scan == -1) return ORB_KEY_NONE;
+
+    UINT code = MapVirtualKey((UINT)(scan & 0xff), MAPVK_VK_TO_VSC);
+
+    return code < 128 ? gdi_keys[code] : ORB_KEY_NONE;
+}
+
+void orb_os_close(void) {
+    wasapi_close();
+
+    DestroyWindow(gdi_window);
+    UnregisterClass(MAKEINTATOM(gdi_class), GetModuleHandle(nullptr));
 }

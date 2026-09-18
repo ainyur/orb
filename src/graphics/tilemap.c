@@ -1,15 +1,18 @@
 #include "tilemap.h"
 #include "../core/macros.h"
 
-// The layer desc, or nullptr when the handle is stale or the index is not the level's.
-static const orb_layer_desc* tilemap_layer(const orb_assets* assets, orb_level level, int layer) {
+// The level desc, or nullptr when the handle is stale.
+static const orb_level_desc* tilemap_level(const orb_assets* assets, orb_level level) {
     uint32_t index = orb_asset_index_of(assets, level);
 
-    if (index == ORB_NO_INDEX) return nullptr;
+    return index == ORB_NO_INDEX ? nullptr : &assets->levels[index];
+}
 
-    const orb_level_desc* d = &assets->levels[index];
+// The layer desc, or nullptr when the handle is stale or the index is not the level's.
+static const orb_layer_desc* tilemap_layer(const orb_assets* assets, orb_level level, int layer) {
+    const orb_level_desc* d = tilemap_level(assets, level);
 
-    if (layer < 0 || layer >= d->layer_count) return nullptr;
+    if (!d || layer < 0 || layer >= d->layer_count) return nullptr;
 
     return &assets->layers[d->first_layer + layer];
 }
@@ -31,8 +34,59 @@ int orb_tilemap_cell(const orb_assets* assets, orb_level level, int layer, orb_v
     return assets->cells[l->cells + cell_y * l->columns + cell_x];
 }
 
+int orb_tilemap_layer_find(const orb_assets* assets, orb_level level, const char* name) {
+    const orb_level_desc* d = tilemap_level(assets, level);
+    uint64_t id = orb_asset_id(name, "");
+
+    for (int i = 0; d && i < d->layer_count; i++)
+        if (assets->layer_ids[d->first_layer + i] == id) return i;
+
+    return (int)ORB_NO_INDEX;
+}
+
+orb_layer_info orb_tilemap_layer_info(const orb_assets* assets, orb_level level, int layer) {
+    const orb_layer_desc* l = tilemap_layer(assets, level, layer);
+
+    if (!l) return (orb_layer_info) {};
+
+    return (orb_layer_info) {
+        .grid = l->grid,
+        .columns = l->columns,
+        .rows = l->rows,
+        .has_tiles = l->sublayers > 0,
+        .has_cells = l->cells != ORB_NO_INDEX
+    };
+}
+
+orb_rect orb_tilemap_level_bounds(const orb_assets* assets, orb_level level) {
+    const orb_level_desc* d = tilemap_level(assets, level);
+
+    if (!d) return (orb_rect) {};
+
+    return (orb_rect) {{d->world_x, d->world_y}, {d->width, d->height}};
+}
+
+int orb_tilemap_level_neighbors(
+    const orb_assets* assets,
+    orb_level level,
+    orb_neighbor* out,
+    int max
+) {
+    const orb_level_desc* d = tilemap_level(assets, level);
+    int n = 0;
+
+    for (int i = 0; d && i < d->neighbor_count && n < max; i++) {
+        const orb_neighbor_desc* link = &assets->neighbors[d->first_neighbor + i];
+        uint32_t gen = assets->level_gens[link->level];
+
+        out[n++] = (orb_neighbor) {ORB_LEVEL(link->level | gen << 24), link->dir};
+    }
+
+    return n;
+}
+
 void orb_tilemap_draw(
-    orb_framebuffer* fb,
+    orb_fb* fb,
     const orb_assets* assets,
     orb_vec2f cam,
     orb_level level,
@@ -78,7 +132,7 @@ void orb_tilemap_draw(
                 uint32_t flags = (tile & ORB_TILE_FLIP_X ? ORB_FLIP_X : 0) |
                                  (tile & ORB_TILE_FLIP_Y ? ORB_FLIP_Y : 0);
 
-                orb_framebuffer_blit(
+                orb_fb_blit(
                     fb, pixels + src_y * sheet->width + src_x, sheet->width,
                     (orb_size) {t->grid, t->grid},
                     (orb_vec2) {origin_x + x * grid, origin_y + y * grid}, flags, nullptr

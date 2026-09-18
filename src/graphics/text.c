@@ -16,8 +16,24 @@ static const orb_glyph_desc* text_glyph(
     return &assets->glyphs[d->first_glyph + c - ORB_FONT_FIRST];
 }
 
+orb_size orb_text_measure(const orb_assets* assets, orb_font f, const char* s) {
+    const orb_font_desc* d = text_font(assets, f);
+
+    if (!d || !s || !s[0]) return (orb_size) {0, 0};
+
+    int width = 0;
+
+    for (const unsigned char* c = (const unsigned char*)s; *c; c++) {
+        const orb_glyph_desc* g = text_glyph(assets, d, *c);
+
+        if (g) width += g->advance;
+    }
+
+    return (orb_size) {width, d->line_height};
+}
+
 void orb_text_draw(
-    orb_framebuffer* fb,
+    orb_fb* fb,
     const orb_assets* assets,
     orb_font f,
     const char* s,
@@ -38,27 +54,9 @@ void orb_text_draw(
         if (g->width) {
             const uint8_t* src = assets->pixels + sheet->pixels + g->y * sheet->width + g->x;
 
-            orb_framebuffer_blit(
-                fb, src, sheet->width, (orb_size) {g->width, d->line_height}, at, 0, remap
-            );
+            orb_fb_blit(fb, src, sheet->width, (orb_size) {g->width, d->line_height}, at, 0, remap);
         }
 
         at.x += g->advance;
     }
-}
-
-orb_size orb_text_measure(const orb_assets* assets, orb_font f, const char* s) {
-    const orb_font_desc* d = text_font(assets, f);
-
-    if (!d || !s || !s[0]) return (orb_size) {0, 0};
-
-    int width = 0;
-
-    for (const unsigned char* c = (const unsigned char*)s; *c; c++) {
-        const orb_glyph_desc* g = text_glyph(assets, d, *c);
-
-        if (g) width += g->advance;
-    }
-
-    return (orb_size) {width, d->line_height};
 }

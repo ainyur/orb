@@ -26,7 +26,7 @@ static bool find(uint32_t color, int* x, int* y) {
 int main(void) {
     orb_error err;
 
-    if (!orb_run_boot(orb_game_main(), "tests/fixtures", (orb_span) {}, &err)) {
+    if (!orb_boot(orb_game_main(), "tests/fixtures", (orb_span) {}, &err)) {
         fprintf(stderr, "boot: %s\n", err.text);
         return 1;
     }
@@ -34,9 +34,9 @@ int main(void) {
     orb_input in = {0};
     orb_os_headless_set_input(&in);
 
-    CHECK(orb_run_tick());
+    CHECK(host_tick());
 
-    orb_run_draw();
+    host_render();
 
     // "AB" in the fixture font: 'A' is cell 33, inked at columns 0 and 2, so column 1
     // shows the background beneath it.
@@ -52,7 +52,7 @@ int main(void) {
     // the manifest binds select to M, resolved through the headless US layout
     in.keys[ORB_KEY_M] = true;
     orb_os_headless_set_input(&in);
-    CHECK(orb_run_tick());
+    CHECK(host_tick());
     CHECK_EQ(orb_api_table()->key_pressed_any(), ORB_KEY_M);
     CHECK(orb_api_table()->key_down(ORB_KEY_M));
     CHECK(
@@ -62,7 +62,7 @@ int main(void) {
     in.keys[ORB_KEY_M] = false;
     in.keys[ORB_KEY_TAB] = true;
     orb_os_headless_set_input(&in);
-    CHECK(orb_run_tick());
+    CHECK(host_tick());
     CHECK(!orb_api_table()->button_down(ORB_BTN_SELECT));
     in = (orb_input) {0};
     orb_os_headless_set_input(&in);
@@ -129,9 +129,9 @@ int main(void) {
     orb_os_headless_set_input(&in);
 
     for (int i = 0; i < 10; i++)
-        CHECK(orb_run_tick());
+        CHECK(host_tick());
 
-    orb_run_draw();
+    host_render();
 
     CHECK_EQ(pixel(bx + 10, by), BACKGROUND);
     CHECK_EQ(pixel(bx + 12, by), GREEN);
@@ -142,19 +142,19 @@ int main(void) {
     in.keys[ORB_KEY_LEFT] = true;
     orb_os_headless_set_input(&in);
 
-    CHECK(orb_run_tick());
+    CHECK(host_tick());
 
-    orb_run_draw();
+    host_render();
 
     CHECK_EQ(pixel(bx + 7, by), GREEN);
     CHECK_EQ(pixel(bx + 14, by), GREEN);
     CHECK_EQ(pixel(bx + 15, by), BACKGROUND);
 
     api->button_bind(ORB_BTN_SELECT, ORB_KEY_TAB);
-    CHECK(orb_run_recast(&err));
+    CHECK(orb_recast(&err));
     CHECK_EQ(api->button_source(ORB_BTN_SELECT), ORB_KEY_M); // the manifest's, again
 
-    orb_run_draw();
+    host_render();
 
     CHECK_EQ(pixel(bx + 7, by), GREEN);
 
@@ -166,9 +166,9 @@ int main(void) {
     orb_os_headless_set_input(&in);
 
     for (int i = 0; i < 40; i++)
-        CHECK(orb_run_tick());
+        CHECK(host_tick());
 
-    orb_run_draw();
+    host_render();
 
     int x, y;
     bool is_red = find(RED, &x, &y);
@@ -180,7 +180,7 @@ int main(void) {
     CHECK_EQ(pixel(3 * 8 + 7, 2 * 8), YELLOW);
     CHECK_EQ(pixel(3 * 8 + 0, 2 * 8), WHITE);
 
-    orb_os_close();
+    orb_quit();
 
     static alignas(16) uint8_t scratch_mem[4 << 20], out_mem[1 << 20];
     orb_arena scratch, out;
@@ -191,16 +191,16 @@ int main(void) {
     orb_arena_init(&out, "out", out_mem, sizeof out_mem);
 
     CHECK(orb_cast_game(&scratch, &out, "tests/fixtures", &m, &r, &err));
-    CHECK(orb_run_boot(orb_game_main(), nullptr, r.file, &err));
-    CHECK(orb_run_tick());
+    CHECK(orb_boot(orb_game_main(), nullptr, r.file, &err));
+    CHECK(host_tick());
 
-    orb_run_draw();
+    host_render();
 
     CHECK_EQ(pixel(0, 0), WHITE);
     CHECK_EQ(pixel(1, 0), BACKGROUND);
     CHECK(find(RED, &bx, &by));
 
-    orb_os_close();
+    orb_quit();
 
     return 0;
 }

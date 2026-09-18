@@ -81,8 +81,8 @@ int main(void) {
     CHECK(strcmp(as.bindings[ORB_BTN_UP].symbol, "up") == 0); // the default's symbol
     CHECK(strcmp(as.bindings[ORB_BTN_A].symbol, "space") == 0);
     CHECK(strcmp(as.bindings[ORB_BTN_SELECT].symbol, "m") == 0);
-    CHECK_EQ(as.palette[1 * 4 + 2], 64);
-    CHECK_EQ(as.palette[2 * 4 + 0], 255);
+    CHECK_EQ(as.pal[1 * 4 + 2], 64);
+    CHECK_EQ(as.pal[2 * 4 + 0], 255);
     // sprites, then the font sheet, then the world's tileset sheet
     CHECK_EQ(as.sheet_count, 3);
     CHECK_EQ(as.sprite_count, 2);
@@ -98,19 +98,19 @@ int main(void) {
     CHECK_EQ(as.sample_count, 2);
     CHECK_EQ(as.song_count, 1);
 
-    CHECK_EQ(as.animation_count, 1);
-    CHECK_EQ(as.animations[0].first_sprite, 0);
-    CHECK_EQ(as.animations[0].count, 2);
-    CHECK_EQ(as.durations[as.animations[0].first_duration], 6);
-    CHECK_EQ(as.durations[as.animations[0].first_duration + 1], 12);
+    CHECK_EQ(as.anim_count, 1);
+    CHECK_EQ(as.anims[0].first_sprite, 0);
+    CHECK_EQ(as.anims[0].count, 2);
+    CHECK_EQ(as.durations[as.anims[0].first_duration], 6);
+    CHECK_EQ(as.durations[as.anims[0].first_duration + 1], 12);
 
     // ids are what a game finds assets by: the file stem plus frame number or
     // tag, case-insensitive, hashed the same way at cast and at find
     CHECK(as.sprite_ids != nullptr);
     CHECK(as.sprite_ids[0] == orb_asset_id("player", "0"));
     CHECK(as.sprite_ids[1] == orb_asset_id("Player", "1"));
-    CHECK(as.animation_ids != nullptr);
-    CHECK(as.animation_ids[0] == orb_asset_id("player", "walk"));
+    CHECK(as.anim_ids != nullptr);
+    CHECK(as.anim_ids[0] == orb_asset_id("player", "walk"));
     CHECK(orb_asset_id("player", "walk") != orb_asset_id("player", "0"));
 
     // sounds first, then each song's sample; a song's sample is never a sound

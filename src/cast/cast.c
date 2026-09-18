@@ -14,6 +14,25 @@
 #include <stdio.h>
 #include <string.h>
 
+typedef struct cast {
+    orb_arena* scratch;
+    orb_arena* out;
+    const char* game_dir;
+    const orb_manifest* m;
+    orb_cast_result* r;
+    orb_error* err;
+} cast;
+
+typedef struct cast_files {
+    const char** paths; // relative to game_dir, in walk order: sorted at each level
+    const char** stems; // one per path, what the asset is found by
+    int count;
+    int16_t* grid_x; // a font's Aseprite grid, filled by cast_art; null otherwise
+    int16_t* grid_y;
+    uint16_t* grid_width;
+    uint16_t* grid_height;
+} cast_files;
+
 // dir/rel, unless rel is absolute (the rule orb_path_join uses) or dir is
 // empty, in which case rel is returned unchanged.
 static const char* cast_path(orb_arena* a, const char* dir, const char* rel) {
@@ -55,127 +74,6 @@ static const char* cast_dir_of(orb_arena* a, const char* rel) {
     return p;
 }
 
-// A string key; with no fallback it is required.
-static bool cast_string(
-    const orb_json* root,
-    const char* key,
-    const char* fallback,
-    const char** out,
-    orb_error* err
-) {
-    const orb_json* v = orb_json_get(root, key);
-
-    if ((!v && !fallback) || (v && v->kind != ORB_JSON_STRING))
-        return orb_error_set(err, "orb.json: \"%s\" must be a string", key);
-
-    *out = v ? v->str : fallback;
-    return true;
-}
-
-// "songs": {"title": 140, "forest": 96}: each song under music/ by stem, and its tempo.
-static bool cast_song_map(orb_arena* a, const orb_json* root, orb_manifest* m, orb_error* err) {
-    const orb_json* map = orb_json_get(root, "songs");
-
-    if (!map) return true;
-
-    if (map->kind != ORB_JSON_OBJECT)
-        return orb_error_set(err, "orb.json: \"songs\" must be an object of stem to bpm");
-
-    orb_manifest_song* songs = orb_arena_push_array(a, orb_manifest_song, map->count);
-
-    for (const orb_json* s = map->first; s; s = s->next) {
-        if (s->kind != ORB_JSON_NUMBER || !(s->num > 0 && s->num <= ORB_MAX_BPM))
-            return orb_error_set(
-                err, "orb.json: songs: \"%s\" must be a bpm within 0..%g", s->key,
-                (double)ORB_MAX_BPM
-            );
-
-        songs[m->song_count++] = (orb_manifest_song) {.bpm = (float)s->num, .stem = s->key};
-    }
-
-    m->songs = songs;
-    return true;
-}
-
-// "buttons": {"select": "m", "a": "space"}: a key symbol per button it names.
-static bool cast_button_map(const orb_json* root, orb_manifest* m, orb_error* err) {
-    const orb_json* map = orb_json_get(root, "buttons");
-
-    if (!map) return true;
-
-    if (map->kind != ORB_JSON_OBJECT)
-        return orb_error_set(err, "orb.json: \"buttons\" must be an object of button to key");
-
-    for (const orb_json* b = map->first; b; b = b->next) {
-        int button = -1;
-
-        for (int i = 0; i < ORB_BTN_COUNT; i++)
-            if (strcmp(b->key, orb_button_names[i]) == 0) button = i;
-
-        if (button < 0)
-            return orb_error_set(err, "orb.json: \"buttons\" names no button \"%s\"", b->key);
-        if (m->buttons[button][0])
-            return orb_error_set(err, "orb.json: \"buttons\" names \"%s\" twice", b->key);
-        if (b->kind != ORB_JSON_STRING || !orb_input_symbol_valid(b->str))
-            return orb_error_set(
-                err, "orb.json: \"buttons.%s\" must be a key name or one character", b->key
-            );
-
-        snprintf(m->buttons[button], sizeof m->buttons[button], "%s", b->str);
-    }
-
-    return true;
-}
-
-bool orb_manifest_load(orb_arena* a, const char* game_dir, orb_manifest* m, orb_error* err) {
-    orb_span text;
-    const char* path = cast_path(a, game_dir, "orb.json");
-
-    if (!orb_os_read_file(path, a, &text)) return orb_error_set(err, "cannot read %s", path);
-
-    orb_json* root = orb_json_parse(a, (const char*)text.ptr, text.len, err);
-
-    if (!root) return false;
-
-    memset(m, 0, sizeof *m);
-
-    const orb_json* size = orb_json_get(root, "size");
-
-    if (!size || size->kind != ORB_JSON_ARRAY || size->count != 2)
-        return orb_error_set(err, "orb.json: \"size\" must be [width, height]");
-
-    m->size = (orb_size) {(int)size->first->num, (int)size->first->next->num};
-
-    if (m->size.width < 1 || m->size.width > 4096 || m->size.height < 1 || m->size.height > 4096)
-        return orb_error_set(err, "orb.json: \"size\" must be within 1..4096");
-
-    const orb_json* headroom = orb_json_get(root, "asset_headroom");
-
-    if (headroom && headroom->kind != ORB_JSON_NUMBER)
-        return orb_error_set(err, "orb.json: \"asset_headroom\" must be a number of bytes");
-
-    m->asset_headroom = headroom ? (size_t)headroom->num : 16 << 20;
-
-    return cast_string(root, "id", nullptr, &m->id, err) &&
-           cast_string(root, "name", nullptr, &m->name, err) &&
-           cast_string(root, "palette", "art/palette.aseprite", &m->palette, err) &&
-           cast_string(root, "art", "art", &m->art, err) &&
-           cast_string(root, "fonts", "fonts", &m->fonts, err) &&
-           cast_string(root, "sfx", "sfx", &m->sfx, err) &&
-           cast_string(root, "music", "music", &m->music, err) &&
-           cast_string(root, "world", "levels/world.ldtk", &m->world, err) &&
-           cast_song_map(a, root, m, err) && cast_button_map(root, m, err);
-}
-
-typedef struct cast {
-    orb_arena* scratch;
-    orb_arena* out;
-    const char* game_dir;
-    const orb_manifest* m;
-    orb_cast_result* r;
-    orb_error* err;
-} cast;
-
 // Record a path under game_dir as read, once: the list scry watches.
 static bool cast_note(cast* c, const char* rel) {
     orb_cast_result* r = c->r;
@@ -212,16 +110,6 @@ static const char* cast_stem(orb_arena* a, const char* path) {
 
     return memcpy(orb_arena_push(a, n + 1, 1), start, n);
 }
-
-typedef struct cast_files {
-    const char** paths; // relative to game_dir, in walk order: sorted at each level
-    const char** stems; // one per path, what the asset is found by
-    int count;
-    int16_t* grid_x; // a font's Aseprite grid, filled by cast_art; null otherwise
-    int16_t* grid_y;
-    uint16_t* grid_width;
-    uint16_t* grid_height;
-} cast_files;
 
 // Every file with the suffix under rel, recursing, but the one path to skip. A
 // missing directory is empty. The listing buffer is one static reused by every
@@ -283,45 +171,6 @@ static bool cast_walk(
     return cast_walk_into(c, rel, suffix, skip, files);
 }
 
-// A WAV's descriptor: an empty loop is no loop.
-static orb_sample_desc cast_sample_desc(const orb_wav* w, uint32_t first) {
-    bool loop = w->has_loop && w->loop_end > w->loop_start;
-
-    return (orb_sample_desc) {
-        .first = first,
-        .count = w->count,
-        .loop_start = loop ? w->loop_start : 0,
-        .loop_end = loop ? w->loop_end : 0,
-        .rate = w->rate,
-        .channels = w->channels
-    };
-}
-
-static bool cast_load_ase(cast* c, const char* rel, orb_ase* ase) {
-    orb_span file;
-
-    if (!cast_read(c, rel, &file)) return false;
-
-    orb_error inner;
-
-    if (!orb_ase_parse(c->scratch, file, ase, &inner))
-        return orb_error_set(c->err, "%s: %s", rel, inner.text);
-
-    return true;
-}
-
-static bool cast_load_wav(cast* c, const char* rel, orb_wav* wav) {
-    orb_span file;
-
-    if (!cast_read(c, rel, &file)) return false;
-
-    orb_error inner;
-
-    if (!orb_wav_parse(file, wav, &inner)) return orb_error_set(c->err, "%s: %s", rel, inner.text);
-
-    return true;
-}
-
 // Two files of one kind with one stem would be one name to find; refuse the pair.
 static bool cast_unique(cast* c, const cast_files* files) {
     uint64_t* ids = orb_arena_push_array(c->scratch, uint64_t, files->count);
@@ -342,20 +191,33 @@ static bool cast_unique(cast* c, const cast_files* files) {
     return true;
 }
 
+static bool cast_load_ase(cast* c, const char* rel, orb_ase* ase) {
+    orb_span file;
+
+    if (!cast_read(c, rel, &file)) return false;
+
+    orb_error inner;
+
+    if (!orb_ase_parse(c->scratch, file, ase, &inner))
+        return orb_error_set(c->err, "%s: %s", rel, inner.text);
+
+    return true;
+}
+
 // The master palette: orb's 256 RGB entries, the truth every other file's colors
 // are matched against.
-static bool cast_palette(cast* c, orb_ase* master, orb_assets* as) {
-    if (!cast_load_ase(c, c->m->palette, master)) return false;
+static bool cast_pal(cast* c, orb_ase* master, orb_assets* as) {
+    if (!cast_load_ase(c, c->m->pal, master)) return false;
 
-    uint8_t* palette = orb_arena_push(c->scratch, 256 * 4, 16);
+    uint8_t* pal = orb_arena_push(c->scratch, 256 * 4, 16);
 
     for (int i = 0; i < master->color_count; i++) {
-        palette[i * 4 + 0] = master->rgb[i][0];
-        palette[i * 4 + 1] = master->rgb[i][1];
-        palette[i * 4 + 2] = master->rgb[i][2];
+        pal[i * 4 + 0] = master->rgb[i][0];
+        pal[i * 4 + 1] = master->rgb[i][1];
+        pal[i * 4 + 2] = master->rgb[i][2];
     }
 
-    as->palette = palette;
+    as->pal = pal;
     return true;
 }
 
@@ -374,7 +236,7 @@ static bool cast_art(
     orb_arena* scratch = c->scratch;
     cast_files art;
 
-    if (!cast_walk(c, c->m->art, ".aseprite", c->m->palette, &art) || !cast_unique(c, &art))
+    if (!cast_walk(c, c->m->art, ".aseprite", c->m->pal, &art) || !cast_unique(c, &art))
         return false;
 
     int art_count = art.count;
@@ -413,12 +275,12 @@ static bool cast_art(
 
     orb_sheet_desc* sheets = orb_arena_push_array(scratch, orb_sheet_desc, file_count);
     orb_sprite_desc* sprites = orb_arena_push_array(scratch, orb_sprite_desc, max_sprites);
-    orb_animation_desc* animations = orb_arena_push_array(scratch, orb_animation_desc, max_anims);
+    orb_anim_desc* anims = orb_arena_push_array(scratch, orb_anim_desc, max_anims);
     uint16_t* durations = orb_arena_push_array(scratch, uint16_t, max_sprites);
     uint64_t* sprite_ids = orb_arena_push_array(scratch, uint64_t, max_sprites);
-    uint64_t* animation_ids = orb_arena_push_array(scratch, uint64_t, max_anims);
+    uint64_t* anim_ids = orb_arena_push_array(scratch, uint64_t, max_anims);
     orb_pack* packs = orb_arena_push_array(scratch, orb_pack, file_count);
-    uint32_t sprite_count = 0, animation_count = 0, pixel_total = 0, duration_count = 0;
+    uint32_t sprite_count = 0, anim_count = 0, pixel_total = 0, duration_count = 0;
 
     for (int i = 0; i < file_count; i++) {
         orb_ase* ase = &files[i];
@@ -528,7 +390,7 @@ static bool cast_art(
                     tag->name
                 );
 
-            animations[animation_count] = (orb_animation_desc) {
+            anims[anim_count] = (orb_anim_desc) {
                 .first_sprite = first_sprite + tag->from,
                 .first_duration = duration_count,
                 .count = (uint16_t)(tag->to - tag->from + 1)
@@ -540,7 +402,7 @@ static bool cast_art(
                 durations[duration_count++] = (uint16_t)(ticks ? ticks : 1);
             }
 
-            animation_ids[animation_count++] = orb_asset_id(stem, tag->name);
+            anim_ids[anim_count++] = orb_asset_id(stem, tag->name);
         }
     }
 
@@ -560,12 +422,38 @@ static bool cast_art(
     as->pixel_count = pixel_total;
     as->sprites = sprites;
     as->sprite_count = sprite_count;
-    as->animations = animations;
-    as->animation_count = animation_count;
+    as->anims = anims;
+    as->anim_count = anim_count;
     as->durations = durations;
     as->duration_count = duration_count;
     as->sprite_ids = sprite_ids;
-    as->animation_ids = animation_ids;
+    as->anim_ids = anim_ids;
+    return true;
+}
+
+// A WAV's descriptor: an empty loop is no loop.
+static orb_sample_desc cast_sample_desc(const orb_wav* w, uint32_t first) {
+    bool loop = w->has_loop && w->loop_end > w->loop_start;
+
+    return (orb_sample_desc) {
+        .first = first,
+        .count = w->count,
+        .loop_start = loop ? w->loop_start : 0,
+        .loop_end = loop ? w->loop_end : 0,
+        .rate = w->rate,
+        .channels = w->channels
+    };
+}
+
+static bool cast_load_wav(cast* c, const char* rel, orb_wav* wav) {
+    orb_span file;
+
+    if (!cast_read(c, rel, &file)) return false;
+
+    orb_error inner;
+
+    if (!orb_wav_parse(file, wav, &inner)) return orb_error_set(c->err, "%s: %s", rel, inner.text);
+
     return true;
 }
 
@@ -703,7 +591,7 @@ static bool cast_body(cast* c) {
     cast_files fonts;
     uint32_t first_font_sheet = 0, first_tileset_sheet = 0;
 
-    if (!cast_palette(c, &master, &as) || !world_parse(c, &world) ||
+    if (!cast_pal(c, &master, &as) || !world_parse(c, &world) ||
         !cast_walk(c, c->m->fonts, ".aseprite", "", &fonts) || !cast_unique(c, &fonts) ||
         !cast_art(c, &master, &world, &fonts, &first_font_sheet, &first_tileset_sheet, &as) ||
         !font_cast(c, &fonts, first_font_sheet, &as) ||
@@ -759,4 +647,116 @@ bool orb_cast_game(
 
     scratch->recover = out->recover = nullptr;
     return ok;
+}
+
+// A string key; with no fallback it is required.
+static bool cast_string(
+    const orb_json* root,
+    const char* key,
+    const char* fallback,
+    const char** out,
+    orb_error* err
+) {
+    const orb_json* v = orb_json_get(root, key);
+
+    if ((!v && !fallback) || (v && v->kind != ORB_JSON_STRING))
+        return orb_error_set(err, "orb.json: \"%s\" must be a string", key);
+
+    *out = v ? v->str : fallback;
+    return true;
+}
+
+// "songs": {"title": 140, "forest": 96}: each song under music/ by stem, and its tempo.
+static bool cast_song_map(orb_arena* a, const orb_json* root, orb_manifest* m, orb_error* err) {
+    const orb_json* map = orb_json_get(root, "songs");
+
+    if (!map) return true;
+
+    if (map->kind != ORB_JSON_OBJECT)
+        return orb_error_set(err, "orb.json: \"songs\" must be an object of stem to bpm");
+
+    orb_manifest_song* songs = orb_arena_push_array(a, orb_manifest_song, map->count);
+
+    for (const orb_json* s = map->first; s; s = s->next) {
+        if (s->kind != ORB_JSON_NUMBER || !(s->num > 0 && s->num <= ORB_MAX_BPM))
+            return orb_error_set(
+                err, "orb.json: songs: \"%s\" must be a bpm within 0..%g", s->key,
+                (double)ORB_MAX_BPM
+            );
+
+        songs[m->song_count++] = (orb_manifest_song) {.bpm = (float)s->num, .stem = s->key};
+    }
+
+    m->songs = songs;
+    return true;
+}
+
+// "buttons": {"select": "m", "a": "space"}: a key symbol per button it names.
+static bool cast_button_map(const orb_json* root, orb_manifest* m, orb_error* err) {
+    const orb_json* map = orb_json_get(root, "buttons");
+
+    if (!map) return true;
+
+    if (map->kind != ORB_JSON_OBJECT)
+        return orb_error_set(err, "orb.json: \"buttons\" must be an object of button to key");
+
+    for (const orb_json* b = map->first; b; b = b->next) {
+        int button = -1;
+
+        for (int i = 0; i < ORB_BTN_COUNT; i++)
+            if (strcmp(b->key, orb_button_names[i]) == 0) button = i;
+
+        if (button < 0)
+            return orb_error_set(err, "orb.json: \"buttons\" names no button \"%s\"", b->key);
+        if (m->buttons[button][0])
+            return orb_error_set(err, "orb.json: \"buttons\" names \"%s\" twice", b->key);
+        if (b->kind != ORB_JSON_STRING || !orb_input_symbol_valid(b->str))
+            return orb_error_set(
+                err, "orb.json: \"buttons.%s\" must be a key name or one character", b->key
+            );
+
+        snprintf(m->buttons[button], sizeof m->buttons[button], "%s", b->str);
+    }
+
+    return true;
+}
+
+bool orb_manifest_load(orb_arena* a, const char* game_dir, orb_manifest* m, orb_error* err) {
+    orb_span text;
+    const char* path = cast_path(a, game_dir, "orb.json");
+
+    if (!orb_os_read_file(path, a, &text)) return orb_error_set(err, "cannot read %s", path);
+
+    orb_json* root = orb_json_parse(a, (const char*)text.ptr, text.len, err);
+
+    if (!root) return false;
+
+    memset(m, 0, sizeof *m);
+
+    const orb_json* size = orb_json_get(root, "size");
+
+    if (!size || size->kind != ORB_JSON_ARRAY || size->count != 2)
+        return orb_error_set(err, "orb.json: \"size\" must be [width, height]");
+
+    m->size = (orb_size) {(int)size->first->num, (int)size->first->next->num};
+
+    if (m->size.width < 1 || m->size.width > 4096 || m->size.height < 1 || m->size.height > 4096)
+        return orb_error_set(err, "orb.json: \"size\" must be within 1..4096");
+
+    const orb_json* headroom = orb_json_get(root, "asset_headroom");
+
+    if (headroom && headroom->kind != ORB_JSON_NUMBER)
+        return orb_error_set(err, "orb.json: \"asset_headroom\" must be a number of bytes");
+
+    m->asset_headroom = headroom ? (size_t)headroom->num : 16 << 20;
+
+    return cast_string(root, "id", nullptr, &m->id, err) &&
+           cast_string(root, "name", nullptr, &m->name, err) &&
+           cast_string(root, "palette", "art/palette.aseprite", &m->pal, err) &&
+           cast_string(root, "art", "art", &m->art, err) &&
+           cast_string(root, "fonts", "fonts", &m->fonts, err) &&
+           cast_string(root, "sfx", "sfx", &m->sfx, err) &&
+           cast_string(root, "music", "music", &m->music, err) &&
+           cast_string(root, "world", "levels/world.ldtk", &m->world, err) &&
+           cast_song_map(a, root, m, err) && cast_button_map(root, m, err);
 }

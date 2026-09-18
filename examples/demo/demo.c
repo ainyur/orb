@@ -25,7 +25,7 @@ typedef struct {
     bool flip;
     int flash; // ticks left of the red flash after hitting a wall
     int idle;  // ticks since the last input
-    orb_animation_state animation;
+    orb_anim_state anim;
     orb_sprite sprite;
     orb_sample bounce;
     orb_level room;
@@ -60,7 +60,7 @@ static void init(void* state, const orb_api* orb) {
 static void reload(void* state, const orb_api* orb) {
     game_state* g = state;
 
-    g->animation.animation = orb->animation_find("player", "walk");
+    g->anim.anim = orb->anim_find("player", "walk");
     g->bounce = orb->sample_find("bounce");
     g->room = orb->level_find("room");
     g->floor = orb->layer_find(g->room, "floor");
@@ -177,7 +177,7 @@ static void update(void* state, const orb_api* orb) {
     g->camera.target = (orb_vec2f) {g->x + FRAME / 2, g->y + FRAME / 2};
     orb->camera_update(&g->camera);
 
-    g->sprite = orb->animation_step(&g->animation);
+    g->sprite = orb->anim_step(&g->anim);
 }
 
 static void draw(void* state, const orb_api* orb) {

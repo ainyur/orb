@@ -2,18 +2,18 @@
 
 #include <stdio.h>
 
-void orb_animation_start(orb_animation_state* st, orb_animation a) {
-    st->animation = a;
+void orb_anim_start(orb_anim_state* st, orb_anim a) {
+    st->anim = a;
     st->frame = 0;
     st->ticks = 0;
 }
 
-orb_sprite orb_animation_step(const orb_assets* assets, orb_animation_state* st) {
-    uint32_t index = orb_asset_index_of(assets, st->animation);
+orb_sprite orb_anim_step(const orb_assets* assets, orb_anim_state* st) {
+    uint32_t index = orb_asset_index_of(assets, st->anim);
 
     if (index == ORB_NO_INDEX) return ORB_NO_SPRITE;
 
-    const orb_animation_desc* d = &assets->animations[index];
+    const orb_anim_desc* d = &assets->anims[index];
 
     st->frame = (uint16_t)(st->frame % d->count); // state may outlive a recast that shrank the tag
 
@@ -30,7 +30,7 @@ orb_sprite orb_animation_step(const orb_assets* assets, orb_animation_state* st)
 }
 
 void orb_sprite_draw(
-    orb_framebuffer* fb,
+    orb_fb* fb,
     const orb_assets* assets,
     orb_vec2f cam,
     orb_sprite s,
@@ -55,7 +55,7 @@ void orb_sprite_draw(
 
     const uint8_t* src = assets->pixels + sheet->pixels + d->y * sheet->width + d->x;
 
-    orb_framebuffer_blit(fb, src, sheet->width, (orb_size) {d->width, d->height}, at, flags, remap);
+    orb_fb_blit(fb, src, sheet->width, (orb_size) {d->width, d->height}, at, flags, remap);
 }
 
 uint64_t orb_sprite_id(const char* stem, int frame) {
