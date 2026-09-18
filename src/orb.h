@@ -38,7 +38,8 @@ typedef struct {
 } orb_song;
 
 typedef struct orb_song_position {
-    float seconds, beats; // into the song's file; both -1 when no song plays
+    int32_t ms;         // into the song's file; both -1 when no song plays
+    int32_t millibeats; // beats * 1000, from the manifest's bpm
 } orb_song_position;
 
 typedef struct orb_sound_params {
@@ -264,12 +265,13 @@ constexpr orb_voice ORB_NO_VOICE = {0xffffu};
 
 constexpr uint32_t ORB_FLIP_X = 1;
 constexpr uint32_t ORB_FLIP_Y = 2;
+
 constexpr uint64_t ORB_NS_PER_SECOND = 1000000000;
 constexpr int ORB_TICK_RATE = 60; // update calls per second
 constexpr float ORB_TICK_SECONDS = 1.0f / ORB_TICK_RATE;
 
-constexpr int ORB_AUDIO_RATE = 48000;
 constexpr int ORB_AUDIO_CHANNELS = 2;
+constexpr int ORB_AUDIO_RATE = 48000;
 
 // Audio. sample_find("jump") is jump.wav from the manifest's sounds; song_find("title")
 // is title.wav from its songs. sound_play returns a voice handle; when all 16 game voices
@@ -277,7 +279,7 @@ constexpr int ORB_AUDIO_CHANNELS = 2;
 // returns ORB_NO_VOICE. sound_set and sound_stop on a voice that ended or was stolen do
 // nothing. song_play loops on the WAV's own loop points when it has them, else over the
 // whole file. song_position is where the mixer's render head is in the song's file, as
-// seconds and as beats from the manifest's bpm; it wraps with the loop and freezes on pause.
+// milliseconds and as thousandths of a beat; it wraps with the loop and freezes on pause.
 // The render head runs ahead of the speaker by one device buffer, a few tens of
 // milliseconds. Volumes are 0..1 and start at 1. orb_sound_params.volume 0 is silence, so
 // a zero-initialized orb_sound_params plays nothing; set .volume explicitly.

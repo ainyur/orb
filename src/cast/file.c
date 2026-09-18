@@ -287,11 +287,10 @@ bool orb_file_load(orb_span file, orb_assets* out, orb_error* err) {
                 out->sample_count
             );
 
-        if (!(out->songs[i].bpm > 0 && out->songs[i].bpm <= ORB_MAX_BPM)) { // also refuses NaN
+        if (out->songs[i].millibpm == 0 || out->songs[i].millibpm > ORB_MAX_BPM * 1000)
             return orb_error_set(
-                err, "orb file: song %u has a bad bpm %g", i, (double)out->songs[i].bpm
+                err, "orb file: song %u has a bad bpm: %u thousandths", i, out->songs[i].millibpm
             );
-        }
     }
 
     return file_check_levels(out, err) && file_check_fonts(out, err) &&

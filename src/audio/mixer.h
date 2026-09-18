@@ -9,8 +9,12 @@ constexpr int ORB_SONG_VOICE = 0;
 constexpr int ORB_GAME_VOICE_FIRST = 1;
 constexpr int ORB_GAME_VOICE_COUNT = 16;
 constexpr int ORB_VOICE_COUNT = ORB_GAME_VOICE_FIRST + ORB_GAME_VOICE_COUNT;
-constexpr int ORB_MIXER_RING = 256;
+
 constexpr int ORB_MIXER_CHUNK = 512;
+constexpr int ORB_MIXER_RING = 256;
+
+constexpr uint32_t ORB_MIXER_FADE_ONE = 1u << 31;
+constexpr int32_t ORB_MIXER_ONE = 1 << 15;
 
 enum {
     ORB_MIXER_PLAY,
@@ -22,6 +26,15 @@ enum {
     ORB_MIXER_VOLUMES
 };
 
+typedef struct orb_mixer_params {
+    int32_t volume, pan; // 0..ONE, -ONE..ONE
+    int32_t pitch_cents;
+} orb_mixer_params;
+
+typedef struct orb_mixer_volumes {
+    int32_t master, song, sound;
+} orb_mixer_volumes;
+
 typedef struct orb_mixer_command {
     uint8_t kind;
     uint8_t voice;
@@ -29,11 +42,11 @@ typedef struct orb_mixer_command {
     uint32_t index; // play: the sample; song_play: the song, resolved on the audio thread
     uint64_t id;    // its id, so a swapped asset is caught
     union {
-        orb_sound_params params; // play, set
+        orb_mixer_params params; // play, set
         bool loop;               // song_play
         bool paused;             // song_pause
         int32_t fade_ms;         // song_stop
-        orb_volumes volumes;
+        orb_mixer_volumes volumes;
     };
 } orb_mixer_command;
 
@@ -50,8 +63,8 @@ typedef struct orb_voice_state {
     uint64_t song_id;
     uint64_t position; // 32.32 fixed-point frame
     uint64_t step;     // 32.32 frames per output frame
-    float volume, pan;
-    float fade, fade_gain; // fade is the per-frame decrement, 0 when not fading
+    int32_t volume, pan;
+    uint32_t fade, fade_gain; // fade is the per-frame decrement, 0 when not fading
     bool loop, paused;
 } orb_voice_state;
 
@@ -69,12 +82,15 @@ typedef struct orb_mixer {
     const orb_assets* last_assets; // the audio thread's
     atomic_uint render_begin, render_end;
     _Atomic orb_song_position song_position; // stored after each render
-    orb_volumes volumes;                     // the audio thread's copy
+    orb_mixer_volumes volumes;               // the audio thread's copy
 } orb_mixer;
 
 // The defaults, as an initializer: api.c's mixer is a static, and assets are
 // published to it before anything else runs.
-#define ORB_MIXER_INIT {.song_position = {-1, -1}, .volumes = {1, 1, 1}}
+#define ORB_MIXER_INIT                                                                             \
+    {                                                                                              \
+        .song_position = {-1, -1}, .volumes = { ORB_MIXER_ONE, ORB_MIXER_ONE, ORB_MIXER_ONE }      \
+    }
 
 // Returns the render to wait for, 0 if none.
 uint32_t orb_mixer_set_assets(orb_mixer* m, const orb_assets* assets);

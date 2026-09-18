@@ -1,17 +1,39 @@
 #include "mixer.h"
 #include "../core/macros.h"
 
-#include <math.h>
 #include <string.h>
 
 #define MIXER_VOICE(index, gen) ((orb_voice) {(uint32_t)(index) | (uint32_t)(gen) << 16})
 #define MIXER_VOICE_INDEX(h) ((h).v & 0xffffu)
 #define MIXER_VOICE_GEN(h) ((h).v >> 16)
 
-static orb_sound_params mixer_clamp_params(orb_sound_params p) {
-    return (orb_sound_params) {
-        .volume = orb_clamp(p.volume, 0.0f, 1.0f),
-        .pan = orb_clamp(p.pan, -1.0f, 1.0f),
+// 2^(i/12) and 2^(i/1200) as 16.16, for the pitch step.
+static const uint32_t mixer_semitones[12] = {65536, 69433, 73562,  77936,  82570,  87480,
+                                             92682, 98193, 104032, 110218, 116772, 123715};
+static const uint32_t mixer_cents[100] = {
+    65536, 65574, 65612, 65650, 65688, 65726, 65764, 65802, 65840, 65878, 65916, 65954, 65992,
+    66030, 66068, 66106, 66144, 66183, 66221, 66259, 66297, 66336, 66374, 66412, 66451, 66489,
+    66528, 66566, 66605, 66643, 66682, 66720, 66759, 66797, 66836, 66874, 66913, 66952, 66990,
+    67029, 67068, 67107, 67145, 67184, 67223, 67262, 67301, 67340, 67378, 67417, 67456, 67495,
+    67534, 67573, 67612, 67651, 67691, 67730, 67769, 67808, 67847, 67886, 67926, 67965, 68004,
+    68043, 68083, 68122, 68161, 68201, 68240, 68280, 68319, 68359, 68398, 68438, 68477, 68517,
+    68556, 68596, 68635, 68675, 68715, 68755, 68794, 68834, 68874, 68914, 68953, 68993, 69033,
+    69073, 69113, 69153, 69193, 69233, 69273, 69313, 69353, 69393
+};
+
+// An API float in -1..1 as a 15-bit fraction, rounded.
+static int32_t mixer_fraction(float x) {
+    return (int32_t)(x * ORB_MIXER_ONE + (x < 0 ? -0.5f : 0.5f));
+}
+
+static int32_t mixer_mul(int32_t a, int32_t fraction) {
+    return a * fraction >> 15;
+}
+
+static orb_mixer_params mixer_params_of(orb_sound_params p) {
+    return (orb_mixer_params) {
+        .volume = mixer_fraction(orb_clamp(p.volume, 0.0f, 1.0f)),
+        .pan = mixer_fraction(orb_clamp(p.pan, -1.0f, 1.0f)),
         .pitch_cents = orb_clamp(p.pitch_cents, -2400, 2400)
     };
 }
@@ -24,10 +46,15 @@ static bool mixer_sample_valid(const orb_assets* assets, uint32_t sample, uint64
     return assets && mixer_id_valid(assets->sample_ids, assets->sample_count, sample, id);
 }
 
+// rate / ORB_AUDIO_RATE * 2^(cents / 1200) as 32.32: whole octaves shift, the rest
+// is the two tables.
 static uint64_t mixer_step(uint32_t rate, int pitch_cents) {
-    float ratio = (float)rate / ORB_AUDIO_RATE * exp2f((float)pitch_cents / 1200.0f);
+    int cents = pitch_cents + 2400, octave = cents / 1200 - 2, rest = cents % 1200;
+    uint64_t step = ((uint64_t)rate << 32) / ORB_AUDIO_RATE;
 
-    return (uint64_t)(ratio * 4294967296.0);
+    step = step * mixer_semitones[rest / 100] >> 16;
+    step = step * mixer_cents[rest % 100] >> 16;
+    return octave < 0 ? step >> -octave : step << octave;
 }
 
 // Main thread: room for one more command.
@@ -82,7 +109,7 @@ static void mixer_voice_start(
     const orb_assets* assets,
     uint16_t gen,
     uint32_t sample,
-    orb_sound_params p
+    orb_mixer_params p
 ) {
     v->gen = gen;
     v->sample = sample;
@@ -92,7 +119,7 @@ static void mixer_voice_start(
     v->volume = p.volume;
     v->pan = p.pan;
     v->fade = 0;
-    v->fade_gain = 1;
+    v->fade_gain = ORB_MIXER_FADE_ONE;
     v->loop = false;
     v->paused = false;
 }
@@ -129,7 +156,8 @@ static void mixer_apply(orb_mixer* m, const orb_assets* assets, const orb_mixer_
             break;
 
         mixer_voice_start(
-            v, assets, 1, assets->songs[c->index].sample, (orb_sound_params) {.volume = 1}
+            v, assets, 1, assets->songs[c->index].sample,
+            (orb_mixer_params) {.volume = ORB_MIXER_ONE}
         );
         v->song = c->index;
         v->song_id = c->id;
@@ -143,7 +171,10 @@ static void mixer_apply(orb_mixer* m, const orb_assets* assets, const orb_mixer_
         if (c->fade_ms <= 0)
             mixer_voice_end(v);
         else
-            v->fade = 1000.0f / ((float)c->fade_ms * ORB_AUDIO_RATE);
+            v->fade = orb_max(
+                1u, (uint32_t)((uint64_t)ORB_MIXER_FADE_ONE * 1000 /
+                               ((uint64_t)c->fade_ms * ORB_AUDIO_RATE))
+            );
 
         break;
     case ORB_MIXER_SONG_PAUSE:
@@ -162,13 +193,13 @@ static void mixer_wrap(orb_voice_state* v, uint32_t loop_start, uint32_t end) {
     if (v->position >= start + length) v->position = start + (v->position - start) % length;
 }
 
-// One voice into the float accumulator: linear interpolation, pan as a pair of
-// gains, the group volume, and the fade. Ends the voice when its sample runs out.
+// One voice into the accumulator: linear interpolation, the fade, and pan, group,
+// and master folded into a gain per side. Ends the voice when its sample runs out.
 static void mixer_render_voice(
     orb_mixer* m,
     const orb_assets* assets,
     int index,
-    float* acc,
+    int32_t* acc,
     int frames
 ) {
     orb_voice_state* v = &m->voices[index];
@@ -186,9 +217,10 @@ static void mixer_render_voice(
     bool file_loops = d->loop_end > d->loop_start; // an empty loop is none
     uint32_t loop_start = v->loop && file_loops ? d->loop_start : 0;
     uint32_t end = v->loop && file_loops ? d->loop_end : d->count;
-    float group_volume = index == ORB_SONG_VOICE ? m->volumes.song : m->volumes.sound;
-    float left = v->volume * group_volume * (v->pan > 0 ? 1 - v->pan : 1);
-    float right = v->volume * group_volume * (v->pan < 0 ? 1 + v->pan : 1);
+    int32_t group = index == ORB_SONG_VOICE ? m->volumes.song : m->volumes.sound;
+    int32_t gain = mixer_mul(mixer_mul(v->volume, group), m->volumes.master);
+    int32_t left = mixer_mul(gain, v->pan > 0 ? ORB_MIXER_ONE - v->pan : ORB_MIXER_ONE);
+    int32_t right = mixer_mul(gain, v->pan < 0 ? ORB_MIXER_ONE + v->pan : ORB_MIXER_ONE);
 
     for (int i = 0; i < frames; i++) {
         uint32_t at = (uint32_t)(v->position >> 32);
@@ -205,21 +237,21 @@ static void mixer_render_voice(
 
         uint32_t next = at + 1;
         bool has_next = next < end || v->loop;
-        float frac = (float)(uint32_t)v->position / 4294967296.0f;
-        float gain = v->fade_gain;
+        int32_t frac = (int32_t)(v->position >> 17) & 0x7fff; // the fraction's top 15 bits
+        int32_t fade_now = (int32_t)(v->fade_gain >> 16);
 
         if (next >= end) next = loop_start;
 
         for (uint32_t c = 0; c < channels; c++) {
-            float a = pcm[at * channels + c];
-            float b = has_next ? pcm[next * channels + c] : 0;
-            float s = (a + (b - a) * frac) * gain;
+            int32_t a = pcm[at * channels + c];
+            int32_t b = has_next ? pcm[next * channels + c] : 0;
+            int32_t s = mixer_mul(a + mixer_mul(b - a, frac), fade_now);
 
             if (channels == 1) {
-                acc[i * 2] += s * left;
-                acc[i * 2 + 1] += s * right;
+                acc[i * 2] += mixer_mul(s, left);
+                acc[i * 2 + 1] += mixer_mul(s, right);
             } else
-                acc[i * 2 + c] += s * (c == 0 ? left : right);
+                acc[i * 2 + c] += mixer_mul(s, c == 0 ? left : right);
         }
 
         v->position += v->step;
@@ -227,12 +259,12 @@ static void mixer_render_voice(
         if (v->loop) mixer_wrap(v, loop_start, end); // now, so the published frame is in the loop
 
         if (v->fade > 0) {
-            v->fade_gain -= v->fade;
-
-            if (v->fade_gain <= 0) {
+            if (v->fade_gain <= v->fade) {
                 mixer_voice_end(v);
                 return;
             }
+
+            v->fade_gain -= v->fade;
         }
     }
 }
@@ -284,7 +316,7 @@ static int mixer_claim(orb_mixer* m, uint8_t priority) {
 }
 
 // Main thread: a set or stop for a game voice the handle still holds.
-static void mixer_push_voice(orb_mixer* m, orb_voice v, uint8_t kind, orb_sound_params p) {
+static void mixer_push_voice(orb_mixer* m, orb_voice v, uint8_t kind, orb_mixer_params p) {
     uint32_t index = MIXER_VOICE_INDEX(v), gen = MIXER_VOICE_GEN(v);
 
     if (index < ORB_GAME_VOICE_FIRST || index >= ORB_VOICE_COUNT || gen == 0) return;
@@ -297,15 +329,17 @@ static void mixer_push_voice(orb_mixer* m, orb_voice v, uint8_t kind, orb_sound_
     );
 }
 
-// The song voice's frame as seconds and beats, one atomic store so the main
-// thread never sees one without the other. -1 for both when no song plays.
+// The song voice's frame as milliseconds and millibeats, one atomic store so the
+// main thread never sees one without the other. -1 for both when no song plays.
 static void mixer_publish_position(orb_mixer* m, const orb_assets* assets) {
     const orb_voice_state* v = &m->voices[ORB_SONG_VOICE];
     orb_song_position p = {-1, -1};
 
     if (assets && mixer_owns(v, v->gen)) {
-        p.seconds = (float)(v->position >> 32) / (float)assets->samples[v->sample].rate;
-        p.beats = p.seconds * assets->songs[v->song].bpm / 60;
+        uint64_t frame = v->position >> 32, rate = assets->samples[v->sample].rate;
+
+        p.ms = (int32_t)(frame * 1000 / rate);
+        p.millibeats = (int32_t)(frame * assets->songs[v->song].millibpm / (60 * rate));
     }
 
     atomic_store_explicit(&m->song_position, p, memory_order_relaxed);
@@ -343,18 +377,18 @@ orb_voice orb_mixer_sound_play(orb_mixer* m, orb_sample s, orb_sound_params p, i
                .gen = m->issued[voice],
                .index = index,
                .id = assets->sample_ids[index],
-               .params = mixer_clamp_params(p)
+               .params = mixer_params_of(p)
            }
     );
     return MIXER_VOICE(voice, m->issued[voice]);
 }
 
 void orb_mixer_sound_set(orb_mixer* m, orb_voice v, orb_sound_params p) {
-    mixer_push_voice(m, v, ORB_MIXER_SET, mixer_clamp_params(p));
+    mixer_push_voice(m, v, ORB_MIXER_SET, mixer_params_of(p));
 }
 
 void orb_mixer_sound_stop(orb_mixer* m, orb_voice v) {
-    mixer_push_voice(m, v, ORB_MIXER_STOP, (orb_sound_params) {});
+    mixer_push_voice(m, v, ORB_MIXER_STOP, (orb_mixer_params) {});
 }
 
 void orb_mixer_song_play(orb_mixer* m, orb_song s, bool loop) {
@@ -390,8 +424,9 @@ void orb_mixer_volume_set(orb_mixer* m, orb_volumes v) {
         m, (orb_mixer_command) {
                .kind = ORB_MIXER_VOLUMES,
                .volumes = {
-                   orb_clamp(v.master, 0.0f, 1.0f), orb_clamp(v.song, 0.0f, 1.0f),
-                   orb_clamp(v.sound, 0.0f, 1.0f)
+                   mixer_fraction(orb_clamp(v.master, 0.0f, 1.0f)),
+                   mixer_fraction(orb_clamp(v.song, 0.0f, 1.0f)),
+                   mixer_fraction(orb_clamp(v.sound, 0.0f, 1.0f))
                }
            }
     );
@@ -414,19 +449,16 @@ void orb_mixer_render(orb_mixer* m, int16_t* out, int frames) {
 
     while (frames > 0) {
         int n = orb_min(frames, ORB_MIXER_CHUNK);
-        float acc[ORB_MIXER_CHUNK * 2];
+        int32_t acc[ORB_MIXER_CHUNK * 2];
 
-        memset(acc, 0, sizeof(float) * n * 2);
+        memset(acc, 0, sizeof(int32_t) * n * 2);
 
         for (int i = 0; assets && i < ORB_VOICE_COUNT; i++)
             if (mixer_owns(&m->voices[i], m->voices[i].gen))
                 mixer_render_voice(m, assets, i, acc, n);
 
-        for (int i = 0; i < n * 2; i++) {
-            float s = acc[i] * m->volumes.master;
-
-            out[i] = (int16_t)orb_clamp(s, -32768.0f, 32767.0f);
-        }
+        for (int i = 0; i < n * 2; i++)
+            out[i] = (int16_t)orb_clamp(acc[i], -32768, 32767);
 
         out += n * 2;
         frames -= n;

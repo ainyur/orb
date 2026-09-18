@@ -14,8 +14,8 @@ else
 CC       := gcc
 CFLAGS   := -std=c23 -D_POSIX_C_SOURCE=200809L -Wall -Wextra
 BACKEND  := -DORB_OS_X11
-LIBS     := -lX11 -lasound -lm
-TESTLIBS := -lm
+LIBS     := -lX11 -lasound
+TESTLIBS :=
 ORB      := bin/orb
 LIB      := so
 OBJ      := o

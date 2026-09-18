@@ -36,7 +36,7 @@ int main(void) {
         {.first = 0, .count = 4, .rate = 22050, .channels = 1},
         {.first = 4, .count = 2, .loop_start = 0, .loop_end = 2, .rate = 48000, .channels = 2}
     };
-    orb_song_desc songs[1] = {{.sample = 1, .bpm = 120}};
+    orb_song_desc songs[1] = {{.sample = 1, .millibpm = 120000}};
     uint64_t sample_ids[2] = {55, 66}, song_ids[1] = {77};
     orb_info_desc info = {.width = 64, .height = 32, .name = "fixture"};
     orb_assets in = {
@@ -130,11 +130,11 @@ int main(void) {
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "rate") != nullptr);
     samples[1].rate = 48000;
-    songs[0].bpm = 0;
+    songs[0].millibpm = 0;
     file = orb_file_write(&a, &in);
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "bpm") != nullptr);
-    songs[0].bpm = 120;
+    songs[0].millibpm = 120000;
 
     // a sample whose loop runs past its own frame count is refused
     samples[1].loop_end = samples[1].count + 1;

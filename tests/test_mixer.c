@@ -11,7 +11,10 @@ static const orb_sample_desc samples[3] = {
     {.first = 0, .count = 8, .loop_start = 2, .loop_end = 2, .rate = 48000, .channels = 1},
 };
 static const uint64_t sample_ids[3] = {11, 22, 33};
-static const orb_song_desc songs[2] = {{.sample = 1, .bpm = 120}, {.sample = 2, .bpm = 90}};
+static const orb_song_desc songs[2] = {
+    {.sample = 1, .millibpm = 120000},
+    {.sample = 2, .millibpm = 90000}
+};
 static const uint64_t song_ids[2] = {44, 55};
 static orb_assets assets = {
     .samples = samples,
@@ -39,10 +42,6 @@ static int playing_count(void) {
     return n;
 }
 
-static bool near(float a, float b) {
-    return fabsf(a - b) < 1e-7f;
-}
-
 static bool song_playing(void) {
     return atomic_load(&mixer.voices[ORB_SONG_VOICE].playing) != 0;
 }
@@ -54,9 +53,12 @@ int main(void) {
     orb_voice v;
 
     mixer = (orb_mixer)ORB_MIXER_INIT;
-    CHECK(mixer.volumes.master == 1 && mixer.volumes.song == 1 && mixer.volumes.sound == 1);
-    CHECK(orb_mixer_song_position(&mixer).seconds == -1); // before any render
-    CHECK(atomic_is_lock_free(&mixer.song_position));     // the main thread reads it with one load
+    CHECK(
+        mixer.volumes.master == ORB_MIXER_ONE && mixer.volumes.song == ORB_MIXER_ONE &&
+        mixer.volumes.sound == ORB_MIXER_ONE
+    );
+    CHECK(orb_mixer_song_position(&mixer).ms == -1);  // before any render
+    CHECK(atomic_is_lock_free(&mixer.song_position)); // the main thread reads it with one load
 
     // silence before any assets; the render counters advance
     CHECK(!orb_mixer_rendered(&mixer, 1));
@@ -225,22 +227,48 @@ int main(void) {
     render(9);
     CHECK(!song_playing());
 
-    // song_position is the render head in the file as seconds and beats, -1 with no song
-    CHECK(orb_mixer_song_position(&mixer).seconds == -1);
-    CHECK(orb_mixer_song_position(&mixer).beats == -1);
-    orb_mixer_song_play(&mixer, ORB_SONG(1), true); // 8 frames at 48000, 90 BPM
-    render(6);
-    CHECK(near(orb_mixer_song_position(&mixer).seconds, 6.0f / 48000));
-    CHECK(near(orb_mixer_song_position(&mixer).beats, 6.0f / 48000 * 1.5f));
-    render(4); // wraps at 8: the playhead is at frame 2 again
-    CHECK(near(orb_mixer_song_position(&mixer).seconds, 2.0f / 48000));
+    // song_position is the render head in the file as ms and millibeats, -1 with no song;
+    // song 1's sample at 1 kHz, so a file frame is a millisecond and 48 output frames
+    static const orb_sample_desc slow[3] = {
+        {.first = 0, .count = 8, .rate = 48000, .channels = 1},
+        {.first = 8, .count = 4, .loop_start = 0, .loop_end = 4, .rate = 48000, .channels = 2},
+        {.first = 0, .count = 8, .loop_start = 2, .loop_end = 2, .rate = 1000, .channels = 1},
+    };
+    static orb_assets slowed;
+    slowed = assets;
+    slowed.samples = slow;
+    orb_mixer_set_assets(&mixer, &slowed);
+    CHECK(orb_mixer_song_position(&mixer).ms == -1);
+    CHECK(orb_mixer_song_position(&mixer).millibeats == -1);
+    orb_mixer_song_play(&mixer, ORB_SONG(1), true); // 90 BPM
+    render(289);                                    // just past file frame 6
+    CHECK_EQ(orb_mixer_song_position(&mixer).ms, 6);
+    CHECK_EQ(orb_mixer_song_position(&mixer).millibeats, 9);
+    render(192); // wraps at 8: the playhead is at frame 2 again
+    CHECK_EQ(orb_mixer_song_position(&mixer).ms, 2);
+    CHECK_EQ(orb_mixer_song_position(&mixer).millibeats, 3);
     orb_mixer_song_pause(&mixer, true);
     render(5);
-    CHECK(near(orb_mixer_song_position(&mixer).seconds, 2.0f / 48000));
+    CHECK_EQ(orb_mixer_song_position(&mixer).ms, 2);
     orb_mixer_song_pause(&mixer, false);
     orb_mixer_song_stop(&mixer, 0);
     render(1);
-    CHECK(orb_mixer_song_position(&mixer).seconds == -1);
+    CHECK(orb_mixer_song_position(&mixer).ms == -1);
+    orb_mixer_set_assets(&mixer, &assets);
+
+    // whole octaves are exact, and a fade over seconds still steps every frame
+    CHECK_EQ(mixer_step(48000, 1200), (uint64_t)2 << 32);
+    CHECK_EQ(mixer_step(48000, 0), (uint64_t)1 << 32);
+    CHECK_EQ(mixer_step(48000, -1200), (uint64_t)1 << 31);
+    orb_mixer_song_play(&mixer, ORB_SONG(0), true);
+    orb_mixer_song_stop(&mixer, 10000);
+    render(1);
+    uint32_t fade_before = mixer.voices[ORB_SONG_VOICE].fade_gain;
+    render(1);
+    CHECK(mixer.voices[ORB_SONG_VOICE].fade_gain < fade_before);
+    CHECK(song_playing());
+    orb_mixer_song_stop(&mixer, 0);
+    render(1);
 
     // a recast that puts a different id at a sample's index silences the voices using it
     orb_mixer_song_play(&mixer, ORB_SONG(0), true);
@@ -273,8 +301,8 @@ int main(void) {
     orb_mixer_set_assets(&mixer, &shorter);
     render(1);
     CHECK(song_playing());
-    CHECK_EQ(out[0], 2000); // frame 3 wrapped to 1 of the 2-frame loop
-    CHECK(near(orb_mixer_song_position(&mixer).seconds, 0)); // and then to 0 after advancing
+    CHECK_EQ(out[0], 2000);                          // frame 3 wrapped to 1 of the 2-frame loop
+    CHECK_EQ(orb_mixer_song_position(&mixer).ms, 0); // and then to 0 after advancing
     orb_mixer_set_assets(&mixer, &assets);
 
     static const uint64_t song_changed[3] = {11, 98, 33};

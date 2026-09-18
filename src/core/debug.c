@@ -9,8 +9,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-constexpr uint64_t DEBUG_SETTLE_NS = 200000000;
 constexpr int DEBUG_MAX_WATCHES = 1024;
+constexpr uint64_t DEBUG_SETTLE_NS = 200000000;
 
 static_assert(DEBUG_MAX_WATCHES >= ORB_CAST_MAX_READS, "every cast read fits the asset watch");
 

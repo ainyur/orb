@@ -128,7 +128,7 @@ int main(void) {
     CHECK_EQ(as.pcm[0], -12000);
     CHECK_EQ(as.song_count, 1);
     CHECK_EQ(as.songs[0].sample, 1);
-    CHECK(as.songs[0].bpm == 120);
+    CHECK_EQ(as.songs[0].millibpm, 120000);
     CHECK(as.sample_ids[0] == orb_asset_id("beep", ""));
     CHECK(as.sample_ids[1] == orb_asset_id("loop", "song"));
     CHECK(as.song_ids[0] == orb_asset_id("LOOP", ""));

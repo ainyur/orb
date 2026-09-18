@@ -4,8 +4,6 @@
 #include "../core/macros.h"
 #include "../orb.h"
 
-#include <math.h>
-
 typedef struct orb_fb {
     int width, height;
     uint8_t* px;
@@ -16,7 +14,10 @@ static inline int orb_floor(float v) {
     constexpr float bound = (float)(1 << 30);
 
     v = orb_clamp(v, -bound, bound);
-    return (int)floorf(v);
+
+    int whole = (int)v; // toward zero
+
+    return whole - (v < (float)whole);
 }
 
 void orb_fb_init(orb_fb* fb, orb_arena* a, orb_size size);

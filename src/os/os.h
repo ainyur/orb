@@ -6,8 +6,8 @@
 #include <stdio.h>
 #include <string.h>
 
-constexpr int ORB_PATH_MAX = 600;
 constexpr uint64_t ORB_AUDIO_TICK_NS = 20000000;
+constexpr int ORB_PATH_MAX = 600;
 
 #ifdef _WIN32
 #define ORB_OS_LIB_SUFFIX ".dll"

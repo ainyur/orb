@@ -504,8 +504,10 @@ static bool cast_audio(cast* c, orb_assets* as) {
         if (index < 0) return orb_error_set(c->err, "%s: no bpm in orb.json songs", music.paths[i]);
 
         has_file[index] = true;
-        songs[i] =
-            (orb_song_desc) {.sample = sound_count + (uint32_t)i, .bpm = m->songs[index].bpm};
+        songs[i] = (orb_song_desc) {
+            .sample = sound_count + (uint32_t)i,
+            .millibpm = (uint32_t)(m->songs[index].bpm * 1000 + 0.5f)
+        };
         song_ids[i] = orb_asset_id(music.stems[i], "");
     }
 

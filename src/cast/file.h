@@ -48,8 +48,8 @@ constexpr uint32_t ORB_MAX_LEVELS = 1 << 10;
 constexpr uint32_t ORB_MAX_FONTS = 1 << 8;
 
 // What the caster refuses and the loader checks again, since a file is untrusted.
-constexpr uint32_t ORB_MAX_RATE = 192000; // Hz
 constexpr float ORB_MAX_BPM = 1000;
+constexpr uint32_t ORB_MAX_RATE = 192000; // Hz
 constexpr uint32_t ORB_MAX_LAYERS = 1 << 12;
 constexpr uint32_t ORB_MAX_SUBLAYERS = 8;
 constexpr uint32_t ORB_MAX_TILE_ID = 16382;
@@ -120,7 +120,7 @@ static_assert(sizeof(orb_sample_desc) == 24, "orb_sample_desc layout");
 
 typedef struct orb_song_desc {
     uint32_t sample;
-    float bpm; // from the manifest; beats = seconds * bpm / 60
+    uint32_t millibpm; // the manifest's bpm * 1000
     uint32_t pad[2];
 } orb_song_desc;
 
