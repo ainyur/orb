@@ -99,7 +99,7 @@ static orb_rect api_level_bounds(orb_level level) {
     return orb_tilemap_level_bounds(&api_assets.assets, level);
 }
 
-static int api_level_neighbors(orb_level level, orb_neighbor* out, int max) {
+static int api_level_neighbors(orb_level level, orb_level_neighbor* out, int max) {
     return orb_tilemap_level_neighbors(&api_assets.assets, level, out, max);
 }
 

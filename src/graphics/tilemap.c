@@ -69,7 +69,7 @@ orb_rect orb_tilemap_level_bounds(const orb_assets* assets, orb_level level) {
 int orb_tilemap_level_neighbors(
     const orb_assets* assets,
     orb_level level,
-    orb_neighbor* out,
+    orb_level_neighbor* out,
     int max
 ) {
     const orb_level_desc* d = tilemap_level(assets, level);
@@ -79,7 +79,7 @@ int orb_tilemap_level_neighbors(
         const orb_neighbor_desc* link = &assets->neighbors[d->first_neighbor + i];
         uint32_t gen = assets->level_gens[link->level];
 
-        out[n++] = (orb_neighbor) {ORB_LEVEL(link->level | gen << 24), link->dir};
+        out[n++] = (orb_level_neighbor) {ORB_LEVEL(link->level | gen << 24), link->dir};
     }
 
     return n;

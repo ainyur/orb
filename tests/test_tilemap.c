@@ -170,7 +170,7 @@ int main(void) {
     // through the API: names, bounds, neighbors, draw, cells, camera
     uint64_t level_ids[1] = {orb_asset_id("Cave", "")};
     uint64_t layer_ids[2] = {orb_asset_id("floor", ""), orb_asset_id("Deco", "")};
-    orb_neighbor_desc neighbors[1] = {{.level = 0, .dir = ORB_NEIGHBOR_OVERLAP}};
+    orb_neighbor_desc neighbors[1] = {{.level = 0, .dir = ORB_LEVEL_OVERLAP}};
     uint8_t pal[256 * 4] = {0}; // orb_api_set_assets always loads one
     as.level_ids = level_ids;
     as.layer_ids = layer_ids;
@@ -204,9 +204,9 @@ int main(void) {
     CHECK(!api->layer_info(cave, 1).has_cells);
     CHECK_EQ(api->layer_info(cave, 5).grid, 0);
 
-    orb_neighbor links[4];
+    orb_level_neighbor links[4];
     CHECK_EQ(api->level_neighbors(cave, links, 4), 1);
-    CHECK_EQ(links[0].dir, ORB_NEIGHBOR_OVERLAP);
+    CHECK_EQ(links[0].dir, ORB_LEVEL_OVERLAP);
     CHECK_EQ(links[0].level.v, cave.v);
     CHECK_EQ(api->level_neighbors(cave, links, 0), 0);
     CHECK_EQ(api->level_neighbors(ORB_NO_LEVEL, links, 4), 0);

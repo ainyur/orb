@@ -161,7 +161,7 @@ static_assert(sizeof(orb_layer_desc) == 32, "orb_layer_desc layout");
 
 typedef struct orb_neighbor_desc {
     uint16_t level;
-    uint8_t dir; // orb_neighbor_dir
+    uint8_t dir; // orb_level_dir
     uint8_t pad;
 } orb_neighbor_desc; // 4 bytes
 

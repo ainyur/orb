@@ -23,7 +23,7 @@ typedef struct orb_ldtk_layer {
 
 typedef struct orb_ldtk_neighbor {
     const char* level_iid;
-    orb_neighbor_dir dir;
+    orb_level_dir dir;
 } orb_ldtk_neighbor;
 
 typedef struct orb_ldtk_level {

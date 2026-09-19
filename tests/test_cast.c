@@ -191,8 +191,8 @@ int main(void) {
     CHECK_EQ(as.neighbor_count, 2);
     CHECK_EQ(as.levels[0].neighbor_count, 2);
     CHECK_EQ(as.neighbors[0].level, 1);
-    CHECK_EQ(as.neighbors[0].dir, ORB_NEIGHBOR_E);
-    CHECK_EQ(as.neighbors[1].dir, ORB_NEIGHBOR_HIGHER);
+    CHECK_EQ(as.neighbors[0].dir, ORB_LEVEL_E);
+    CHECK_EQ(as.neighbors[1].dir, ORB_LEVEL_HIGHER);
 
     // scratch peaks at the packed PCM plus the largest file plus the art, the font, and the world
     CHECK(scratch.peak < 2 * as.pcm_count * sizeof(int16_t) + (135 << 10));

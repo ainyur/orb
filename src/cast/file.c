@@ -150,7 +150,7 @@ static bool file_check_levels(const orb_assets* out, orb_error* err) {
 
     for (uint32_t i = 0; i < out->neighbor_count; i++) {
         if (out->neighbors[i].level >= out->level_count ||
-            out->neighbors[i].dir > ORB_NEIGHBOR_OVERLAP)
+            out->neighbors[i].dir > ORB_LEVEL_OVERLAP)
             return orb_error_set(
                 err, "orb file: neighbor %u names level %u", i, out->neighbors[i].level
             );

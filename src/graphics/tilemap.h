@@ -11,7 +11,7 @@ orb_rect orb_tilemap_level_bounds(const orb_assets* assets, orb_level level);
 int orb_tilemap_level_neighbors(
     const orb_assets* assets,
     orb_level level,
-    orb_neighbor* out,
+    orb_level_neighbor* out,
     int max
 );
 void orb_tilemap_draw(

@@ -136,8 +136,8 @@ int main(void) {
     CHECK(strcmp(room->layers[1].name, "Collision") == 0);
     CHECK_EQ(room->neighbor_count, 2);
     CHECK(strcmp(room->neighbors[0].level_iid, "bbb") == 0);
-    CHECK_EQ(room->neighbors[0].dir, ORB_NEIGHBOR_E);
-    CHECK_EQ(room->neighbors[1].dir, ORB_NEIGHBOR_LOWER);
+    CHECK_EQ(room->neighbors[0].dir, ORB_LEVEL_E);
+    CHECK_EQ(room->neighbors[1].dir, ORB_LEVEL_LOWER);
 
     // the tiles layer: one flipped tile, no cells
     const orb_ldtk_layer* floor = &room->layers[0];

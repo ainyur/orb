@@ -226,24 +226,24 @@ constexpr int ORB_SOURCE_PAD = 512;
 
 typedef char orb_key_symbol[24]; // a key's name or one UTF-8 codepoint, NUL-terminated
 
-typedef enum orb_neighbor_dir : uint8_t {
-    ORB_NEIGHBOR_N,
-    ORB_NEIGHBOR_S,
-    ORB_NEIGHBOR_E,
-    ORB_NEIGHBOR_W,
-    ORB_NEIGHBOR_NE,
-    ORB_NEIGHBOR_NW,
-    ORB_NEIGHBOR_SE,
-    ORB_NEIGHBOR_SW,
-    ORB_NEIGHBOR_LOWER,
-    ORB_NEIGHBOR_HIGHER,
-    ORB_NEIGHBOR_OVERLAP
-} orb_neighbor_dir;
+typedef enum orb_level_dir : uint8_t {
+    ORB_LEVEL_N,
+    ORB_LEVEL_S,
+    ORB_LEVEL_E,
+    ORB_LEVEL_W,
+    ORB_LEVEL_NE,
+    ORB_LEVEL_NW,
+    ORB_LEVEL_SE,
+    ORB_LEVEL_SW,
+    ORB_LEVEL_LOWER,
+    ORB_LEVEL_HIGHER,
+    ORB_LEVEL_OVERLAP
+} orb_level_dir;
 
-typedef struct orb_neighbor {
+typedef struct orb_level_neighbor {
     orb_level level;
-    orb_neighbor_dir dir;
-} orb_neighbor;
+    orb_level_dir dir;
+} orb_level_neighbor;
 
 #define ORB_ANIM(i) ((orb_anim) {(uint32_t)(i)})
 #define ORB_FONT(i) ((orb_font) {(uint32_t)(i)})
@@ -322,7 +322,7 @@ typedef struct orb_api {
     void (*layer_draw)(orb_level level, int layer);
     orb_level (*level_find)(const char* stem);
     orb_rect (*level_bounds)(orb_level level);
-    int (*level_neighbors)(orb_level level, orb_neighbor* out, int max);
+    int (*level_neighbors)(orb_level level, orb_level_neighbor* out, int max);
     int (*cell_get)(orb_level level, int layer, orb_vec2 at);
 
     orb_font (*font_find)(const char* stem);

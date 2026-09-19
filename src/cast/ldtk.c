@@ -107,15 +107,15 @@ static bool ldtk_optional_int(ldtk* l, const orb_json* obj, const char* key, int
 }
 
 // "n" "s" "e" "w" "ne" "nw" "se" "sw" "<" ">" "o" to the compass, ordering, and overlap values.
-static bool ldtk_dir(ldtk* l, const char* s, orb_neighbor_dir* out) {
+static bool ldtk_dir(ldtk* l, const char* s, orb_level_dir* out) {
     static const struct {
         const char* s;
-        orb_neighbor_dir dir;
+        orb_level_dir dir;
     } table[] = {
-        {"n", ORB_NEIGHBOR_N},      {"s", ORB_NEIGHBOR_S},       {"e", ORB_NEIGHBOR_E},
-        {"w", ORB_NEIGHBOR_W},      {"ne", ORB_NEIGHBOR_NE},     {"nw", ORB_NEIGHBOR_NW},
-        {"se", ORB_NEIGHBOR_SE},    {"sw", ORB_NEIGHBOR_SW},     {"<", ORB_NEIGHBOR_LOWER},
-        {">", ORB_NEIGHBOR_HIGHER}, {"o", ORB_NEIGHBOR_OVERLAP},
+        {"n", ORB_LEVEL_N},      {"s", ORB_LEVEL_S},       {"e", ORB_LEVEL_E},
+        {"w", ORB_LEVEL_W},      {"ne", ORB_LEVEL_NE},     {"nw", ORB_LEVEL_NW},
+        {"se", ORB_LEVEL_SE},    {"sw", ORB_LEVEL_SW},     {"<", ORB_LEVEL_LOWER},
+        {">", ORB_LEVEL_HIGHER}, {"o", ORB_LEVEL_OVERLAP},
     };
 
     for (size_t i = 0; i < sizeof table / sizeof *table; i++) {
@@ -502,7 +502,7 @@ static bool ldtk_level_head(ldtk* l, const orb_json* lv, orb_ldtk_level* out) {
         const char* dir_s;
         if (!ldtk_string(l, n, "dir", &dir_s)) return false;
 
-        orb_neighbor_dir dir = ORB_NEIGHBOR_N;
+        orb_level_dir dir = ORB_LEVEL_N;
         if (!ldtk_dir(l, dir_s, &dir)) return false;
 
         neighbors[i] = (orb_ldtk_neighbor) {.level_iid = level_iid, .dir = dir};

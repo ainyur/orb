@@ -209,7 +209,7 @@ int main(void) {
          .first_neighbor = 1,
          .neighbor_count = 0},
     };
-    orb_neighbor_desc neighbors[1] = {{.level = 1, .dir = ORB_NEIGHBOR_E}};
+    orb_neighbor_desc neighbors[1] = {{.level = 1, .dir = ORB_LEVEL_E}};
     uint64_t level_ids[2] = {88, 99}, layer_ids[3] = {1, 2, 3};
 
     in.tilesets = tilesets;
@@ -241,7 +241,7 @@ int main(void) {
     CHECK_EQ(out.tiles[3], 2 | ORB_TILE_FLIP_X);
     CHECK_EQ(out.cell_count, 4);
     CHECK_EQ(out.neighbor_count, 1);
-    CHECK_EQ(out.neighbors[0].dir, ORB_NEIGHBOR_E);
+    CHECK_EQ(out.neighbors[0].dir, ORB_LEVEL_E);
     CHECK_EQ(out.level_ids[1], 99);
     CHECK_EQ(out.layer_ids[2], 3);
     CHECK_EQ(out.tilesets[0].count, 2);
