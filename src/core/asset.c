@@ -52,7 +52,7 @@ uint64_t orb_asset_id(const char* stem, const char* suffix) {
     return asset_hash(h, suffix);
 }
 
-uint32_t orb_asset_find(const orb_asset_table* t, int kind, uint64_t id) {
+uint32_t orb_asset_find(const orb_asset_table* t, orb_asset_kind kind, uint64_t id) {
     const asset_kind* k = &asset_kinds[kind];
     const uint64_t* ids = asset_ids_of(&t->assets, k);
     const uint8_t* gens = t->gens + k->first;

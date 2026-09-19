@@ -9,7 +9,7 @@ typedef struct orb_assets orb_assets;
 constexpr uint32_t ORB_FILE_MAGIC = 0x0042524F;
 constexpr uint32_t ORB_FILE_VERSION = 1;
 
-enum {
+typedef enum orb_section_kind {
     ORB_SEC_PAL = 1,
     ORB_SEC_SHEETS,
     ORB_SEC_PIXELS,
@@ -37,7 +37,7 @@ enum {
     ORB_SEC_FONT_IDS,
     ORB_SEC_BINDINGS,
     ORB_SEC_COUNT_
-};
+} orb_section_kind;
 
 // Handle indices are 24 bits; these bound the runtime's per-index generation tables.
 constexpr uint32_t ORB_MAX_SPRITES = 1 << 14;

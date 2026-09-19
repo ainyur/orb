@@ -12,11 +12,11 @@ bool orb_key_released(int key);
 int orb_key_pressed_any(void);
 const char* orb_key_name(int key);
 
-void orb_button_bind(int button, int source);
-bool orb_button_down(int button);
-bool orb_button_pressed(int button);
-bool orb_button_released(int button);
-int orb_button_source(int button);
+void orb_button_bind(orb_button button, int source);
+bool orb_button_down(orb_button button);
+bool orb_button_pressed(orb_button button);
+bool orb_button_released(orb_button button);
+int orb_button_source(orb_button button);
 
 int orb_input_symbol_position(const char* symbol);
 bool orb_input_symbol_valid(const char* symbol);

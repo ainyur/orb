@@ -5,7 +5,7 @@
 
 #include <stddef.h>
 
-typedef enum {
+typedef enum orb_json_kind {
     ORB_JSON_NULL,
     ORB_JSON_BOOL,
     ORB_JSON_NUMBER,

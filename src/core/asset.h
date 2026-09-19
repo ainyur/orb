@@ -55,7 +55,7 @@ struct orb_assets {
     const uint8_t* font_gens;
 };
 
-enum {
+typedef enum orb_asset_kind {
     ORB_ASSET_SPRITE,
     ORB_ASSET_ANIM,
     ORB_ASSET_SAMPLE,
@@ -63,7 +63,7 @@ enum {
     ORB_ASSET_LEVEL,
     ORB_ASSET_FONT,
     ORB_ASSET_KIND_COUNT
-};
+} orb_asset_kind;
 
 typedef struct orb_asset_table {
     orb_assets assets;
@@ -76,7 +76,7 @@ typedef struct orb_asset_table {
 uint64_t orb_asset_id(const char* stem, const char* suffix);
 
 // The handle whose id matches, or ORB_NO_INDEX.
-uint32_t orb_asset_find(const orb_asset_table* t, int kind, uint64_t id);
+uint32_t orb_asset_find(const orb_asset_table* t, orb_asset_kind kind, uint64_t id);
 
 // A handle's index, or ORB_NO_INDEX when it is stale.
 static inline uint32_t orb_asset_index(const uint8_t* gens, uint32_t count, uint32_t v) {

@@ -83,7 +83,7 @@ static bool input_key_ok(int key) {
     return key > ORB_KEY_NONE && key < ORB_KEY_COUNT;
 }
 
-static bool input_button_ok(int button) {
+static bool input_button_ok(orb_button button) {
     return button >= 0 && button < ORB_BTN_COUNT;
 }
 
@@ -155,25 +155,25 @@ const char* orb_key_name(int key) {
     return input_name;
 }
 
-void orb_button_bind(int button, int source) {
+void orb_button_bind(orb_button button, int source) {
     if (!input_button_ok(button) || (source != ORB_SOURCE_NONE && !input_key_ok(source))) return;
 
     input_bindings[button] = source;
 }
 
-bool orb_button_down(int button) {
+bool orb_button_down(orb_button button) {
     return input_button_ok(button) && orb_key_down(input_bindings[button]);
 }
 
-bool orb_button_pressed(int button) {
+bool orb_button_pressed(orb_button button) {
     return input_button_ok(button) && orb_key_pressed(input_bindings[button]);
 }
 
-bool orb_button_released(int button) {
+bool orb_button_released(orb_button button) {
     return input_button_ok(button) && orb_key_released(input_bindings[button]);
 }
 
-int orb_button_source(int button) {
+int orb_button_source(orb_button button) {
     return input_button_ok(button) ? input_bindings[button] : ORB_SOURCE_NONE;
 }
 

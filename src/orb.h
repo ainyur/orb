@@ -86,7 +86,7 @@ typedef struct orb_volumes {
     float master, song, sound; // 0..1 each, 1 by default
 } orb_volumes;
 
-enum {
+typedef enum orb_button {
     ORB_BTN_UP,
     ORB_BTN_DOWN,
     ORB_BTN_LEFT,
@@ -100,11 +100,11 @@ enum {
     ORB_BTN_START,
     ORB_BTN_SELECT,
     ORB_BTN_COUNT
-};
+} orb_button;
 
 // Physical positions, as USB HID keyboard usage IDs. A position without an
 // enumerator is still a position.
-enum {
+typedef enum orb_key {
     ORB_KEY_NONE = 0,
     ORB_KEY_A = 4,
     ORB_KEY_B,
@@ -213,7 +213,7 @@ enum {
     ORB_KEY_RIGHT_ALT,
     ORB_KEY_RIGHT_GUI,
     ORB_KEY_COUNT = 256
-};
+} orb_key;
 
 // The keyboard as the OS layer reports it each tick.
 typedef struct orb_input {
@@ -341,11 +341,11 @@ typedef struct orb_api {
     void (*song_stop)(int fade_ms);
     void (*volume_set)(orb_volumes v);
 
-    void (*button_bind)(int button, int source);
-    bool (*button_down)(int button);
-    bool (*button_pressed)(int button);
-    bool (*button_released)(int button);
-    int (*button_source)(int button);
+    void (*button_bind)(orb_button button, int source);
+    bool (*button_down)(orb_button button);
+    bool (*button_pressed)(orb_button button);
+    bool (*button_released)(orb_button button);
+    int (*button_source)(orb_button button);
     bool (*key_down)(int key);
     bool (*key_pressed)(int key);
     bool (*key_released)(int key);

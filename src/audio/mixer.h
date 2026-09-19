@@ -16,7 +16,7 @@ constexpr int ORB_MIXER_RING = 256;
 constexpr uint32_t ORB_MIXER_FADE_ONE = 1u << 31;
 constexpr int32_t ORB_MIXER_ONE = 1 << 15;
 
-enum {
+typedef enum orb_mixer_kind {
     ORB_MIXER_PLAY,
     ORB_MIXER_SET,
     ORB_MIXER_STOP,
@@ -24,7 +24,7 @@ enum {
     ORB_MIXER_SONG_STOP,
     ORB_MIXER_SONG_PAUSE,
     ORB_MIXER_VOLUMES
-};
+} orb_mixer_kind;
 
 typedef struct orb_mixer_params {
     int32_t volume, pan; // 0..ONE, -ONE..ONE
