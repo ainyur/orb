@@ -1,3 +1,4 @@
+#include "../core/bytes.h"
 #include "../core/log.h"
 #include "../core/macros.h"
 #include "gdi_keys.h"
@@ -14,6 +15,9 @@ static orb_size gdi_fb, gdi_win;
 static bool gdi_down[ORB_KEY_COUNT];
 static bool gdi_closed;
 static const uint32_t* gdi_last_frame; // the frame most recently presented, for WM_PAINT
+static char gdi_text[ORB_INPUT_TEXT];
+static int gdi_text_len;
+static uint32_t gdi_high_surrogate;
 
 // Integer-scale the frame into the client area, centered, borders left to the
 // class background brush.
@@ -39,8 +43,33 @@ static void gdi_blit(HDC dc, const uint32_t* rgb) {
     );
 }
 
+// One WM_CHAR unit: a surrogate pair is joined, a high surrogate not immediately
+// followed by a low one is dropped, control characters are dropped.
+static void gdi_char(uint32_t unit) {
+    uint32_t cp = unit;
+
+    if (unit < 0xdc00 || unit >= 0xe000) gdi_high_surrogate = 0;
+
+    if (unit >= 0xd800 && unit < 0xdc00) {
+        gdi_high_surrogate = unit;
+        return;
+    }
+
+    if (unit >= 0xdc00 && unit < 0xe000) {
+        if (!gdi_high_surrogate) return;
+
+        cp = 0x10000 + ((gdi_high_surrogate - 0xd800) << 10) + (unit - 0xdc00);
+        gdi_high_surrogate = 0;
+    }
+
+    orb_bytes_utf8_push(gdi_text, &gdi_text_len, ORB_INPUT_TEXT, cp);
+}
+
 static LRESULT CALLBACK gdi_proc(HWND window, UINT msg, WPARAM w, LPARAM l) {
     switch (msg) {
+    case WM_CHAR:
+        gdi_char((uint32_t)w);
+        return 0;
     case WM_KEYDOWN:
     case WM_KEYUP:
     case WM_SYSKEYDOWN:
@@ -145,6 +174,10 @@ bool orb_os_pump(orb_input* out) {
     }
 
     memcpy(out->keys, gdi_down, sizeof gdi_down);
+    memcpy(out->text, gdi_text, sizeof gdi_text);
+    gdi_text[0] = 0;
+    gdi_text_len = 0;
+    gdi_high_surrogate = 0;
 
     return !gdi_closed;
 }

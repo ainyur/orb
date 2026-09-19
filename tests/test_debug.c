@@ -73,6 +73,22 @@ int main(void) {
     CHECK(held >= 0);
 #endif
     CHECK_EQ(debug_boot("examples/demo"), 0);
+
+    orb_log_clear();
+    orb_console_run("watch");
+    CHECK(strstr(orb_log_line(0), "sources") != nullptr);
+    orb_console_run("stats");
+    CHECK(strstr(orb_log_line(0), "arena") != nullptr);
+    orb_console_run("pause 1");
+    CHECK(orb_clock_get()->paused);
+    orb_console_run("pause 0");
+    orb_console_run("timescale 0.5");
+    CHECK(orb_clock_get()->timescale == 0.5f);
+    orb_console_run("timescale 1");
+    orb_console_run("step");
+    CHECK(orb_clock_get()->step);
+    orb_clock_get()->step = false;
+
     CHECK(strcmp(debug_so_path, "examples/demo/build/game" ORB_OS_LIB_SUFFIX) == 0);
     CHECK(strcmp(debug_copy_path, leftover) == 0);
     CHECK(orb_os_file_mtime(debug_copy_path) != 0);

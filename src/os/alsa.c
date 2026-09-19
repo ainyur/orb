@@ -116,6 +116,7 @@ static void* alsa_run(void* arg) {
     static int16_t buffer[ALSA_FRAMES * ORB_AUDIO_CHANNELS];
 
     (void)arg;
+    orb_log_off_main = true;
 
     snd_lib_error_set_handler(alsa_quiet);
 

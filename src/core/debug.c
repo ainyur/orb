@@ -1,6 +1,7 @@
 #include "debug.h"
 #include "../cast/file.h"
 #include "../os/os.h"
+#include "console.h"
 #include "host.h"
 #include "log.h"
 
@@ -229,6 +230,16 @@ static bool debug_build(void) {
     return orb_os_run(command, debug_build_line) == 0;
 }
 
+static void debug_recast(void) {
+    orb_error err;
+
+    if (orb_recast(&err)) {
+        orb_log("scry: recast assets");
+        debug_watch_assets();
+    } else
+        orb_log("scry: cast failed, keeping the previous assets: %s", err.text);
+}
+
 static void debug_poll_reload(void) {
     uint64_t now = orb_os_ticks();
 
@@ -236,15 +247,7 @@ static void debug_poll_reload(void) {
         if (debug_load_game()) orb_log("scry: reloaded %s", debug_so_path);
     }
 
-    if (debug_watch_any(&debug_assets, now)) {
-        orb_error err;
-
-        if (orb_recast(&err)) {
-            orb_log("scry: recast assets");
-            debug_watch_assets();
-        } else
-            orb_log("scry: cast failed, keeping the previous assets: %s", err.text);
-    }
+    if (debug_watch_any(&debug_assets, now)) debug_recast();
 }
 
 // Every sixth frame: a stat per watched file at 60 Hz would be most of a frame
@@ -266,7 +269,44 @@ static void debug_poll_scry(void) {
     debug_poll_reload();
 }
 
+static void debug_command_recast(void*, const orb_api*, int, const char* const*) {
+    debug_recast();
+}
+
+static void debug_command_watch(void*, const orb_api*, int, const char* const*) {
+    orb_log("%d sources, %d assets", debug_sources.count, debug_assets.count);
+}
+
+static void debug_command_stats(void*, const orb_api*, int, const char* const*) {
+    orb_stats st = orb_stats_get();
+
+    orb_log(
+        "arena %zu used, %zu peak; cast %zu of %zu; frame %d ticks, %u us", st.arena_used,
+        st.arena_peak, st.cast_peak, st.cast_headroom, st.frame_ticks, st.frame_us
+    );
+}
+
+static void debug_command_step(void*, const orb_api*, int, const char* const*) {
+    orb_clock_get()->step = true;
+}
+
+// Before orb_boot, so these are orb's own and survive every clear.
+static void debug_console_register(void) {
+    static bool done;
+
+    if (done) return;
+
+    done = true;
+    orb_console_var_float("timescale", &orb_clock_get()->timescale, "clock rate, 1 is real time");
+    orb_console_var_bool("pause", &orb_clock_get()->paused, "stop ticking");
+    orb_console_command("step", debug_command_step, "one tick while paused");
+    orb_console_command("recast", debug_command_recast, "cast the art now");
+    orb_console_command("watch", debug_command_watch, "the watched file counts");
+    orb_console_command("stats", debug_command_stats, "arena, cast, and frame numbers");
+}
+
 static int debug_boot(const char* game_dir) {
+    debug_console_register();
     snprintf(debug_dir, sizeof debug_dir, "%s", game_dir);
     orb_path_join(debug_so_path, game_dir, "build/game" ORB_OS_LIB_SUFFIX);
 

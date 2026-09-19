@@ -215,9 +215,12 @@ typedef enum orb_key {
     ORB_KEY_COUNT = 256
 } orb_key;
 
+constexpr int ORB_INPUT_TEXT = 32;
+
 // The keyboard as the OS layer reports it each tick.
 typedef struct orb_input {
-    bool keys[ORB_KEY_COUNT]; // by position
+    bool keys[ORB_KEY_COUNT];  // by position
+    char text[ORB_INPUT_TEXT]; // UTF-8 the layout produced this tick, NUL-terminated
 } orb_input;
 
 // A button's source: a key position, or a pad button once the gamepad lands.
@@ -302,6 +305,18 @@ constexpr int ORB_AUDIO_RATE = 48000;
 // "page_up") or the layout's symbol for a printable one ("m", ","), "" for a position with
 // neither; the string is valid until the next call. A recast resets bindings to the
 // manifest's, so re-apply your own in reload.
+//
+typedef struct orb_api orb_api;
+
+// Console. The console opens on the grave key. var_int, var_float, var_bool, and command
+// register a name the console reads, sets, or runs; call them in reload, since the console
+// clears its tables before every reload. A variable points into your state; help is one
+// line or nullptr. A name is 1 to 31 bytes of lowercase letters, digits, '.', and '_',
+// starting with a letter, and unique across both tables, or the registration is refused
+// with a log line. A command gets the line split on spaces, quotes grouping, argv[0] its
+// name; argv is valid only for that call. console_open is true while the console is down
+// and your input is empty.
+typedef void (*orb_command_fn)(void* state, const orb_api* orb, int argc, const char* const* argv);
 typedef struct orb_api {
     void (*pal_reset)(void);
     void (*pal_set)(int i, uint8_t r, uint8_t g, uint8_t b);
@@ -353,6 +368,12 @@ typedef struct orb_api {
     const char* (*key_name)(int key);
 
     void (*log)(const char* fmt, ...);
+
+    void (*var_int)(const char* name, int32_t* at, const char* help);
+    void (*var_float)(const char* name, float* at, const char* help);
+    void (*var_bool)(const char* name, bool* at, const char* help);
+    void (*command)(const char* name, orb_command_fn fn, const char* help);
+    bool (*console_open)(void);
 } orb_api;
 
 // Reload rules. orb reloads game code and recasts art while the game runs, and

@@ -88,38 +88,13 @@ static bool input_button_ok(orb_button button) {
 }
 
 // Bytes consumed by one well-formed codepoint at s, 0 for none or a bad sequence.
-static int input_utf8_decode(const char* s, uint32_t* out) {
-    const unsigned char* p = (const unsigned char*)s;
-    int n = p[0] < 0x80             ? 1
-            : (p[0] & 0xe0) == 0xc0 ? 2
-            : (p[0] & 0xf0) == 0xe0 ? 3
-            : (p[0] & 0xf8) == 0xf0 ? 4
-                                    : 0;
-
-    if (n == 0 || p[0] == 0) return 0;
-
-    uint32_t cp = n == 1 ? p[0] : p[0] & (0x7f >> n);
-
-    for (int i = 1; i < n; i++) {
-        if ((p[i] & 0xc0) != 0x80) return 0;
-
-        cp = cp << 6 | (p[i] & 0x3f);
-    }
-
-    if (cp < (uint32_t[]) {0, 0, 0x80, 0x800, 0x10000}[n]) return 0; // overlong
-    if (cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return 0;
-
-    *out = cp;
-    return n;
-}
-
 // A symbol is a named key's name, else one codepoint above space; returns the name's
 // position, 0 for a lone codepoint (with it in *codepoint), or -1 for neither.
 static int input_symbol_parse(const char* symbol, uint32_t* codepoint) {
     for (int key = 1; key < ORB_KEY_COUNT; key++)
         if (input_names[key] && strcmp(input_names[key], symbol) == 0) return key;
 
-    int n = input_utf8_decode(symbol, codepoint);
+    int n = orb_bytes_utf8_decode(symbol, codepoint);
 
     return n && symbol[n] == 0 && *codepoint > 0x20 ? 0 : -1;
 }

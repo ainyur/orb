@@ -24,6 +24,7 @@ bool orb_os_open(const orb_os_config* cfg) {
 
 bool orb_os_pump(orb_input* out) {
     *out = headless_input;
+    headless_input.text[0] = 0;
 
     return true;
 }

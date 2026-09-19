@@ -136,6 +136,7 @@ static HRESULT wasapi_outage(void) {
 
 static DWORD WINAPI wasapi_run(void* arg) {
     (void)arg;
+    orb_log_off_main = true;
 
     HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     HRESULT hr = SUCCEEDED(com) ? wasapi_start() : com; // without COM every open fails, but

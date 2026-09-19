@@ -1,5 +1,7 @@
 #include "orb.h"
 
+#include <stdlib.h>
+
 typedef struct {
     int x, y;
     bool flip;
@@ -8,6 +10,9 @@ typedef struct {
     orb_font font;
     orb_level room;
     int floor, collision;
+    int32_t speed, ticks;
+    float scale;
+    bool god;
 } game_state;
 
 static orb_config config(void) {
@@ -27,6 +32,20 @@ static void init(void* state, const orb_api* orb) {
 
     g->x = 20;
     g->y = 8;
+    g->speed = 1;
+
+    orb->var_int("early", &g->ticks, nullptr);
+}
+
+static void teleport(void* state, const orb_api* orb, int argc, const char* const* argv) {
+    game_state* g = state;
+
+    (void)orb;
+
+    if (argc != 3) return;
+
+    g->x = atoi(argv[1]);
+    g->y = atoi(argv[2]);
 }
 
 static void reload(void* state, const orb_api* orb) {
@@ -37,6 +56,12 @@ static void reload(void* state, const orb_api* orb) {
     g->room = orb->level_find("room");
     g->floor = orb->layer_find(g->room, "floor");
     g->collision = orb->layer_find(g->room, "collision");
+
+    orb->var_int("speed", &g->speed, "walk speed");
+    orb->var_float("scale", &g->scale, nullptr);
+    orb->var_bool("god", &g->god, "no collision");
+    orb->var_int("ticks", &g->ticks, "updates so far");
+    orb->command("teleport", teleport, "teleport <x> <y>");
 }
 
 static bool blocked(const orb_api* orb, const game_state* g, int x, int y) {
@@ -50,6 +75,8 @@ static bool blocked(const orb_api* orb, const game_state* g, int x, int y) {
 
 static void update(void* state, const orb_api* orb) {
     game_state* g = state;
+
+    g->ticks++;
 
     if (orb->button_down(ORB_BTN_LEFT) && !blocked(orb, g, g->x - 1, g->y)) {
         g->x--;

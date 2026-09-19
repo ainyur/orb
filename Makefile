@@ -82,6 +82,7 @@ fixtures: build/wav$(EXE)
 	mkdir -p tests/fixtures/art tests/fixtures/sfx tests/fixtures/music tests/fixtures/levels examples/demo/sfx examples/demo/music examples/demo/levels examples/demo/fonts tests/fixtures/fonts tests/fixtures/fonts-bad/uneven tests/fixtures/fonts-bad/origin tests/fixtures/fonts-bad/wide tests/fixtures/fonts-bad/few tests/fixtures/fonts-bad/frames tests/fixtures/fonts-bad/blank
 	aseprite -b --script tests/fixtures/make.lua
 	aseprite -b --script examples/demo/art/make.lua
+	aseprite -b --script tests/fixtures/console_font.lua
 	build/wav$(EXE) beep tests/fixtures/sfx/beep.wav
 	build/wav$(EXE) loop tests/fixtures/music/loop.wav
 	build/wav$(EXE) beep examples/demo/sfx/bounce.wav

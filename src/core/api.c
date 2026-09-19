@@ -7,6 +7,7 @@
 #include "../graphics/tilemap.h"
 #include "../os/os.h"
 #include "asset.h"
+#include "console.h"
 #include "input.h"
 #include "log.h"
 #include "macros.h"
@@ -219,6 +220,12 @@ static const orb_api api_table = {
     .key_pressed_any = orb_key_pressed_any,
     .key_name = orb_key_name,
     .log = orb_log,
+
+    .var_int = orb_console_var_int,
+    .var_float = orb_console_var_float,
+    .var_bool = orb_console_var_bool,
+    .command = orb_console_command,
+    .console_open = orb_console_open,
 };
 
 const orb_api* orb_api_table(void) {
@@ -231,6 +238,10 @@ const orb_assets* orb_api_assets(void) {
 
 const orb_fb* orb_api_fb(void) {
     return &api_fb;
+}
+
+const uint32_t* orb_api_pal_base(void) {
+    return api_pal.base;
 }
 
 // Hand the mixer a stable copy of the assets, then wait out any render still

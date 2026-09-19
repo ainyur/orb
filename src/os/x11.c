@@ -1,3 +1,4 @@
+#include "../core/bytes.h"
 #include "../core/log.h"
 #include "../core/macros.h"
 #include "os.h"
@@ -20,6 +21,7 @@ static uint32_t* x11_pixels;
 static orb_size x11_screen, x11_win, x11_fb;
 static Atom x11_wm_delete;
 static bool x11_down[ORB_KEY_COUNT];
+static XComposeStatus x11_compose;
 static bool x11_resized;
 
 bool orb_os_open(const orb_os_config* cfg) {
@@ -68,7 +70,21 @@ bool orb_os_open(const orb_os_config* cfg) {
     return true;
 }
 
+// The layout's characters for a press, appended to text as UTF-8 (XLookupString
+// gives Latin-1), control characters dropped.
+static void x11_text(XKeyEvent* ev, char* text, int* n) {
+    char latin[16];
+    int count = XLookupString(ev, latin, sizeof latin, nullptr, &x11_compose);
+
+    for (int i = 0; i < count; i++)
+        orb_bytes_utf8_push(text, n, ORB_INPUT_TEXT, (unsigned char)latin[i]);
+}
+
 bool orb_os_pump(orb_input* out) {
+    int n = 0;
+
+    memset(out->text, 0, sizeof out->text);
+
     while (XPending(x11_display)) {
         XEvent ev;
 
@@ -79,6 +95,7 @@ bool orb_os_pump(orb_input* out) {
             int key = code >= 8 && code < 8 + 256 ? x11_keys[code - 8] : ORB_KEY_NONE;
 
             if (key) x11_down[key] = ev.type == KeyPress;
+            if (ev.type == KeyPress) x11_text(&ev.xkey, out->text, &n);
         } else if (ev.type == ConfigureNotify) {
             x11_win = (orb_size) {ev.xconfigure.width, ev.xconfigure.height};
             x11_resized = true;

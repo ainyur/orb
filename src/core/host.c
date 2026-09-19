@@ -3,6 +3,7 @@
 #include "../os/os.h"
 #include "api.h"
 #include "asset.h"
+#include "console.h"
 #include "input.h"
 #include "log.h"
 #include "macros.h"
@@ -16,6 +17,7 @@ static orb_info_desc host_info;
 static orb_arena host_arena, host_state;
 static uint32_t* host_rgb;
 static uint64_t host_previous, host_accumulator;
+static bool host_quitting;
 
 static bool host_load(orb_span file, orb_assets* out, orb_error* err) {
     if (!orb_file_load(file, out, err)) return false;
@@ -24,11 +26,19 @@ static bool host_load(orb_span file, orb_assets* out, orb_error* err) {
     return true;
 }
 
+static void host_reload(void) {
+    orb_console_clear();
+    host_game->reload(host_state.base, orb_api_table());
+}
+
 #ifndef ORB_RELEASE
 static orb_cast_result host_result; // from the last successful cast; valid until the next one
 static const char* host_dir;
 static orb_arena host_assets[2], host_scratch;
 static int host_live_half;
+static orb_clock host_clock = {.timescale = 1};
+static int host_frame_ticks;
+static uint32_t host_frame_us;
 
 static bool host_cast(int half, orb_assets* out, orb_error* err) {
     orb_arena_reset(&host_assets[half]);
@@ -75,7 +85,7 @@ static void host_state_reset(orb_config next) {
     memset(host_state.base, 0, host_state.size);
     host_config = next;
     host_game->init(host_state.base, orb_api_table());
-    host_game->reload(host_state.base, orb_api_table());
+    host_reload();
 }
 #endif
 
@@ -115,6 +125,7 @@ bool orb_boot(
     orb_size size = {host_info.width, host_info.height};
 
     orb_api_boot(&host_arena, size, &assets);
+    orb_console_boot(host_state.base, orb_api_table());
     host_rgb = orb_arena_push_array(&host_arena, uint32_t, (size_t)size.width* size.height);
 
     orb_os_config cfg = {.title = host_info.name, .size = size};
@@ -123,16 +134,28 @@ bool orb_boot(
 
     orb_input_resolve(orb_api_assets());
     host_game->init(host_state.base, orb_api_table());
-    host_game->reload(host_state.base, orb_api_table());
+    host_reload();
     host_previous = orb_os_ticks();
     host_accumulator = 0;
+    host_quitting = false;
+#ifndef ORB_RELEASE
+    host_clock = (orb_clock) {.timescale = 1};
+#endif
+    return true;
+}
+
+// The console sees every snapshot; the game sees only the ones a tick hands on.
+static bool host_poll(orb_input* in) {
+    if (!orb_os_pump(in)) return false;
+
+    orb_console_step(in);
     return true;
 }
 
 static bool host_tick(void) {
     orb_input in;
 
-    if (!orb_os_pump(&in)) return false;
+    if (!host_poll(&in)) return false;
 
     orb_input_step(&in);
     host_game->update(host_state.base, orb_api_table());
@@ -143,30 +166,67 @@ static bool host_tick(void) {
 static void host_render(void) {
     host_game->draw(host_state.base, orb_api_table());
     orb_api_resolve(host_rgb);
+    orb_console_draw(host_rgb, (orb_size) {host_info.width, host_info.height});
     orb_os_present(host_rgb);
 }
 
 bool orb_frame(void) {
     constexpr uint64_t step = ORB_NS_PER_SECOND / ORB_TICK_RATE;
-    uint64_t now = orb_os_ticks();
+    uint64_t now = orb_os_ticks(), elapsed = now - host_previous;
+    int ticks = 0;
 
-    host_accumulator += now - host_previous;
     host_previous = now;
+#ifndef ORB_RELEASE
+    double scaled = (double)elapsed * orb_max(0.0f, host_clock.timescale);
+
+    elapsed = (uint64_t)orb_min(scaled, (double)(4 * step));
+#endif
+    host_accumulator += elapsed;
 
     if (host_accumulator > 4 * step) {
-        orb_log("dropped %llu ticks", (unsigned long long)((host_accumulator - 4 * step) / step));
+        uint64_t dropped = (host_accumulator - 4 * step) / step;
+
+        if (dropped) orb_log("dropped %llu ticks", (unsigned long long)dropped);
+
         host_accumulator = 4 * step;
     }
+
+#ifndef ORB_RELEASE
+    if (host_clock.paused) {
+        host_accumulator = 0;
+
+        if (host_clock.step) {
+            host_clock.step = false;
+
+            if (!host_tick()) return false;
+
+            ticks = 1;
+        }
+    } else
+        host_clock.step = false; // a step outside a pause has nothing to run
+#endif
 
     while (host_accumulator >= step) {
         if (!host_tick()) return false;
 
         host_accumulator -= step;
+        ticks++;
+    }
+
+    // A frame without a tick still polls, so the console and the window close work while paused.
+    if (ticks == 0) {
+        orb_input in;
+
+        if (!host_poll(&in)) return false;
     }
 
     host_render();
+#ifndef ORB_RELEASE
+    host_frame_ticks = ticks;
+    host_frame_us = (uint32_t)((orb_os_ticks() - now) / 1000);
+#endif
     orb_os_sleep(step - host_accumulator);
-    return true;
+    return !host_quitting;
 }
 
 void orb_quit(void) {
@@ -174,6 +234,10 @@ void orb_quit(void) {
     orb_api_quit();
     free(host_arena.base);
     host_arena = (orb_arena) {};
+}
+
+void orb_quit_request(void) {
+    host_quitting = true;
 }
 
 #ifndef ORB_RELEASE
@@ -184,7 +248,7 @@ bool orb_recast(orb_error* err) {
 
     orb_api_set_assets(&assets);
     orb_input_resolve(orb_api_assets());
-    host_game->reload(host_state.base, orb_api_table());
+    host_reload();
     return true;
 }
 
@@ -205,12 +269,26 @@ void orb_set_game(const orb_game* game) {
             next.state_version, host_config.state_size, next.state_size
         );
         host_state_reset(next);
-    } else {
-        host_game->reload(host_state.base, orb_api_table());
-    }
+    } else
+        host_reload();
 }
 
 const orb_cast_result* orb_last_cast(void) {
     return &host_result;
+}
+
+orb_clock* orb_clock_get(void) {
+    return &host_clock;
+}
+
+orb_stats orb_stats_get(void) {
+    return (orb_stats) {
+        .arena_used = host_arena.used,
+        .arena_peak = host_arena.peak,
+        .cast_peak = host_scratch.peak,
+        .cast_headroom = host_scratch.size,
+        .frame_ticks = host_frame_ticks,
+        .frame_us = host_frame_us
+    };
 }
 #endif

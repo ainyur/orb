@@ -15,6 +15,7 @@
 #include "graphics/camera.c"
 #include "audio/mixer.c"
 #include "core/api.c"
+#include "core/console.c"
 
 #if defined(ORB_OS_X11)
 #include "os/x11.c"
