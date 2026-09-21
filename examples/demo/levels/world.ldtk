@@ -305,7 +305,43 @@
 			"tilePivotY": 0,
 			"biomeFieldUid": null
 		}
-	], "entities": [], "tilesets": [
+	], "entities": [
+		{
+			"identifier": "player",
+			"uid": 20,
+			"tags": [],
+			"exportToToc": false,
+			"allowOutOfBounds": false,
+			"doc": null,
+			"width": 8,
+			"height": 8,
+			"resizableX": false,
+			"resizableY": false,
+			"minWidth": null,
+			"maxWidth": null,
+			"minHeight": null,
+			"maxHeight": null,
+			"keepAspectRatio": false,
+			"tileOpacity": 1,
+			"fillOpacity": 1,
+			"lineOpacity": 1,
+			"hollow": false,
+			"color": "#94D9B3",
+			"renderMode": "Rectangle",
+			"showName": true,
+			"tilesetId": null,
+			"tileRenderMode": "FitInside",
+			"tileRect": null,
+			"uiTileRect": null,
+			"nineSliceBorders": [],
+			"maxCount": 1,
+			"limitScope": "PerLevel",
+			"limitBehavior": "MoveLastOne",
+			"pivotX": 0,
+			"pivotY": 0,
+			"fieldDefs": []
+		}
+	], "tilesets": [
 		{
 			"__cWid": 4,
 			"__cHei": 1,
@@ -371,7 +407,24 @@
 					"seed": 1000,
 					"overrideTilesetUid": null,
 					"gridTiles": [],
-					"entityInstances": []
+					"entityInstances": [
+						{
+							"__identifier": "player",
+							"__grid": [3,3],
+							"__pivot": [0,0],
+							"__tags": [],
+							"__tile": null,
+							"__smartColor": "#94D9B3",
+							"__worldX": 52,
+							"__worldY": 52,
+							"iid": "6f1f4a10-0007-11f0-9a00-0123456789ab",
+							"width": 8,
+							"height": 8,
+							"defUid": 20,
+							"px": [52,52],
+							"fieldInstances": []
+						}
+					]
 				},
 				{
 					"__identifier": "shadow",

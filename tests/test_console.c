@@ -132,10 +132,10 @@ static int test_run(void) {
 
     // commands get the split arguments; quotes group
     orb_console_run("teleport 5 \"7\"");
-    CHECK_EQ(g->x, 5);
-    CHECK_EQ(g->y, 7);
+    CHECK(orb_entity_get(g->player)->at.x == 5);
+    CHECK(orb_entity_get(g->player)->at.y == 7);
     orb_console_run("teleport \"1 2");
-    CHECK_EQ(g->x, 5); // one argument "1 2": teleport wants two
+    CHECK(orb_entity_get(g->player)->at.x == 5); // one argument "1 2": teleport wants two
 
     // built-ins
     orb_log_clear();
@@ -174,6 +174,82 @@ static int test_run(void) {
     return 0;
 }
 
+static void tick(void);
+
+static int test_entities(void) {
+    if (boot()) return 1;
+
+    game_state* g = (game_state*)host_state.base;
+
+    // the fixture room spawned at boot: two crates, a marker, the player
+    orb_log_clear();
+    orb_console_run("entities");
+    CHECK(strcmp(last(), "4 entities") == 0);
+    orb_console_run("entities crate");
+    CHECK(strcmp(last(), "2 entities") == 0);
+    CHECK(strncmp(orb_log_line(1), "1 type 0 (32, 8) 8x8 v---", 25) == 0);
+    orb_console_run("entities ghost");
+    CHECK(strcmp(last(), "no entity type \"ghost\"") == 0);
+    orb_console_run("entities a b");
+    CHECK(strcmp(last(), "entities [type]") == 0);
+
+    // spawn prints the slot; a bad type logs; despawn frees at the next update
+    orb_console_run("spawn crate 20 10");
+    CHECK(strcmp(last(), "entity 4") == 0);
+    orb_console_run("spawn ghost 0 0");
+    CHECK(strcmp(last(), "no entity type \"ghost\"") == 0);
+    orb_console_run("spawn crate");
+    CHECK(strcmp(last(), "spawn <type> <x> <y>") == 0);
+    orb_console_run("despawn 4");
+    CHECK(orb_entity_get(ORB_ENTITY(4 | 1u << 24))->flags & ORB_ENTITY_DESPAWNING);
+    tick();
+    CHECK(orb_entity_get(ORB_ENTITY(4 | 1u << 24)) == nullptr);
+    orb_console_run("despawn 4");
+    CHECK(strcmp(last(), "no entity 4") == 0);
+    orb_console_run("despawn x");
+    CHECK(strcmp(last(), "no entity x") == 0);
+
+    // entity: the record, the placement's fields, the type's defaults, the components
+    orb_log_clear();
+    orb_console_run("entity 0");
+    CHECK(
+        strncmp(
+            orb_log_line(orb_log_line_count() - 1),
+            "entity 0: type 0 level 0 placement 0 at (16, 8) 8x8", 51
+        ) == 0
+    );
+    CHECK(strstr(orb_log_line(orb_log_line_count() - 2), "int[1]: 3"));
+    CHECK(strstr(orb_log_line(orb_log_line_count() - 3), "bool[1]: true"));
+    CHECK(strstr(orb_log_line(orb_log_line_count() - 4), "int[3]: 1 2 3"));
+    CHECK(strstr(orb_log_line(orb_log_line_count() - 5), "string[1]: \"Wood\""));
+    CHECK(strstr(orb_log_line(orb_log_line_count() - 6), "point[1]: (40, 16)"));
+    CHECK(strstr(orb_log_line(orb_log_line_count() - 7), "ref[1]: #1"));
+    CHECK(strstr(orb_log_line(orb_log_line_count() - 8), "int[1]: 10"));
+    CHECK(strstr(orb_log_line(orb_log_line_count() - 9), "string[1]: \"box\""));
+    CHECK_EQ(orb_log_line_count(), 9); // the crate has no components
+    orb_log_clear();
+    orb_console_run("entity 3");
+    CHECK(strstr(orb_log_line(orb_log_line_count() - 1), "entity 3: type 2"));
+    CHECK(strncmp(orb_log_line(orb_log_line_count() - 2), "component 0, ", 13) == 0);
+    CHECK(
+        strstr(orb_log_line(0), "component 1, 64 bytes") || strncmp(orb_log_line(0), "  ", 2) == 0
+    );
+    orb_console_run("entity");
+    CHECK(strcmp(last(), "entity <index>") == 0);
+
+    // the debug variable is orb's own and survives a clear
+    orb_console_run("entities.debug on");
+    CHECK(orb_entity_debug);
+    orb_console_clear();
+    reload(g, orb_api_table());
+    orb_console_run("entities.debug");
+    CHECK(strcmp(last(), "entities.debug = true") == 0);
+    orb_console_run("entities.debug off");
+    CHECK(!orb_entity_debug);
+    (void)g;
+    return 0;
+}
+
 static orb_input keys;
 
 static void tick(void) {
@@ -209,10 +285,10 @@ static int test_editor(void) {
     keys.keys[ORB_KEY_GRAVE] = true;
     keys.keys[ORB_KEY_RIGHT] = true;
     snprintf(keys.text, sizeof keys.text, "`");
-    int x = g->x;
+    float x = orb_entity_get(g->player)->at.x;
     tick(); // opens; the game sees nothing this tick
     CHECK(orb_console_open());
-    CHECK_EQ(g->x, x);
+    CHECK(orb_entity_get(g->player)->at.x == x);
     CHECK(!orb_key_down(ORB_KEY_GRAVE));
     CHECK(!orb_key_down(ORB_KEY_RIGHT));
     snprintf(keys.text, sizeof keys.text, "`");
@@ -385,7 +461,7 @@ static int test_binds(void) {
     CHECK_EQ(g->speed, 7);
     CHECK(!orb_key_down(ORB_KEY_F5)); // hidden from the game
     press(ORB_KEY_F6);
-    CHECK_EQ(g->x, 3);
+    CHECK(orb_entity_get(g->player)->at.x == 3);
 
     // opening the console hides a bound key from the game and skips the bind
     press(ORB_KEY_GRAVE);
@@ -471,7 +547,7 @@ static int test_draw(void) {
 
     uint32_t dark = 0, bright = 0;
 
-    console_colors(&dark, &bright);
+    orb_pal_extremes(orb_api_pal_base(), &dark, &bright);
     CHECK(dark != bright);
     CHECK_EQ(frame_pixel(63, 0), dark);  // the panel's top-right corner is blank
     CHECK_EQ(frame_pixel(0, 6), bright); // the prompt '>' has a pixel at its top-left
@@ -503,7 +579,7 @@ static int test_draw(void) {
 static bool row_text_matches(int row, const char* s) {
     uint32_t dark, bright;
 
-    console_colors(&dark, &bright);
+    orb_pal_extremes(orb_api_pal_base(), &dark, &bright);
 
     for (int i = 0; s[i]; i++) {
         const uint8_t* g = ORB_CONSOLE_FONT[(unsigned char)s[i] - 32];
@@ -640,6 +716,7 @@ int main(void) {
     if (test_text()) return 1;
     if (test_font()) return 1;
     if (test_run()) return 1;
+    if (test_entities()) return 1;
     if (test_editor()) return 1;
     if (test_binds()) return 1;
     if (test_draw()) return 1;

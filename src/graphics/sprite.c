@@ -29,6 +29,16 @@ orb_sprite orb_anim_step(const orb_assets* assets, orb_anim_state* st) {
     return s;
 }
 
+orb_sprite orb_anim_frame(const orb_assets* assets, const orb_anim_state* st) {
+    uint32_t index = orb_asset_index_of(assets, st->anim);
+
+    if (index == ORB_NO_INDEX) return ORB_NO_SPRITE;
+
+    const orb_anim_desc* d = &assets->anims[index];
+
+    return ORB_SPRITE(d->first_sprite + st->frame % d->count);
+}
+
 void orb_sprite_draw(
     orb_fb* fb,
     const orb_assets* assets,

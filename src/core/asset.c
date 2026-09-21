@@ -23,6 +23,11 @@ static const asset_kind asset_kinds[ORB_ASSET_KIND_COUNT] = {
         font,
         ORB_MAX_SPRITES + ORB_MAX_ANIMS + ORB_MAX_SAMPLES + ORB_MAX_SONGS + ORB_MAX_LEVELS
     ),
+    ASSET_KIND(
+        type,
+        ORB_MAX_SPRITES + ORB_MAX_ANIMS + ORB_MAX_SAMPLES + ORB_MAX_SONGS + ORB_MAX_LEVELS +
+            ORB_MAX_FONTS
+    ),
 };
 
 // FNV-1a over STEM_SUFFIX with every non-alphanumeric folded to '_' and letters

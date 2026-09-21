@@ -266,6 +266,121 @@ constexpr orb_song ORB_NO_SONG = {ORB_NO_INDEX};
 constexpr orb_sprite ORB_NO_SPRITE = {ORB_NO_INDEX};
 constexpr orb_voice ORB_NO_VOICE = {0xffffu};
 
+typedef struct {
+    uint32_t v;
+} orb_entity_id;
+
+typedef struct {
+    uint32_t v;
+} orb_type;
+
+#define ORB_ENTITY(i) ((orb_entity_id) {(uint32_t)(i)})
+#define ORB_TYPE(i) ((orb_type) {(uint32_t)(i)})
+
+constexpr orb_entity_id ORB_NO_ENTITY = {ORB_NO_INDEX};
+constexpr orb_type ORB_NO_TYPE = {ORB_NO_INDEX};
+
+constexpr int ORB_COMPONENT_SPRITE = 0;
+constexpr int ORB_COMPONENT_BODY = 1;
+constexpr int ORB_COMPONENT_TAG = 2;
+// the first of the game's kinds, in orb_config.components order
+constexpr int ORB_COMPONENT_GAME = 3;
+constexpr int ORB_MAX_COMPONENTS = 32;
+constexpr uint32_t ORB_MAX_ENTITIES = 1 << 16;
+constexpr int ORB_MAX_REMAPS = 8;
+constexpr int ORB_MAX_SPRITE_LAYERS = 8;
+
+typedef struct orb_entity {
+    uint64_t iid; // the placement's iid hash, or 0 for a runtime spawn
+    orb_entity_id self;
+    orb_type type;
+    orb_level level; // the level it was placed or spawned in, or ORB_NO_LEVEL
+    orb_entity_id parent;
+    uint32_t placement;  // its placement index, or ORB_NO_INDEX
+    uint32_t components; // bit per live kind
+    uint16_t flags;      // ORB_ENTITY_*
+    uint8_t pad[2];
+    orb_vec2f at; // world pixels; relative to the parent when set
+    orb_size size;
+    uint8_t pad2[4];
+} orb_entity;
+
+static_assert(sizeof(orb_entity) == 56, "orb_entity layout");
+
+constexpr uint16_t ORB_ENTITY_VISIBLE = 1;
+constexpr uint16_t ORB_ENTITY_PAUSED = 2;
+constexpr uint16_t ORB_ENTITY_PERSISTENT = 4;
+constexpr uint16_t ORB_ENTITY_DESPAWNING = 8;
+constexpr uint16_t ORB_ENTITY_NEW = 16; // orb's: spawned inside the update in progress
+
+typedef struct orb_sprite_component {
+    orb_sprite sprite;   // drawn when anim is ORB_NO_ANIM
+    orb_anim_state anim; // stepped by world_update; its frame is drawn when set
+    uint32_t flags;      // ORB_FLIP_X, ORB_FLIP_Y
+    orb_vec2 offset;     // draw position relative to the world position
+    int8_t remap;        // remap table index, -1 for none
+    int8_t sort_bias;    // added to the sort key
+    uint8_t layer;       // 0 to ORB_MAX_SPRITE_LAYERS - 1; world_draw takes one
+    uint8_t pad;
+} orb_sprite_component;
+
+typedef struct orb_body {
+    orb_vec2f velocity; // pixels per tick
+    orb_vec2f impact;   // the velocity a blocked axis had before the block, else 0
+    orb_vec2f moved;    // how far the last update moved it, world pixels
+    orb_vec2f last_at;  // world position at the end of the last update, kept by orb; setting
+                        // parent after entity_add moves the body without moving this, so a
+                        // solid reports that jump as moved on the next update
+    float gravity;      // scale on the world gravity, 0 for none
+    orb_rect box;       // relative to the world position; entity_add sets it to the entity's size
+    uint16_t flags;     // ORB_BODY_*
+    uint8_t pad[2];
+    orb_entity_id standing_on; // the solid under it after the last update, or ORB_NO_ENTITY
+    orb_entity_id carrier;     // a solid the game says moves it, or ORB_NO_ENTITY
+} orb_body;
+
+static_assert(sizeof(orb_body) == 64, "orb_body layout");
+
+constexpr uint16_t ORB_BODY_SOLID = 1;
+// with SOLID: solid only to a body arriving from the north
+constexpr uint16_t ORB_BODY_ONEWAY_N = 2;
+constexpr uint16_t ORB_BODY_ONEWAY_S = 4;
+constexpr uint16_t ORB_BODY_ONEWAY_E = 8;
+constexpr uint16_t ORB_BODY_ONEWAY_W = 16;
+constexpr uint16_t ORB_BODY_DROP = 32; // this update treats every one-way as open; cleared after
+constexpr uint16_t ORB_BODY_GROUNDED = 64; // set by the last update
+constexpr uint16_t ORB_BODY_CEILING = 128;
+constexpr uint16_t ORB_BODY_WALL_LEFT = 256;
+constexpr uint16_t ORB_BODY_WALL_RIGHT = 512;
+constexpr uint16_t ORB_BODY_CRUSHED = 1024;
+
+typedef struct orb_tag {
+    uint32_t bits;
+} orb_tag;
+
+constexpr uint32_t ORB_TAG_ANY = 0xffffffffu;
+
+typedef enum orb_cell_kind : uint8_t {
+    ORB_CELL_OPEN,
+    ORB_CELL_SOLID,
+    ORB_CELL_ONEWAY_N, // solid only to a body arriving from the north
+    ORB_CELL_ONEWAY_S,
+    ORB_CELL_ONEWAY_E,
+    ORB_CELL_ONEWAY_W
+} orb_cell_kind;
+
+typedef struct orb_hit {
+    orb_entity_id entity; // ORB_NO_ENTITY for a cell
+    orb_vec2 at;          // the hit point; for a cell, the last open pixel before it
+    orb_vec2 normal;      // the face hit: one axis -1 or 1, the other 0
+    float fraction;       // 0..1 along the segment
+} orb_hit;
+
+constexpr uint32_t ORB_RAY_CELLS = 1;  // test collision cells
+constexpr uint32_t ORB_RAY_SOLIDS = 2; // test solid bodies whatever their tags
+// one-way cells and bodies block from their solid side; else open
+constexpr uint32_t ORB_RAY_ONEWAY = 4;
+
 constexpr uint32_t ORB_FLIP_X = 1;
 constexpr uint32_t ORB_FLIP_Y = 2;
 
@@ -306,7 +421,28 @@ constexpr int ORB_AUDIO_RATE = 48000;
 // neither; the string is valid until the next call. A recast resets bindings to the
 // manifest's, so re-apply your own in reload.
 //
+// Entities. type_find("crate") is the LDtk entity definition Crate; type_bind attaches init
+// and update functions to it and belongs in reload, since the table is cleared before every
+// reload. level_spawn places a level's entities and belongs after type_bind, in update or
+// reload; entity_spawn makes one from a type at runtime. Fields are the editor's values and
+// read-only: entity_field_int(id, "hp", 0) reads the placement, else the type's default,
+// else 0. Components are the game's: sprite, body, and tag are built in, and the sizes in
+// orb_config.components declare the game's kinds, numbered from ORB_COMPONENT_GAME in that
+// order (enum { HEALTH = ORB_COMPONENT_GAME, BRAIN } beside the list); a change to the list
+// resets the state. entity_add zeroes a new slot; a sprite starts with no sprite, no
+// animation, and no remap, and a body's box starts at the entity's size. Every pointer into
+// the pool is valid for the current tick; store handles. world_collision names the IntGrid
+// layer, in every level, whose values the kinds table maps to open, solid, or one-way, and
+// world_update runs the type updates, moves solids and bodies, and frees despawns; both are
+// yours to call from update. world_draw draws the sprites of one layer y-sorted; queries
+// take a tag mask where ORB_TAG_ANY matches every tagged body and 0 none, and a handle to
+// leave out. Setting parent after entity_add moves the body's world position without moving
+// last_at, so a solid reports that jump as moved on the next update; a game that parents a
+// solid sets last_at to the new world position.
+//
 typedef struct orb_api orb_api;
+
+typedef void (*orb_entity_fn)(void* state, const orb_api* orb, orb_entity_id id);
 
 // Console. The console opens on the grave key. var_int, var_float, var_bool, and command
 // register a name the console reads, sets, or runs; call them in reload, since the console
@@ -339,6 +475,63 @@ typedef struct orb_api {
     orb_rect (*level_bounds)(orb_level level);
     int (*level_neighbors)(orb_level level, orb_level_neighbor* out, int max);
     int (*cell_get)(orb_level level, int layer, orb_vec2 at);
+
+    orb_type (*type_find)(const char* stem);
+    void (*type_bind)(orb_type type, orb_entity_fn init, orb_entity_fn update);
+    orb_entity_id (*entity_spawn)(orb_type type, orb_vec2f at);
+    void (*entity_despawn)(orb_entity_id id);
+    orb_entity* (*entity_get)(orb_entity_id id);
+    void* (*entity_add)(orb_entity_id id, int kind);
+    void (*entity_remove)(orb_entity_id id, int kind);
+    void* (*entity_component)(orb_entity_id id, int kind);
+    orb_vec2f (*entity_world_at)(orb_entity_id id);
+    int (*entity_all)(orb_entity_id* out, int max);
+    int (*entity_of_type)(orb_type type, orb_entity_id* out, int max);
+    int (*entity_field_count)(orb_entity_id id, const char* name);
+    int32_t (*entity_field_int)(orb_entity_id id, const char* name, int index);
+    float (*entity_field_float)(orb_entity_id id, const char* name, int index);
+    bool (*entity_field_bool)(orb_entity_id id, const char* name, int index);
+    const char* (*entity_field_string)(orb_entity_id id, const char* name, int index);
+    orb_vec2 (*entity_field_point)(orb_entity_id id, const char* name, int index);
+    orb_entity_id (*entity_field_ref)(orb_entity_id id, const char* name, int index);
+    void (*level_spawn)(orb_level level);
+    void (*level_despawn)(orb_level level);
+    void (*world_collision)(const char* layer, const uint8_t kinds[256]);
+    orb_cell_kind (*cell_kind)(orb_vec2 at);
+    void (*world_gravity)(orb_vec2f gravity);
+    void (*world_update)(void);
+    void (*world_draw)(int layer);
+    void (*remap_set)(int index, const uint8_t table[256]);
+    int (*query_rect)(
+        orb_rect rect,
+        uint32_t mask,
+        orb_entity_id except,
+        orb_entity_id* out,
+        int max
+    );
+    int (*query_circle)(
+        orb_vec2 center,
+        int radius,
+        uint32_t mask,
+        orb_entity_id except,
+        orb_entity_id* out,
+        int max
+    );
+    int (*query_point)(
+        orb_vec2 at,
+        uint32_t mask,
+        orb_entity_id except,
+        orb_entity_id* out,
+        int max
+    );
+    bool (*query_ray)(
+        orb_vec2 from,
+        orb_vec2 to,
+        uint32_t mask,
+        uint32_t flags,
+        orb_entity_id except,
+        orb_hit* hit
+    );
 
     orb_font (*font_find)(const char* stem);
     orb_size (*text_measure)(orb_font f, const char* s);
@@ -398,6 +591,8 @@ typedef struct orb_config {
     uint32_t state_version;
     uint32_t save_version;
     uint32_t max_entities;
+    uint16_t components[ORB_MAX_COMPONENTS - ORB_COMPONENT_GAME]; // byte sizes of the game's kinds;
+                                                                  // 0 ends the list
 } orb_config;
 
 typedef struct orb_game {

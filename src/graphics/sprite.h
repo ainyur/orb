@@ -6,6 +6,10 @@
 
 void orb_anim_start(orb_anim_state* st, orb_anim a);
 orb_sprite orb_anim_step(const orb_assets* assets, orb_anim_state* st);
+orb_sprite orb_anim_frame(
+    const orb_assets* assets,
+    const orb_anim_state* st
+); // the current frame, unstepped
 void orb_sprite_draw(
     orb_fb* fb,
     const orb_assets* assets,

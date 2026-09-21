@@ -117,6 +117,10 @@ int main(void) {
     CHECK_EQ(at(&fb, 1, 3), 2);
     CHECK_EQ(at(&fb, 2, 4), 5);
 
+    // the level containing a pixel: the fixture level spans x 10..15, y -4..-1
+    CHECK_EQ(orb_tilemap_level_at(&as, (orb_vec2) {10, -4}), 0);
+    CHECK_EQ(orb_tilemap_level_at(&as, (orb_vec2) {16, -4}), ORB_NO_INDEX);
+
     // bad handle or layer index: nothing
     orb_fb_clear(&fb, 0);
     orb_tilemap_draw(&fb, &as, (orb_vec2f) {10, -4}, ORB_LEVEL(3), 0);

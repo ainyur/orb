@@ -1,5 +1,6 @@
 #include "file.h"
 #include "../core/asset.h"
+#include "../core/bytes.h"
 
 #include <stddef.h>
 #include <stdio.h>
@@ -56,6 +57,11 @@ static const file_row file_rows[] = {
     FILE_ROW(GLYPHS, orb_glyph_desc, glyphs, glyph_count, 0),
     FILE_IDS(FONT_IDS, font_ids, font_count),
     FILE_ROW(BINDINGS, orb_binding_desc, bindings, binding_count, ORB_BTN_COUNT),
+    FILE_ROW(TYPES, orb_type_desc, types, type_count, ORB_MAX_TYPES),
+    FILE_ROW(PLACEMENTS, orb_placement_desc, placements, placement_count, ORB_MAX_PLACEMENTS),
+    FILE_ROW(FIELDS, orb_field_desc, fields, field_count, ORB_MAX_FIELDS),
+    FILE_ROW(FIELD_DATA, uint8_t, field_data, field_data_count, 0),
+    FILE_IDS(TYPE_IDS, type_ids, type_count),
 };
 
 constexpr uint32_t FILE_ROW_COUNT = sizeof file_rows / sizeof *file_rows;
@@ -199,6 +205,66 @@ static bool file_check_bindings(const orb_assets* out, orb_error* err) {
     return true;
 }
 
+static bool file_check_entities(const orb_assets* out, orb_error* err) {
+    for (uint32_t i = 0; i < out->type_count; i++) {
+        const orb_type_desc* t = &out->types[i];
+
+        if ((uint64_t)t->first_field + t->field_count > out->field_count)
+            return orb_error_set(err, "orb file: type %u runs past the fields section", i);
+    }
+
+    for (uint32_t i = 0; i < out->placement_count; i++) {
+        const orb_placement_desc* p = &out->placements[i];
+
+        if (p->type >= out->type_count || p->level >= out->level_count)
+            return orb_error_set(
+                err, "orb file: placement %u names type %u or level %u", i, p->type, p->level
+            );
+
+        if ((uint64_t)p->first_field + p->field_count > out->field_count)
+            return orb_error_set(err, "orb file: placement %u runs past the fields section", i);
+    }
+
+    for (uint32_t i = 0; i < out->level_count; i++) {
+        const orb_level_desc* d = &out->levels[i];
+
+        if ((uint64_t)d->first_placement + d->placement_count > out->placement_count)
+            return orb_error_set(err, "orb file: level %u runs past its placements", i);
+    }
+
+    for (uint32_t i = 0; i < out->field_count; i++) {
+        const orb_field_desc* f = &out->fields[i];
+
+        if (f->kind > ORB_FIELD_REF)
+            return orb_error_set(err, "orb file: field %u has kind %u", i, f->kind);
+
+        uint32_t width = orb_field_width(f->kind);
+
+        if ((f->data & 3) != 0 ||
+            (uint64_t)f->data + (uint64_t)f->count * width > out->field_data_count)
+            return orb_error_set(err, "orb file: field %u runs past the field data", i);
+
+        for (uint32_t k = 0; k < f->count; k++) {
+            const uint8_t* p = out->field_data + f->data + k * width;
+
+            if (f->kind == ORB_FIELD_STRING) {
+                uint32_t at = orb_bytes_u32(p);
+
+                if (at >= out->field_data_count ||
+                    !memchr(out->field_data + at, 0, out->field_data_count - at))
+                    return orb_error_set(
+                        err, "orb file: field %u string %u leaves the field data", i, k
+                    );
+            }
+
+            if (f->kind == ORB_FIELD_REF && orb_bytes_u32(p) >= out->placement_count)
+                return orb_error_set(err, "orb file: field %u ref %u names no placement", i, k);
+        }
+    }
+
+    return true;
+}
+
 bool orb_file_load(orb_span file, orb_assets* out, orb_error* err) {
     if (file.len < sizeof(orb_file_header)) return orb_error_set(err, "orb file: too short");
 
@@ -294,5 +360,5 @@ bool orb_file_load(orb_span file, orb_assets* out, orb_error* err) {
     }
 
     return file_check_levels(out, err) && file_check_fonts(out, err) &&
-           file_check_bindings(out, err);
+           file_check_bindings(out, err) && file_check_entities(out, err);
 }

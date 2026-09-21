@@ -78,6 +78,283 @@ static bool world_sublayers(
     return true;
 }
 
+// Bytes the field data section needs for these fields: elements at 4-byte alignment, then
+// the strings, then the next field aligned again.
+static uint32_t world_field_bytes(const orb_ldtk_field* fields, int count) {
+    uint32_t total = 0;
+
+    for (int i = 0; i < count; i++) {
+        const orb_ldtk_field* f = &fields[i];
+
+        total += (uint32_t)f->count * orb_field_width(f->kind);
+
+        if (f->kind == ORB_FIELD_STRING)
+            for (int k = 0; k < f->count; k++)
+                total += (uint32_t)strlen(f->values[k].s) + 1;
+
+        total = (total + 3) & ~3u;
+    }
+
+    return total;
+}
+
+typedef struct world_iid {
+    uint64_t id;
+    uint32_t index;
+} world_iid;
+
+static int world_iid_compare(const void* a, const void* b) {
+    uint64_t x = ((const world_iid*)a)->id, y = ((const world_iid*)b)->id;
+
+    return x < y ? -1 : x > y;
+}
+
+// Every placement's iid and index, sorted by iid.
+static world_iid* world_iid_index(orb_arena* scratch, const orb_ldtk* world, uint32_t total) {
+    world_iid* iids = orb_arena_push_array(scratch, world_iid, total);
+    uint32_t n = 0;
+
+    for (int i = 0; i < world->level_count; i++)
+        for (int j = 0; j < world->levels[i].instance_count; j++, n++)
+            iids[n] = (world_iid) {orb_asset_id(world->levels[i].instances[j].iid, ""), n};
+
+    qsort(iids, total, sizeof *iids, world_iid_compare);
+    return iids;
+}
+
+// The placement index of the instance with this iid, or -1.
+static int world_placement_of(const world_iid* iids, uint32_t count, const char* iid) {
+    world_iid key = {orb_asset_id(iid, ""), 0};
+    const world_iid* hit = bsearch(&key, iids, count, sizeof *iids, world_iid_compare);
+
+    return hit ? (int)hit->index : -1;
+}
+
+// The index below i whose id matches ids[i], or -1.
+static int world_dup_id(const uint64_t* ids, int i) {
+    for (int p = 0; p < i; p++)
+        if (ids[p] == ids[i]) return p;
+
+    return -1;
+}
+
+// Field rows and their data for one type or placement, refs resolved to placement indices.
+static bool world_write_fields(
+    cast* c,
+    const world_iid* iids,
+    uint32_t iid_count,
+    const char* level_name,
+    const char* entity_name,
+    const orb_ldtk_field* src,
+    int count,
+    orb_field_desc* fields,
+    uint8_t* data,
+    uint32_t* field_offset,
+    uint32_t* data_offset
+) {
+    char prefix[160];
+
+    if (level_name)
+        snprintf(prefix, sizeof prefix, "level %s: entity %s", level_name, entity_name);
+    else
+        snprintf(prefix, sizeof prefix, "entity %s", entity_name);
+
+    for (int i = 0; i < count; i++) {
+        const orb_ldtk_field* f = &src[i];
+        uint32_t width = orb_field_width(f->kind);
+        uint8_t* p = data + *data_offset;
+        uint32_t string_at = *data_offset + (((uint32_t)f->count * width + 3) & ~3u);
+
+        if (f->count > 65535)
+            return orb_error_set(
+                c->err, "%s: field %s: %d elements is more than 65535", prefix, f->name, f->count
+            );
+
+        fields[(*field_offset)++] = (orb_field_desc) {
+            .name = orb_asset_id(f->name, ""),
+            .data = *data_offset,
+            .count = (uint16_t)f->count,
+            .kind = (uint8_t)f->kind
+        };
+
+        for (int k = 0; k < f->count; k++) {
+            const orb_ldtk_value* v = &f->values[k];
+
+            switch (f->kind) {
+            case ORB_FIELD_INT:
+                memcpy(p + k * 4, &v->i, 4);
+                break;
+            case ORB_FIELD_FLOAT:
+                memcpy(p + k * 4, &v->f, 4);
+                break;
+            case ORB_FIELD_BOOL:
+                p[k] = v->b;
+                break;
+            case ORB_FIELD_STRING: {
+                size_t n = strlen(v->s) + 1;
+
+                memcpy(p + k * 4, &string_at, 4);
+                memcpy(data + string_at, v->s, n);
+                string_at += (uint32_t)n;
+                break;
+            }
+            case ORB_FIELD_POINT:
+                memcpy(p + k * 8, &v->point.x, 4);
+                memcpy(p + k * 8 + 4, &v->point.y, 4);
+                break;
+            case ORB_FIELD_REF: {
+                int target = world_placement_of(iids, iid_count, v->s);
+
+                if (target < 0)
+                    return orb_error_set(
+                        c->err, "%s: field %s: ref %s is not an entity in this project", prefix,
+                        f->name, v->s
+                    );
+
+                uint32_t index = (uint32_t)target;
+
+                memcpy(p + k * 4, &index, 4);
+                break;
+            }
+            }
+        }
+
+        *data_offset = (string_at + 3) & ~3u;
+    }
+
+    return true;
+}
+
+// The type, placement, field, and field data sections, and each level's placement run.
+// Sized by one counting pass, then filled.
+static bool world_cast_entities(
+    cast* c,
+    const orb_ldtk* world,
+    orb_level_desc* levels,
+    orb_assets* as
+) {
+    orb_arena* scratch = c->scratch;
+
+    if ((uint32_t)world->entity_def_count > ORB_MAX_TYPES)
+        return orb_error_set(c->err, "%s: more than %u entity types", c->m->world, ORB_MAX_TYPES);
+
+    uint32_t placement_total = 0, field_total = 0, data_total = 0;
+
+    for (int i = 0; i < world->entity_def_count; i++) {
+        const orb_ldtk_entity_def* def = &world->entity_defs[i];
+
+        field_total += (uint32_t)def->field_count;
+        data_total += world_field_bytes(def->fields, def->field_count);
+    }
+
+    for (int i = 0; i < world->level_count; i++) {
+        const orb_ldtk_level* level = &world->levels[i];
+
+        placement_total += (uint32_t)level->instance_count;
+
+        for (int j = 0; j < level->instance_count; j++) {
+            const orb_ldtk_instance* inst = &level->instances[j];
+
+            field_total += (uint32_t)inst->field_count;
+            data_total += world_field_bytes(inst->fields, inst->field_count);
+        }
+    }
+
+    if (placement_total > ORB_MAX_PLACEMENTS)
+        return orb_error_set(c->err, "%s: more than %u entities", c->m->world, ORB_MAX_PLACEMENTS);
+    if (field_total > ORB_MAX_FIELDS)
+        return orb_error_set(c->err, "%s: more than %u field values", c->m->world, ORB_MAX_FIELDS);
+
+    orb_type_desc* types = orb_arena_push_array(scratch, orb_type_desc, world->entity_def_count);
+    uint64_t* type_ids = orb_arena_push_array(scratch, uint64_t, world->entity_def_count);
+    orb_placement_desc* placements =
+        orb_arena_push_array(scratch, orb_placement_desc, placement_total);
+    orb_field_desc* fields = orb_arena_push_array(scratch, orb_field_desc, field_total);
+    uint8_t* data = orb_arena_push_array(scratch, uint8_t, data_total);
+    world_iid* iids = world_iid_index(scratch, world, placement_total);
+    uint32_t field_offset = 0, data_offset = 0, placement_offset = 0;
+
+    for (int i = 0; i < world->entity_def_count; i++) {
+        const orb_ldtk_entity_def* def = &world->entity_defs[i];
+
+        type_ids[i] = orb_asset_id(def->name, "");
+
+        int dup = world_dup_id(type_ids, i);
+
+        if (dup >= 0)
+            return orb_error_set(
+                c->err, "entity types %s and %s share a name", world->entity_defs[dup].name,
+                def->name
+            );
+
+        if (def->width > 65535 || def->height > 65535 || def->width < 0 || def->height < 0)
+            return orb_error_set(
+                c->err, "entity %s: %dx%d pixels does not fit in 16 bits", def->name, def->width,
+                def->height
+            );
+
+        types[i] = (orb_type_desc) {
+            .width = (uint16_t)def->width,
+            .height = (uint16_t)def->height,
+            .first_field = field_offset,
+            .field_count = (uint32_t)def->field_count
+        };
+
+        if (!world_write_fields(
+                c, iids, placement_total, nullptr, def->name, def->fields, def->field_count, fields,
+                data, &field_offset, &data_offset
+            ))
+            return false;
+    }
+
+    for (int i = 0; i < world->level_count; i++) {
+        const orb_ldtk_level* level = &world->levels[i];
+
+        levels[i].first_placement = placement_offset;
+        levels[i].placement_count = (uint32_t)level->instance_count;
+
+        for (int j = 0; j < level->instance_count; j++) {
+            const orb_ldtk_instance* inst = &level->instances[j];
+            const char* name = world->entity_defs[inst->def].name;
+
+            if (inst->width > 65535 || inst->height > 65535 || inst->width < 0 || inst->height < 0)
+                return orb_error_set(
+                    c->err, "level %s: entity %s: %dx%d pixels does not fit in 16 bits",
+                    level->name, name, inst->width, inst->height
+                );
+
+            placements[placement_offset++] = (orb_placement_desc) {
+                .iid = orb_asset_id(inst->iid, ""),
+                .type = (uint16_t)inst->def,
+                .level = (uint16_t)i,
+                .x = inst->x,
+                .y = inst->y,
+                .width = (uint16_t)inst->width,
+                .height = (uint16_t)inst->height,
+                .first_field = field_offset,
+                .field_count = (uint32_t)inst->field_count
+            };
+
+            if (!world_write_fields(
+                    c, iids, placement_total, level->name, name, inst->fields, inst->field_count,
+                    fields, data, &field_offset, &data_offset
+                ))
+                return false;
+        }
+    }
+
+    as->types = types;
+    as->type_count = (uint32_t)world->entity_def_count;
+    as->type_ids = type_ids;
+    as->placements = placements;
+    as->placement_count = placement_total;
+    as->fields = fields;
+    as->field_count = field_total;
+    as->field_data = data;
+    as->field_data_count = data_total;
+    return true;
+}
+
 // The level sections: tilesets, levels, layers, neighbors, tiles, and cells.
 // Sized by one counting pass, then filled by a second.
 static bool world_cast(
@@ -179,13 +456,12 @@ static bool world_cast(
 
         level_ids[i] = orb_asset_id(level->name, "");
 
-        for (int p = 0; p < i; p++) {
-            if (level_ids[p] != level_ids[i]) continue;
+        int dup = world_dup_id(level_ids, i);
 
+        if (dup >= 0)
             return orb_error_set(
-                c->err, "levels %s and %s share a name", world->levels[p].name, level->name
+                c->err, "levels %s and %s share a name", world->levels[dup].name, level->name
             );
-        }
 
         levels[i] = (orb_level_desc) {
             .world_x = level->world_x,
@@ -269,6 +545,8 @@ static bool world_cast(
 
         neighbor_offset += (uint32_t)level->neighbor_count;
     }
+
+    if (!world_cast_entities(c, world, levels, as)) return false;
 
     as->tilesets = tilesets;
     as->tileset_count = (uint32_t)world->tileset_count;

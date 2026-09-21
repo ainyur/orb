@@ -4,9 +4,11 @@
 #include "api.h"
 #include "asset.h"
 #include "console.h"
+#include "entity.h"
 #include "input.h"
 #include "log.h"
 #include "macros.h"
+#include "world.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -14,10 +16,18 @@
 static const orb_game* host_game;
 static orb_config host_config;
 static orb_info_desc host_info;
-static orb_arena host_arena, host_state;
+static orb_arena host_arena, host_state, host_pool;
 static uint32_t* host_rgb;
 static uint64_t host_previous, host_accumulator;
 static bool host_quitting;
+
+// The config with its defaults filled, so a reload compares like against like.
+static orb_config host_normalize(orb_config c) {
+    if (c.arena_size == 0) c.arena_size = 64 << 20;
+    if (c.max_entities == 0) c.max_entities = 256;
+
+    return c;
+}
 
 static bool host_load(orb_span file, orb_assets* out, orb_error* err) {
     if (!orb_file_load(file, out, err)) return false;
@@ -28,6 +38,7 @@ static bool host_load(orb_span file, orb_assets* out, orb_error* err) {
 
 static void host_reload(void) {
     orb_console_clear();
+    orb_entity_types_clear();
     host_game->reload(host_state.base, orb_api_table());
 }
 
@@ -83,6 +94,10 @@ static bool host_cast_first(const char* game_dir, orb_assets* out, orb_error* er
 // init sets the state up, then reload binds names, as it does after any recast.
 static void host_state_reset(orb_config next) {
     memset(host_state.base, 0, host_state.size);
+
+    if (!orb_entity_reset(&next))
+        orb_fatal("the game's entity pool does not fit its region; restart orb");
+
     host_config = next;
     host_game->init(host_state.base, orb_api_table());
     host_reload();
@@ -96,9 +111,7 @@ bool orb_boot(
     orb_error* err
 ) {
     host_game = game;
-    host_config = game->config();
-
-    if (host_config.arena_size == 0) host_config.arena_size = 64 << 20;
+    host_config = host_normalize(game->config());
 
     uint8_t* mem = malloc(host_config.arena_size);
 
@@ -112,6 +125,8 @@ bool orb_boot(
     size_t state_reserve = orb_max(host_config.state_size * 2, (size_t)256 << 10);
 
     host_state = orb_arena_carve(&host_arena, "game state", state_reserve);
+    host_pool =
+        orb_arena_carve(&host_arena, "entity pool", orb_entity_region_size(&host_config, 2));
 
     orb_assets assets;
 
@@ -125,6 +140,7 @@ bool orb_boot(
     orb_size size = {host_info.width, host_info.height};
 
     orb_api_boot(&host_arena, size, &assets);
+    orb_entity_boot(&host_pool, &host_config, host_state.base, orb_api_table(), orb_api_assets());
     orb_console_boot(host_state.base, orb_api_table());
     host_rgb = orb_arena_push_array(&host_arena, uint32_t, (size_t)size.width* size.height);
 
@@ -166,6 +182,9 @@ static bool host_tick(void) {
 static void host_render(void) {
     host_game->draw(host_state.base, orb_api_table());
     orb_api_resolve(host_rgb);
+    orb_world_debug_draw(
+        host_rgb, (orb_size) {host_info.width, host_info.height}, orb_api_camera()
+    );
     orb_console_draw(host_rgb, (orb_size) {host_info.width, host_info.height});
     orb_os_present(host_rgb);
 }
@@ -247,6 +266,8 @@ bool orb_recast(orb_error* err) {
     if (!host_cast(1 - host_live_half, &assets, err)) return false;
 
     orb_api_set_assets(&assets);
+    orb_entity_revalidate();
+    orb_world_revalidate();
     orb_input_resolve(orb_api_assets());
     host_reload();
     return true;
@@ -255,18 +276,27 @@ bool orb_recast(orb_error* err) {
 void orb_set_game(const orb_game* game) {
     host_game = game;
 
-    orb_config next = game->config();
+    orb_config next = host_normalize(game->config());
+    bool pool_changed =
+        next.max_entities != host_config.max_entities ||
+        memcmp(next.components, host_config.components, sizeof next.components) != 0;
 
     if (next.state_size > host_state.size)
         orb_fatal(
             "the game's state struct grew past its %zu byte region; restart orb", host_state.size
         );
 
+    if (pool_changed && orb_entity_region_size(&next, 1) > host_pool.size)
+        orb_fatal(
+            "the game's entity pool grew past its %zu byte region; restart orb", host_pool.size
+        );
+
     if (next.state_version != host_config.state_version ||
-        next.state_size != host_config.state_size) {
+        next.state_size != host_config.state_size || pool_changed) {
         orb_log(
-            "state version %u -> %u, size %zu -> %zu: state reset", host_config.state_version,
-            next.state_version, host_config.state_size, next.state_size
+            "state version %u -> %u, size %zu -> %zu%s: state reset", host_config.state_version,
+            next.state_version, host_config.state_size, next.state_size,
+            pool_changed ? ", entity pool changed" : ""
         );
         host_state_reset(next);
     } else

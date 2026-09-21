@@ -47,12 +47,22 @@ struct orb_assets {
     const uint64_t* font_ids;
     const orb_binding_desc* bindings;
     uint32_t binding_count; // 0 or ORB_BTN_COUNT
+    const orb_type_desc* types;
+    uint32_t type_count;
+    const orb_placement_desc* placements;
+    uint32_t placement_count;
+    const orb_field_desc* fields;
+    uint32_t field_count;
+    const uint8_t* field_data;
+    uint32_t field_data_count; // bytes
+    const uint64_t* type_ids;
     const uint8_t* sprite_gens;
     const uint8_t* anim_gens;
     const uint8_t* sample_gens;
     const uint8_t* song_gens;
     const uint8_t* level_gens;
     const uint8_t* font_gens;
+    const uint8_t* type_gens;
 };
 
 typedef enum orb_asset_kind {
@@ -62,6 +72,7 @@ typedef enum orb_asset_kind {
     ORB_ASSET_SONG,
     ORB_ASSET_LEVEL,
     ORB_ASSET_FONT,
+    ORB_ASSET_TYPE,
     ORB_ASSET_KIND_COUNT
 } orb_asset_kind;
 
@@ -69,7 +80,7 @@ typedef struct orb_asset_table {
     orb_assets assets;
     uint8_t gens
         [ORB_MAX_SPRITES + ORB_MAX_ANIMS + ORB_MAX_SAMPLES + ORB_MAX_SONGS + ORB_MAX_LEVELS +
-         ORB_MAX_FONTS];
+         ORB_MAX_FONTS + ORB_MAX_TYPES];
 } orb_asset_table;
 
 // A name's id, case-insensitive: cast stores it, find hashes the request the same way.
@@ -95,7 +106,8 @@ static inline uint32_t orb_asset_index(const uint8_t* gens, uint32_t count, uint
         orb_sample: orb_asset_index((as)->sample_gens, (as)->sample_count, (h).v),                 \
         orb_song: orb_asset_index((as)->song_gens, (as)->song_count, (h).v),                       \
         orb_level: orb_asset_index((as)->level_gens, (as)->level_count, (h).v),                    \
-        orb_font: orb_asset_index((as)->font_gens, (as)->font_count, (h).v)                        \
+        orb_font: orb_asset_index((as)->font_gens, (as)->font_count, (h).v),                       \
+        orb_type: orb_asset_index((as)->type_gens, (as)->type_count, (h).v)                        \
     )
 
 void orb_asset_set(orb_asset_table* t, const orb_assets* assets);

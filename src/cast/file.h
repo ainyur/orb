@@ -36,6 +36,11 @@ typedef enum orb_section_kind {
     ORB_SEC_GLYPHS,
     ORB_SEC_FONT_IDS,
     ORB_SEC_BINDINGS,
+    ORB_SEC_TYPES,
+    ORB_SEC_PLACEMENTS,
+    ORB_SEC_FIELDS,
+    ORB_SEC_FIELD_DATA,
+    ORB_SEC_TYPE_IDS,
     ORB_SEC_COUNT_
 } orb_section_kind;
 
@@ -46,6 +51,7 @@ constexpr uint32_t ORB_MAX_SAMPLES = 1 << 10;
 constexpr uint32_t ORB_MAX_SONGS = 1 << 10;
 constexpr uint32_t ORB_MAX_LEVELS = 1 << 10;
 constexpr uint32_t ORB_MAX_FONTS = 1 << 8;
+constexpr uint32_t ORB_MAX_TYPES = 1 << 10;
 
 // What the caster refuses and the loader checks again, since a file is untrusted.
 constexpr float ORB_MAX_BPM = 1000;
@@ -57,6 +63,8 @@ constexpr uint32_t ORB_MAX_TILE_ID = 16382;
 constexpr uint8_t ORB_FONT_FIRST = 32;
 constexpr uint32_t ORB_FONT_GLYPHS = 95;
 constexpr uint32_t ORB_MAX_CELL = 254; // a cell any wider overflows advance, which is width + 1
+constexpr uint32_t ORB_MAX_FIELDS = 1 << 20;
+constexpr uint32_t ORB_MAX_PLACEMENTS = 1 << 16;
 
 // A tile is 16 bits: zero is empty, otherwise the low fourteen bits are the tile id
 // plus one and the top two bits are the flip flags.
@@ -140,7 +148,7 @@ typedef struct orb_level_desc {
     uint16_t width, height; // pixels
     uint16_t first_layer, layer_count;
     uint16_t first_neighbor, neighbor_count;
-    uint8_t pad[8];
+    uint32_t first_placement, placement_count;
 } orb_level_desc; // 32 bytes
 
 static_assert(sizeof(orb_level_desc) == 32, "orb_level_desc layout");
@@ -189,6 +197,48 @@ typedef struct orb_binding_desc {
 } orb_binding_desc;        // 24 bytes
 
 static_assert(sizeof(orb_binding_desc) == 24, "orb_binding_desc layout");
+
+typedef struct orb_type_desc {
+    uint16_t width, height; // pixels
+    uint32_t first_field, field_count;
+    uint8_t pad[4];
+} orb_type_desc; // 16 bytes
+
+static_assert(sizeof(orb_type_desc) == 16, "orb_type_desc layout");
+
+typedef struct orb_placement_desc {
+    uint64_t iid; // orb_asset_id of the instance's iid
+    uint16_t type, level;
+    int32_t x, y; // world pixels
+    uint16_t width, height;
+    uint32_t first_field, field_count;
+} orb_placement_desc; // 32 bytes
+
+static_assert(sizeof(orb_placement_desc) == 32, "orb_placement_desc layout");
+
+typedef enum orb_field_kind : uint8_t {
+    ORB_FIELD_INT,    // int32_t
+    ORB_FIELD_FLOAT,  // float
+    ORB_FIELD_BOOL,   // uint8_t
+    ORB_FIELD_STRING, // uint32_t offset of a NUL-terminated string in field data
+    ORB_FIELD_POINT,  // two int32_t, world pixels
+    ORB_FIELD_REF     // uint32_t placement index
+} orb_field_kind;
+
+typedef struct orb_field_desc {
+    uint64_t name; // orb_asset_id of the folded field name
+    uint32_t data; // byte offset into the field data section
+    uint16_t count;
+    uint8_t kind; // orb_field_kind
+    uint8_t pad;
+} orb_field_desc; // 16 bytes
+
+static_assert(sizeof(orb_field_desc) == 16, "orb_field_desc layout");
+
+// Bytes per element of a field kind.
+static inline uint32_t orb_field_width(orb_field_kind kind) {
+    return kind == ORB_FIELD_BOOL ? 1 : kind == ORB_FIELD_POINT ? 8 : 4;
+}
 
 orb_span orb_file_write(orb_arena* a, const orb_assets* in);
 bool orb_file_load(orb_span file, orb_assets* out, orb_error* err);

@@ -8,9 +8,11 @@
 #include "../os/os.h"
 #include "asset.h"
 #include "console.h"
+#include "entity.h"
 #include "input.h"
 #include "log.h"
 #include "macros.h"
+#include "world.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -108,6 +110,18 @@ static int api_cell_get(orb_level level, int layer, orb_vec2 at) {
     return orb_tilemap_cell(&api_assets.assets, level, layer, at);
 }
 
+static orb_type api_type_find(const char* stem) {
+    uint32_t v = orb_asset_find(&api_assets, ORB_ASSET_TYPE, orb_asset_id(stem, ""));
+
+    if (v == ORB_NO_INDEX) orb_log("no entity type \"%s\"", stem);
+
+    return ORB_TYPE(v);
+}
+
+static void api_world_draw(int layer) {
+    orb_world_draw(&api_fb, api_camera, layer);
+}
+
 static orb_font api_font_find(const char* stem) {
     uint32_t v = orb_asset_find(&api_assets, ORB_ASSET_FONT, orb_asset_id(stem, "font"));
 
@@ -195,6 +209,36 @@ static const orb_api api_table = {
     .level_bounds = api_level_bounds,
     .level_neighbors = api_level_neighbors,
     .cell_get = api_cell_get,
+    .type_find = api_type_find,
+    .type_bind = orb_type_bind,
+    .entity_spawn = orb_entity_spawn,
+    .entity_despawn = orb_entity_despawn,
+    .entity_get = orb_entity_get,
+    .entity_add = orb_entity_add,
+    .entity_remove = orb_entity_remove,
+    .entity_component = orb_entity_component,
+    .entity_world_at = orb_entity_world_at,
+    .entity_all = orb_entity_all,
+    .entity_of_type = orb_entity_of_type,
+    .entity_field_count = orb_entity_field_count,
+    .entity_field_int = orb_entity_field_int,
+    .entity_field_float = orb_entity_field_float,
+    .entity_field_bool = orb_entity_field_bool,
+    .entity_field_string = orb_entity_field_string,
+    .entity_field_point = orb_entity_field_point,
+    .entity_field_ref = orb_entity_field_ref,
+    .level_spawn = orb_level_spawn,
+    .level_despawn = orb_level_despawn,
+    .world_collision = orb_world_collision,
+    .cell_kind = orb_world_cell_kind,
+    .world_gravity = orb_world_gravity,
+    .world_update = orb_world_update,
+    .world_draw = api_world_draw,
+    .remap_set = orb_world_remap_set,
+    .query_rect = orb_query_rect,
+    .query_circle = orb_query_circle,
+    .query_point = orb_query_point,
+    .query_ray = orb_query_ray,
     .font_find = api_font_find,
     .text_measure = api_text_measure,
     .text_draw = api_text_draw,
@@ -242,6 +286,10 @@ const orb_fb* orb_api_fb(void) {
 
 const uint32_t* orb_api_pal_base(void) {
     return api_pal.base;
+}
+
+orb_vec2f orb_api_camera(void) {
+    return api_camera;
 }
 
 // Hand the mixer a stable copy of the assets, then wait out any render still

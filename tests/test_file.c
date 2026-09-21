@@ -2,6 +2,151 @@
 #define ORB_OS_HEADLESS 1
 #include "../src/orb.c"
 
+// One level, one type with a default, one placement with every field kind, round-tripped
+// and then broken one way at a time.
+static int test_entities(orb_arena* a) {
+    uint8_t pal[256 * 4] = {0};
+    orb_info_desc info = {.width = 8, .height = 8, .name = "e"};
+    orb_level_desc levels[1] = {
+        {.width = 64, .height = 32, .first_placement = 0, .placement_count = 1}
+    };
+    uint64_t level_ids[1] = {1};
+    orb_type_desc types[1] = {{.width = 8, .height = 8, .first_field = 0, .field_count = 1}};
+    uint64_t type_ids[1] = {orb_asset_id("crate", "")};
+    orb_placement_desc placements[1] = {
+        {.iid = 99,
+         .type = 0,
+         .level = 0,
+         .x = 16,
+         .y = 8,
+         .width = 8,
+         .height = 8,
+         .first_field = 1,
+         .field_count = 4}
+    };
+    // data: int 10 | int 3 | bool 1 (padded) | string offset 24 | point (40,16) ... "box\0"
+    uint8_t data[64] = {0};
+    int32_t ten = 10, three = 3, px = 40, py = 16;
+    uint32_t string_at = 24, ref = 0;
+
+    memcpy(data + 0, &ten, 4);
+    memcpy(data + 4, &three, 4);
+    data[8] = 1;
+    memcpy(data + 12, &string_at, 4);
+    memcpy(data + 16, &px, 4);
+    memcpy(data + 20, &py, 4);
+    memcpy(data + 24, "box", 4);
+    memcpy(data + 28, &ref, 4);
+
+    orb_field_desc fields[5] = {
+        {.name = orb_asset_id("hp", ""), .data = 0, .count = 1, .kind = ORB_FIELD_INT},
+        {.name = orb_asset_id("hp", ""), .data = 4, .count = 1, .kind = ORB_FIELD_INT},
+        {.name = orb_asset_id("locked", ""), .data = 8, .count = 1, .kind = ORB_FIELD_BOOL},
+        {.name = orb_asset_id("label", ""), .data = 12, .count = 1, .kind = ORB_FIELD_STRING},
+        {.name = orb_asset_id("exit", ""), .data = 16, .count = 1, .kind = ORB_FIELD_POINT},
+    };
+    orb_assets in = {
+        .info = &info,
+        .pal = pal,
+        .levels = levels,
+        .level_count = 1,
+        .level_ids = level_ids,
+        .types = types,
+        .type_count = 1,
+        .type_ids = type_ids,
+        .placements = placements,
+        .placement_count = 1,
+        .fields = fields,
+        .field_count = 5,
+        .field_data = data,
+        .field_data_count = 32
+    };
+    orb_assets out;
+    orb_error err;
+
+    orb_span file = orb_file_write(a, &in);
+    CHECK(orb_file_load(file, &out, &err));
+    CHECK_EQ(out.type_count, 1);
+    CHECK_EQ(out.placement_count, 1);
+    CHECK_EQ(out.field_count, 5);
+    CHECK_EQ(out.field_data_count, 32);
+    CHECK_EQ(out.levels[0].placement_count, 1);
+    CHECK(out.type_ids[0] == orb_asset_id("crate", ""));
+    CHECK_EQ(out.placements[0].x, 16);
+    CHECK_EQ(orb_bytes_i32(out.field_data + out.fields[1].data), 3);
+
+    // a ref row past the placements
+    fields[4] = (orb_field_desc) {.name = 5, .data = 28, .count = 1, .kind = ORB_FIELD_REF};
+    ref = 1;
+    memcpy(data + 28, &ref, 4);
+    file = orb_file_write(a, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "ref 0 names no placement"));
+    ref = 0;
+    memcpy(data + 28, &ref, 4);
+    file = orb_file_write(a, &in);
+    CHECK(orb_file_load(file, &out, &err));
+
+    // a string whose offset leaves the data, then one whose bytes run to the end unterminated
+    string_at = 40;
+    memcpy(data + 12, &string_at, 4);
+    file = orb_file_write(a, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "string 0 leaves"));
+    string_at = 29; // "ox" and then the ref bytes, cut before any NUL
+    memcpy(data + 12, &string_at, 4);
+    in.field_data_count = 31;
+    fields[4].count = 0;
+    data[29] = 'o'; // non-zero past the "box\0" terminator, so the window holds no NUL
+    data[30] = 'x';
+    file = orb_file_write(a, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "string 0 leaves"));
+    string_at = 24;
+    memcpy(data + 12, &string_at, 4);
+    in.field_data_count = 32;
+    fields[4].count = 1;
+    data[29] = 0;
+    data[30] = 0;
+
+    // elements past the data, a misaligned offset, a bad kind
+    fields[0].count = 9;
+    file = orb_file_write(a, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "field 0 runs past"));
+    fields[0].count = 1;
+    fields[0].data = 2;
+    file = orb_file_write(a, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    fields[0].data = 0;
+    fields[0].kind = 9;
+    file = orb_file_write(a, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "field 0 has kind 9"));
+    fields[0].kind = ORB_FIELD_INT;
+
+    // a placement naming a type or level out of range, a level running past its placements,
+    // a type running past the fields
+    placements[0].type = 1;
+    file = orb_file_write(a, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    placements[0].type = 0;
+    levels[0].placement_count = 2;
+    file = orb_file_write(a, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "level 0 runs past its placements"));
+    levels[0].placement_count = 1;
+    types[0].field_count = 6;
+    file = orb_file_write(a, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "type 0 runs past"));
+    types[0].field_count = 1;
+    file = orb_file_write(a, &in);
+    CHECK(orb_file_load(file, &out, &err));
+
+    return 0;
+}
+
 int main(void) {
     orb_arena a;
     static alignas(16) uint8_t mem[1 << 20];
@@ -385,6 +530,8 @@ int main(void) {
     orb_arena_reset(&a);
     CHECK(!orb_file_load(orb_file_write(&a, &binding_in), &binding_out, &err));
     CHECK(strstr(err.text, "binding 3 has no terminator") != nullptr);
+
+    if (test_entities(&a)) return 1;
 
     return 0;
 }

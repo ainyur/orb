@@ -20,7 +20,22 @@
     "\"tilesetDefUid\": 7},"                                                                       \
     "   {\"uid\": 3, \"identifier\": \"Things\", \"__type\": \"Entities\", \"gridSize\": 8,"       \
     "   \"parallaxFactorX\": 0, \"parallaxFactorY\": 0, \"parallaxScaling\": true, "               \
-    "\"tilesetDefUid\": null}]},"                                                                  \
+    "\"tilesetDefUid\": null}],"                                                                   \
+    "  \"entities\": [{\"identifier\": \"Crate\", \"uid\": 20, \"width\": 8, \"height\": 8,"       \
+    "   \"fieldDefs\": ["                                                                          \
+    "    {\"identifier\": \"hp\", \"__type\": \"Int\", \"defaultOverride\": {\"id\": \"V_Int\", "  \
+    "\"params\": [10]}},"                                                                          \
+    "    {\"identifier\": \"locked\", \"__type\": \"Bool\", \"defaultOverride\": null},"           \
+    "    {\"identifier\": \"loot\", \"__type\": \"Array<Int>\", \"defaultOverride\": null},"       \
+    "    {\"identifier\": \"label\", \"__type\": \"String\", \"defaultOverride\": {\"id\": "       \
+    "\"V_String\", \"params\": [\"box\"]}},"                                                       \
+    "    {\"identifier\": \"kind\", \"__type\": \"LocalEnum.Kind\", \"defaultOverride\": null},"   \
+    "    {\"identifier\": \"exit\", \"__type\": \"Point\", \"defaultOverride\": null},"            \
+    "    {\"identifier\": \"link\", \"__type\": \"EntityRef\", \"defaultOverride\": null},"        \
+    "    {\"identifier\": \"tint\", \"__type\": \"Color\", \"defaultOverride\": {\"id\": "         \
+    "\"V_Int\", \"params\": [255]}}]},"                                                            \
+    "   {\"identifier\": \"Marker\", \"uid\": 30, \"width\": 4, \"height\": 4, \"fieldDefs\": "    \
+    "[]}]},"                                                                                       \
     " \"levels\": [%s]}"
 
 #define LEVEL_A                                                                                    \
@@ -34,7 +49,7 @@
     "2, \"__cHei\": 1,"                                                                            \
     "   \"__gridSize\": 8, \"__opacity\": 1, \"__pxTotalOffsetX\": 0, \"__pxTotalOffsetY\": 0,"    \
     "   \"__tilesetDefUid\": null, \"intGridCsv\": [], \"autoLayerTiles\": [], \"gridTiles\": "    \
-    "[], \"entityInstances\": [{}]},"                                                              \
+    "[], \"entityInstances\": [%s]},"                                                              \
     "  {\"__identifier\": \"Collision\", \"__type\": \"IntGrid\", \"layerDefUid\": 2, "            \
     "\"__cWid\": 2, \"__cHei\": 1,"                                                                \
     "   \"__gridSize\": 8, \"__opacity\": %s, \"__pxTotalOffsetX\": 3, \"__pxTotalOffsetY\": -1,"  \
@@ -78,6 +93,7 @@ static char level_text[8192];
 
 static const char* level_a(
     const char* bg,
+    const char* entities,
     const char* opacity,
     const char* tileset,
     const char* csv,
@@ -85,11 +101,29 @@ static const char* level_a(
     const char* alpha,
     const char* dir
 ) {
-    snprintf(level_text, sizeof level_text, LEVEL_A, bg, dir, opacity, tileset, csv, tile, alpha);
+    snprintf(
+        level_text, sizeof level_text, LEVEL_A, bg, dir, entities, opacity, tileset, csv, tile,
+        alpha
+    );
     return level_text;
 }
 
-#define GOOD_A level_a("null", "1", "7", "0, 1", "5", "1", "<")
+#define INSTANCES                                                                                  \
+    "{\"__identifier\": \"Crate\", \"iid\": \"crate-a\", \"defUid\": 20, \"px\": [8, 0],"          \
+    " \"width\": 8, \"height\": 8, \"fieldInstances\": ["                                          \
+    "  {\"__identifier\": \"hp\", \"__type\": \"Int\", \"__value\": 3},"                           \
+    "  {\"__identifier\": \"locked\", \"__type\": \"Bool\", \"__value\": true},"                   \
+    "  {\"__identifier\": \"loot\", \"__type\": \"Array<Int>\", \"__value\": [1, 2, 3]},"          \
+    "  {\"__identifier\": \"label\", \"__type\": \"String\", \"__value\": null},"                  \
+    "  {\"__identifier\": \"kind\", \"__type\": \"LocalEnum.Kind\", \"__value\": \"Wood\"},"       \
+    "  {\"__identifier\": \"exit\", \"__type\": \"Point\", \"__value\": {\"cx\": 1, \"cy\": 0}},"  \
+    "  {\"__identifier\": \"link\", \"__type\": \"EntityRef\", \"__value\": {\"entityIid\": "      \
+    "\"marker-a\"}},"                                                                              \
+    "  {\"__identifier\": \"tint\", \"__type\": \"Color\", \"__value\": \"#ff0000\"}]},"           \
+    "{\"__identifier\": \"Marker\", \"iid\": \"marker-a\", \"defUid\": 30, \"px\": [0, 0],"        \
+    " \"width\": 4, \"height\": 4, \"fieldInstances\": []}"
+
+#define GOOD_A level_a("null", INSTANCES, "1", "7", "0, 1", "5", "1", "<")
 
 static bool fails_with(orb_arena* a, orb_span text, const char* needle) {
     orb_ldtk out;
@@ -170,6 +204,48 @@ int main(void) {
     CHECK_EQ(p.levels[1].layer_count, 0);
     CHECK_EQ(p.levels[1].world_x, 16);
 
+    // entity definitions: two types; the crate's defaults are the two non-null ones, the color
+    // definition is skipped, and every declared name is kept for the instance check
+    CHECK_EQ(p.entity_def_count, 2);
+    const orb_ldtk_entity_def* crate = &p.entity_defs[0];
+    CHECK(strcmp(crate->name, "Crate") == 0);
+    CHECK_EQ(crate->uid, 20);
+    CHECK_EQ(crate->width, 8);
+    CHECK_EQ(crate->field_count, 2);
+    CHECK(strcmp(crate->fields[0].name, "hp") == 0);
+    CHECK_EQ(crate->fields[0].kind, ORB_FIELD_INT);
+    CHECK_EQ(crate->fields[0].count, 1);
+    CHECK_EQ(crate->fields[0].values[0].i, 10);
+    CHECK_EQ(crate->fields[1].kind, ORB_FIELD_STRING);
+    CHECK(strcmp(crate->fields[1].values[0].s, "box") == 0);
+    CHECK_EQ(crate->field_name_count, 8);
+    CHECK_EQ(p.entity_defs[1].field_count, 0);
+
+    // instances: world position is the level's plus px; the point is the layer's grid cell in
+    // world pixels; the null label and the color are not read; the ref keeps its iid
+    CHECK_EQ(room->instance_count, 2);
+    const orb_ldtk_instance* a_crate = &room->instances[0];
+    CHECK(strcmp(a_crate->iid, "crate-a") == 0);
+    CHECK_EQ(a_crate->def, 0);
+    CHECK_EQ(a_crate->x, 8);
+    CHECK_EQ(a_crate->y, -8);
+    CHECK_EQ(a_crate->width, 8);
+    CHECK_EQ(a_crate->field_count, 6);
+    CHECK_EQ(a_crate->fields[0].values[0].i, 3);
+    CHECK_EQ(a_crate->fields[1].kind, ORB_FIELD_BOOL);
+    CHECK(a_crate->fields[1].values[0].b);
+    CHECK_EQ(a_crate->fields[2].count, 3);
+    CHECK_EQ(a_crate->fields[2].values[2].i, 3);
+    CHECK(strcmp(a_crate->fields[3].name, "kind") == 0);
+    CHECK(strcmp(a_crate->fields[3].values[0].s, "Wood") == 0);
+    CHECK_EQ(a_crate->fields[4].kind, ORB_FIELD_POINT);
+    CHECK_EQ(a_crate->fields[4].values[0].point.x, 8);
+    CHECK_EQ(a_crate->fields[4].values[0].point.y, -8);
+    CHECK_EQ(a_crate->fields[5].kind, ORB_FIELD_REF);
+    CHECK(strcmp(a_crate->fields[5].values[0].s, "marker-a") == 0);
+    CHECK_EQ(room->instances[1].def, 1);
+    CHECK_EQ(room->instances[1].field_count, 0);
+
     // an external level file is one level object
     char annex[8192];
     snprintf(annex, sizeof annex, "%s", GOOD_A);
@@ -180,6 +256,89 @@ int main(void) {
     CHECK_EQ(p.levels[1].layer_count, 2);
     CHECK(strcmp(p.levels[1].name, "Annex") == 0); // identity comes from the project, not the file
     CHECK_EQ(p.levels[1].world_x, 16);
+
+    // entity rejections name the level, the entity, and the field
+    CHECK(fails_with(
+        &a,
+        project(
+            "false", "", "tiles.aseprite", "0", "0", "true",
+            level_a(
+                "null",
+                "{\"__identifier\": \"Ghost\", \"iid\": \"g\", \"defUid\": 99, \"px\": [0, 0],"
+                " \"width\": 8, \"height\": 8, \"fieldInstances\": []}",
+                "1", "7", "0, 1", "5", "1", "<"
+            )
+        ),
+        "level Room: layer Things: entity Ghost: defUid 99 has no definition"
+    ));
+    CHECK(fails_with(
+        &a,
+        project(
+            "false", "", "tiles.aseprite", "0", "0", "true",
+            level_a(
+                "null",
+                "{\"__identifier\": \"Crate\", \"iid\": \"c\", \"defUid\": 20, \"px\": [0, 0],"
+                " \"width\": 8, \"height\": 8, \"fieldInstances\": [{\"__identifier\": \"loot\","
+                " \"__type\": \"Array<Int>\", \"__value\": [1, null]}]}",
+                "1", "7", "0, 1", "5", "1", "<"
+            )
+        ),
+        "entity Crate: field loot: null element"
+    ));
+    CHECK(fails_with(
+        &a,
+        project(
+            "false", "", "tiles.aseprite", "0", "0", "true",
+            level_a(
+                "null",
+                "{\"__identifier\": \"Crate\", \"iid\": \"c\", \"defUid\": 20, \"px\": [0, 0],"
+                " \"width\": 8, \"height\": 8, \"fieldInstances\": [{\"__identifier\": \"hp\","
+                " \"__type\": \"Int\", \"__value\": \"ten\"}]}",
+                "1", "7", "0, 1", "5", "1", "<"
+            )
+        ),
+        "field hp: is not a number"
+    ));
+    CHECK(fails_with(
+        &a,
+        project(
+            "false", "", "tiles.aseprite", "0", "0", "true",
+            level_a(
+                "null",
+                "{\"__identifier\": \"Crate\", \"iid\": \"c\", \"defUid\": 20, \"px\": [0, 0],"
+                " \"width\": 8, \"height\": 8, \"fieldInstances\": [{\"__identifier\": \"hp\","
+                " \"__type\": \"Array<Int>\", \"__value\": 4}]}",
+                "1", "7", "0, 1", "5", "1", "<"
+            )
+        ),
+        "field hp: is not an array"
+    ));
+    CHECK(fails_with(
+        &a,
+        project(
+            "false", "", "tiles.aseprite", "0", "0", "true",
+            level_a(
+                "null",
+                "{\"__identifier\": \"Crate\", \"iid\": \"c\", \"defUid\": 20, \"px\": [0, 0],"
+                " \"width\": 8, \"height\": 8, \"fieldInstances\": [{\"__identifier\": \"hp\","
+                " \"__type\": \"Matrix\", \"__value\": 4}]}",
+                "1", "7", "0, 1", "5", "1", "<"
+            )
+        ),
+        "field hp: field type Matrix is not supported"
+    ));
+
+    const char* bad_default_project =
+        "{\"jsonVersion\": \"1.5.3\", \"worldLayout\": \"Free\", \"externalLevels\": false,"
+        " \"worlds\": [], \"defs\": {\"tilesets\": [], \"layers\": [],"
+        "  \"entities\": [{\"identifier\": \"Crate\", \"uid\": 1, \"width\": 8, \"height\": 8,"
+        "   \"fieldDefs\": [{\"identifier\": \"label\", \"__type\": \"String\","
+        "    \"defaultOverride\": {\"id\": \"V_Int\", \"params\": [4]}}]}]},"
+        " \"levels\": []}";
+    CHECK(fails_with(
+        &a, (orb_span) {(const uint8_t*)bad_default_project, strlen(bad_default_project)},
+        "entity Crate: field label: is not a string"
+    ));
 
     // rejections, each naming the file
     CHECK(
@@ -207,7 +366,7 @@ int main(void) {
         "    \"tilesetDefUid\": 7},"
         "   {\"uid\": 2, \"identifier\": \"Collision\", \"__type\": \"IntGrid\", \"gridSize\": 8,"
         "    \"parallaxFactorX\": 0, \"parallaxFactorY\": 0, \"parallaxScaling\": false,"
-        "    \"tilesetDefUid\": 7}]},"
+        "    \"tilesetDefUid\": 7}], \"entities\": []},"
         " \"levels\": [{\"identifier\": \"Room\", \"iid\": \"aaa\", \"worldX\": 0, \"worldY\": 0,"
         "   \"worldDepth\": 0, \"pxWid\": 16, \"pxHei\": 8, \"bgRelPath\": null,"
         "   \"externalRelPath\": null, \"__neighbours\": [],"
@@ -239,7 +398,7 @@ int main(void) {
         "    \"__cWid\": 4, \"__cHei\": 2}],"
         "  \"layers\": [{\"uid\": 1, \"identifier\": \"Floor\", \"__type\": \"Tiles\","
         "    \"gridSize\": 8, \"parallaxFactorX\": 0, \"parallaxFactorY\": 0,"
-        "    \"parallaxScaling\": false, \"tilesetDefUid\": 7}]},"
+        "    \"parallaxScaling\": false, \"tilesetDefUid\": 7}], \"entities\": []},"
         " \"levels\": [{\"identifier\": \"Room\", \"iid\": \"aaa\", \"worldX\": 0, \"worldY\": 0,"
         "   \"worldDepth\": 0, \"pxWid\": 16, \"pxHei\": 8, \"bgRelPath\": null,"
         "   \"externalRelPath\": null, \"__neighbours\": [],"
@@ -263,7 +422,7 @@ int main(void) {
         "    \"__cWid\": 4, \"__cHei\": 2}],"
         "  \"layers\": [{\"uid\": 1, \"identifier\": \"Floor\", \"__type\": \"Tiles\","
         "    \"gridSize\": 8, \"parallaxFactorX\": 0, \"parallaxFactorY\": 0,"
-        "    \"parallaxScaling\": false, \"tilesetDefUid\": 7}]},"
+        "    \"parallaxScaling\": false, \"tilesetDefUid\": 7}], \"entities\": []},"
         " \"levels\": [{\"identifier\": \"Room\", \"iid\": \"aaa\", \"worldX\": 0, \"worldY\": 0,"
         "   \"worldDepth\": 0, \"pxWid\": 16, \"pxHei\": 8, \"bgRelPath\": null,"
         "   \"externalRelPath\": null, \"__neighbours\": [],"
@@ -287,7 +446,7 @@ int main(void) {
         "    \"__cWid\": 4, \"__cHei\": 2}],"
         "  \"layers\": [{\"uid\": 1, \"identifier\": \"Floor\", \"__type\": \"Tiles\","
         "    \"gridSize\": 8, \"parallaxFactorX\": 0, \"parallaxFactorY\": 0,"
-        "    \"parallaxScaling\": false, \"tilesetDefUid\": 7}]},"
+        "    \"parallaxScaling\": false, \"tilesetDefUid\": 7}], \"entities\": []},"
         " \"levels\": [{\"identifier\": \"Room\", \"iid\": \"aaa\", \"worldX\": 0, \"worldY\": 0,"
         "   \"worldDepth\": 0, \"pxWid\": 16, \"pxHei\": 8, \"bgRelPath\": null,"
         "   \"externalRelPath\": null, \"__neighbours\": [],"
@@ -315,7 +474,7 @@ int main(void) {
         &a,
         project(
             "false", "", "tiles.aseprite", "0", "0", "true",
-            level_a("\"bg.png\"", "1", "7", "0, 1", "5", "1", "<")
+            level_a("\"bg.png\"", INSTANCES, "1", "7", "0, 1", "5", "1", "<")
         ),
         "background"
     ));
@@ -323,7 +482,7 @@ int main(void) {
         &a,
         project(
             "false", "", "tiles.aseprite", "0", "0", "true",
-            level_a("null", "0.5", "7", "0, 1", "5", "1", "<")
+            level_a("null", INSTANCES, "0.5", "7", "0, 1", "5", "1", "<")
         ),
         "opacity"
     ));
@@ -331,7 +490,7 @@ int main(void) {
         &a,
         project(
             "false", "", "tiles.aseprite", "0", "0", "true",
-            level_a("null", "1", "7", "0, 1", "5", "0.5", "<")
+            level_a("null", INSTANCES, "1", "7", "0, 1", "5", "0.5", "<")
         ),
         "alpha"
     ));
@@ -339,7 +498,7 @@ int main(void) {
         &a,
         project(
             "false", "", "tiles.aseprite", "0", "0", "true",
-            level_a("null", "1", "9", "0, 1", "5", "1", "<")
+            level_a("null", INSTANCES, "1", "9", "0, 1", "5", "1", "<")
         ),
         "tileset"
     ));
@@ -347,7 +506,7 @@ int main(void) {
         &a,
         project(
             "false", "", "tiles.aseprite", "0", "0", "true",
-            level_a("null", "1", "7", "0, 300", "5", "1", "<")
+            level_a("null", INSTANCES, "1", "7", "0, 300", "5", "1", "<")
         ),
         "255"
     ));
@@ -355,7 +514,7 @@ int main(void) {
         &a,
         project(
             "false", "", "tiles.aseprite", "0", "0", "true",
-            level_a("null", "1", "7", "0, 1", "20000", "1", "<")
+            level_a("null", INSTANCES, "1", "7", "0, 1", "20000", "1", "<")
         ),
         "tile id"
     ));
@@ -363,7 +522,7 @@ int main(void) {
         &a,
         project(
             "false", "", "tiles.aseprite", "0", "0", "true",
-            level_a("null", "1", "7", "0, 1", "-1", "1", "<")
+            level_a("null", INSTANCES, "1", "7", "0, 1", "-1", "1", "<")
         ),
         "does not fit"
     ));
@@ -371,7 +530,7 @@ int main(void) {
         &a,
         project(
             "false", "", "tiles.aseprite", "0", "0", "true",
-            level_a("null", "1", "7", "0", "5", "1", "<")
+            level_a("null", INSTANCES, "1", "7", "0", "5", "1", "<")
         ),
         "intGridCsv"
     ));
@@ -382,7 +541,7 @@ int main(void) {
         &a,
         project(
             "false", "", "tiles.aseprite", "0", "0", "true",
-            level_a("null", "0.5", "7", "0, 1", "5", "1", "<")
+            level_a("null", INSTANCES, "0.5", "7", "0, 1", "5", "1", "<")
         ),
         "world.ldtk", &p, &e
     ));
@@ -394,7 +553,7 @@ int main(void) {
         &a,
         project(
             "false", "", "tiles.aseprite", "0", "0", "true",
-            level_a("null", "1", "7", "0, 1", "5", "1", "x")
+            level_a("null", INSTANCES, "1", "7", "0, 1", "5", "1", "x")
         ),
         "world.ldtk", &p, &e
     ));

@@ -8,6 +8,7 @@ const orb_api* orb_api_table(void);
 const orb_assets* orb_api_assets(void);
 const orb_fb* orb_api_fb(void);
 const uint32_t* orb_api_pal_base(void);
+orb_vec2f orb_api_camera(void);
 
 void orb_api_boot(orb_arena* a, orb_size size, const orb_assets* assets);
 void orb_api_poll(void); // once a tick: reports dropped audio commands

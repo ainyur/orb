@@ -14,6 +14,8 @@
 #include "graphics/tilemap.c"
 #include "graphics/camera.c"
 #include "audio/mixer.c"
+#include "core/entity.c"
+#include "core/world.c"
 #include "core/api.c"
 #include "core/console.c"
 

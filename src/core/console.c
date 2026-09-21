@@ -1,4 +1,5 @@
 #include "console.h"
+#include "../graphics/pal.h"
 #include "api.h"
 #include "bytes.h"
 #include "console_font.h"
@@ -625,20 +626,6 @@ void orb_console_step(orb_input* in) {
     console_before = raw;
 }
 
-// The darkest and brightest base palette entries by luminance.
-static void console_colors(uint32_t* dark, uint32_t* bright) {
-    const uint32_t* base = orb_api_pal_base();
-    int low = 1 << 30, high = -1;
-
-    for (int i = 0; i < 256; i++) {
-        uint32_t c = base[i];
-        int lum = 299 * (int)(c >> 16 & 0xff) + 587 * (int)(c >> 8 & 0xff) + 114 * (int)(c & 0xff);
-
-        if (lum < low) low = lum, *dark = c;
-        if (lum > high) high = lum, *bright = c;
-    }
-}
-
 static void console_glyph(uint32_t* rgb, int width, int x, int y, unsigned char c, uint32_t color) {
     const uint8_t* g = ORB_CONSOLE_FONT[c < 32 || c > 126 ? '?' - 32 : c - 32];
 
@@ -677,7 +664,7 @@ void orb_console_draw(uint32_t* rgb, orb_size size) {
 
     uint32_t dark = 0, bright = 0;
 
-    console_colors(&dark, &bright);
+    orb_pal_extremes(orb_api_pal_base(), &dark, &bright);
 
     for (int i = 0; i < orb_min(console_rows * 6, size.height) * size.width; i++)
         rgb[i] = dark;

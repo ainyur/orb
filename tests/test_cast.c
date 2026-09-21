@@ -194,8 +194,66 @@ int main(void) {
     CHECK_EQ(as.neighbors[0].dir, ORB_LEVEL_E);
     CHECK_EQ(as.neighbors[1].dir, ORB_LEVEL_HIGHER);
 
-    // scratch peaks at the packed PCM plus the largest file plus the art, the font, and the world
-    CHECK(scratch.peak < 2 * as.pcm_count * sizeof(int16_t) + (135 << 10));
+    // entities: three types, four placements in Room and none in Annex, the crate's two
+    // defaults, crate-a's six values with its ref resolved to crate-b, and no field for the
+    // color or the null values
+    CHECK_EQ(as.type_count, 3);
+    CHECK_EQ(as.type_ids[0], orb_asset_id("crate", ""));
+    CHECK_EQ(as.type_ids[2], orb_asset_id("Player", ""));
+    CHECK_EQ(as.types[0].width, 8);
+    CHECK_EQ(as.types[0].field_count, 2);
+    CHECK_EQ(as.types[1].field_count, 0);
+    CHECK_EQ(as.placement_count, 4);
+    CHECK_EQ(as.levels[0].first_placement, 0);
+    CHECK_EQ(as.levels[0].placement_count, 4);
+    CHECK_EQ(as.levels[1].placement_count, 0);
+    CHECK_EQ(as.placements[0].type, 0);
+    CHECK_EQ(as.placements[0].level, 0);
+    CHECK_EQ(as.placements[0].x, 16);
+    CHECK_EQ(as.placements[0].y, 8);
+    CHECK(as.placements[0].iid == orb_asset_id("crate-a", ""));
+    CHECK_EQ(as.placements[0].field_count, 6);
+    CHECK_EQ(as.placements[1].field_count, 0);
+    CHECK_EQ(as.placements[3].type, 2);
+    CHECK_EQ(as.placements[3].x, 24);
+    CHECK_EQ(as.field_count, 8);
+
+    const orb_field_desc* hp_default = &as.fields[as.types[0].first_field];
+    CHECK(hp_default->name == orb_asset_id("hp", ""));
+    CHECK_EQ(hp_default->kind, ORB_FIELD_INT);
+    CHECK_EQ(orb_bytes_i32(as.field_data + hp_default->data), 10);
+
+    const orb_field_desc* label_default = hp_default + 1;
+    CHECK_EQ(label_default->kind, ORB_FIELD_STRING);
+    CHECK(
+        strcmp(
+            (const char*)as.field_data + orb_bytes_u32(as.field_data + label_default->data), "box"
+        ) == 0
+    );
+
+    const orb_field_desc* crate_a = &as.fields[as.placements[0].first_field];
+    CHECK_EQ(orb_bytes_i32(as.field_data + crate_a[0].data), 3);
+    CHECK_EQ(crate_a[1].kind, ORB_FIELD_BOOL);
+    CHECK_EQ(as.field_data[crate_a[1].data], 1);
+    CHECK_EQ(crate_a[2].count, 3);
+    CHECK_EQ(orb_bytes_i32(as.field_data + crate_a[2].data + 8), 3);
+    CHECK(crate_a[3].name == orb_asset_id("kind", ""));
+    CHECK(
+        strcmp(
+            (const char*)as.field_data + orb_bytes_u32(as.field_data + crate_a[3].data), "Wood"
+        ) == 0
+    );
+    CHECK_EQ(crate_a[4].kind, ORB_FIELD_POINT);
+    CHECK_EQ(orb_bytes_i32(as.field_data + crate_a[4].data), 40);
+    CHECK_EQ(orb_bytes_i32(as.field_data + crate_a[4].data + 4), 16);
+    CHECK_EQ(crate_a[5].kind, ORB_FIELD_REF);
+    CHECK_EQ(orb_bytes_u32(as.field_data + crate_a[5].data), 1);
+    CHECK_EQ(as.fields[0].data & 3, 0);
+    CHECK_EQ(crate_a[5].data & 3, 0);
+
+    // scratch peaks at the packed PCM plus the largest file plus the art, the font, and the
+    // world, whose entity definitions and instances now add to its parsed size
+    CHECK(scratch.peak < 2 * as.pcm_count * sizeof(int16_t) + (150 << 10));
 
     // no project: no levels, and the directory is watched so its creation recasts
     const char* no_project =
@@ -522,6 +580,47 @@ int main(void) {
 
     CHECK(!orb_cast_game(&scratch, &tiny, DIR, &m, &r, &err));
     CHECK(strstr(err.text, "asset half B") != nullptr);
+
+    // an unresolved ref is a cast error naming the level, the entity, and the field
+    const char* badref_manifest =
+        "{\"id\": \"badref\", \"name\": \"b\", \"size\": [8, 8],\n"
+        " \"asset_headroom\": 1048576, \"palette\": \"" ART "art/palette.aseprite\",\n"
+        " \"art\": \"" ART "art\", \"sfx\": \"" ART "sfx\", \"music\": \"" ART "music\",\n"
+        " \"fonts\": \"" ART "fonts\", \"world\": \"world.ldtk\"}\n";
+    const char* badref_world =
+        "{\"jsonVersion\": \"1.5.3\", \"worldLayout\": \"Free\", \"externalLevels\": false,"
+        " \"worlds\": [], \"defs\": {\"tilesets\": [], \"layers\": [{\"uid\": 1,"
+        "  \"identifier\": \"e\", \"__type\": \"Entities\", \"gridSize\": 8,"
+        "  \"parallaxFactorX\": 0, \"parallaxFactorY\": 0, \"parallaxScaling\": false,"
+        "  \"tilesetDefUid\": null}],"
+        "  \"entities\": [{\"identifier\": \"Door\", \"uid\": 1, \"width\": 8, \"height\": 8,"
+        "   \"fieldDefs\": [{\"identifier\": \"to\", \"__type\": \"EntityRef\","
+        "    \"defaultOverride\": null}]}]},"
+        " \"levels\": [{\"identifier\": \"Hall\", \"iid\": \"h\", \"worldX\": 0, \"worldY\": 0,"
+        "  \"worldDepth\": 0, \"pxWid\": 8, \"pxHei\": 8, \"bgRelPath\": null,"
+        "  \"externalRelPath\": null, \"__neighbours\": [], \"layerInstances\": ["
+        "   {\"__identifier\": \"e\", \"__type\": \"Entities\", \"layerDefUid\": 1,"
+        "    \"__cWid\": 1, \"__cHei\": 1, \"__gridSize\": 8, \"__opacity\": 1,"
+        "    \"__pxTotalOffsetX\": 0, \"__pxTotalOffsetY\": 0, \"__tilesetDefUid\": null,"
+        "    \"intGridCsv\": [], \"gridTiles\": [], \"autoLayerTiles\": [],"
+        "    \"entityInstances\": [{\"__identifier\": \"Door\", \"iid\": \"d\", \"defUid\": 1,"
+        "     \"px\": [0, 0], \"width\": 8, \"height\": 8, \"fieldInstances\": ["
+        "      {\"__identifier\": \"to\", \"__type\": \"EntityRef\","
+        "       \"__value\": {\"entityIid\": \"nowhere\"}}]}]}]}]}";
+
+    CHECK(orb_os_make_dir("build/scratch/badref"));
+    CHECK(orb_os_write_file(
+        "build/scratch/badref/orb.json",
+        (orb_span) {(const uint8_t*)badref_manifest, strlen(badref_manifest)}
+    ));
+    CHECK(orb_os_write_file(
+        "build/scratch/badref/world.ldtk",
+        (orb_span) {(const uint8_t*)badref_world, strlen(badref_world)}
+    ));
+    orb_arena_reset(&scratch);
+    orb_arena_reset(&out);
+    CHECK(!orb_cast_game(&scratch, &out, "build/scratch/badref", &m, &r, &err));
+    CHECK(strstr(err.text, "level Hall: entity Door: field to: ref nowhere"));
 
     return 0;
 }

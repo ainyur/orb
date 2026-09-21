@@ -34,6 +34,18 @@ int orb_tilemap_cell(const orb_assets* assets, orb_level level, int layer, orb_v
     return assets->cells[l->cells + cell_y * l->columns + cell_x];
 }
 
+uint32_t orb_tilemap_level_at(const orb_assets* assets, orb_vec2 at) {
+    for (uint32_t i = 0; i < assets->level_count; i++) {
+        const orb_level_desc* d = &assets->levels[i];
+
+        if (at.x >= d->world_x && at.x < d->world_x + d->width && at.y >= d->world_y &&
+            at.y < d->world_y + d->height)
+            return i;
+    }
+
+    return ORB_NO_INDEX;
+}
+
 int orb_tilemap_layer_find(const orb_assets* assets, orb_level level, const char* name) {
     const orb_level_desc* d = tilemap_level(assets, level);
     uint64_t id = orb_asset_id(name, "");

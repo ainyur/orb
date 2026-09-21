@@ -5,6 +5,7 @@
 #include "../core/arena.h"
 #include "../core/log.h"
 #include "../orb.h"
+#include "file.h"
 
 typedef struct orb_ldtk_tile {
     uint16_t cell_x, cell_y, id;
@@ -26,6 +27,29 @@ typedef struct orb_ldtk_neighbor {
     orb_level_dir dir;
 } orb_ldtk_neighbor;
 
+typedef union orb_ldtk_value {
+    int32_t i;
+    float f;
+    bool b;
+    const char* s;  // a string, or the iid a ref names until the cast resolves it
+    orb_vec2 point; // world pixels
+} orb_ldtk_value;
+
+typedef struct orb_ldtk_field {
+    const char* name;
+    orb_field_kind kind;
+    int count;
+    orb_ldtk_value* values;
+} orb_ldtk_field;
+
+typedef struct orb_ldtk_instance {
+    const char* iid;
+    int def;                 // index into orb_ldtk.entity_defs
+    int x, y, width, height; // world pixels
+    orb_ldtk_field* fields;  // the non-null values the definition declares
+    int field_count;
+} orb_ldtk_instance;
+
 typedef struct orb_ldtk_level {
     const char *name, *iid,
         *external_path; // external_path relative to the project file, or nullptr
@@ -34,6 +58,8 @@ typedef struct orb_ldtk_level {
     int layer_count;
     orb_ldtk_neighbor* neighbors;
     int neighbor_count;
+    orb_ldtk_instance* instances; // every Entities layer's, bottom to top
+    int instance_count;
 } orb_ldtk_level;
 
 typedef struct orb_ldtk_tileset {
@@ -55,6 +81,15 @@ typedef struct orb_ldtk_skipped {
     const char* path;
 } orb_ldtk_skipped;
 
+typedef struct orb_ldtk_entity_def {
+    const char* name;
+    int uid, width, height;
+    const char** field_names; // every declared field, skipped kinds included
+    int field_name_count;
+    orb_ldtk_field* fields; // the non-null defaults
+    int field_count;
+} orb_ldtk_entity_def;
+
 typedef struct orb_ldtk {
     orb_ldtk_tileset* tilesets;
     int tileset_count; // definitions with an .aseprite relPath; others are skipped
@@ -62,6 +97,8 @@ typedef struct orb_ldtk {
     int skipped_count;
     orb_ldtk_layer_def* layer_defs;
     int layer_def_count;
+    orb_ldtk_entity_def* entity_defs;
+    int entity_def_count;
     orb_ldtk_level* levels;
     int level_count;
 } orb_ldtk;

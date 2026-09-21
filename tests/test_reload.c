@@ -4,9 +4,12 @@
 
 static size_t test_state_size = 64;
 static int test_init_count, test_reload_count;
+static uint16_t test_component_size = 8;
 
 static orb_config test_config(void) {
-    return (orb_config) {.state_size = test_state_size, .state_version = 1};
+    return (orb_config) {
+        .state_size = test_state_size, .state_version = 1, .components = {test_component_size}
+    };
 }
 
 static void test_init(void* state, const orb_api* orb) {
@@ -55,6 +58,13 @@ int main(void) {
     test_state_size = 64 - 8;
     orb_set_game(&test_game);
     CHECK_EQ(test_init_count, 3);
+
+    // a changed component size resets the pool with the state; so does max_entities
+    test_component_size = 12;
+    orb_set_game(&test_game);
+    CHECK_EQ(test_init_count, 4);
+    CHECK_EQ(orb_entity_pool()->sizes[ORB_COMPONENT_GAME], 12);
+    CHECK_EQ(orb_entity_pool()->max, 256); // 0 in the config means 256
 
     orb_quit();
 
