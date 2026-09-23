@@ -15,8 +15,8 @@ static size_t headless_pixels;
 static const char headless_letters[] = "abcdefghijklmnopqrstuvwxyz1234567890";
 static const char headless_marks[] = "-=[]\\#;'`,./";
 
-bool orb_os_open(const orb_os_config* cfg) {
-    headless_pixels = (size_t)cfg->size.width * cfg->size.height;
+bool orb_os_open(const orb_os_config* config) {
+    headless_pixels = (size_t)config->size.width * config->size.height;
     headless_frame = calloc(headless_pixels, sizeof *headless_frame);
 
     return headless_frame != nullptr;
@@ -61,6 +61,6 @@ const uint32_t* orb_os_headless_frame(void) {
     return headless_frame;
 }
 
-void orb_os_headless_set_input(const orb_input* in) {
-    headless_input = *in;
+void orb_os_headless_set_input(const orb_input* input) {
+    headless_input = *input;
 }

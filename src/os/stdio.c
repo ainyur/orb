@@ -22,26 +22,26 @@ bool orb_os_read_file(const char* path, orb_arena* into, orb_span* out) {
 
     // push before opening: an exhausted arena may longjmp out of here
     uint8_t* data = orb_arena_push(into, (size_t)info.size + 1, 16);
-    FILE* f = orb_os_fopen(path, "rb");
+    FILE* file = orb_os_fopen(path, "rb");
 
-    if (!f) return false;
+    if (!file) return false;
 
-    out->len = fread(data, 1, (size_t)info.size, f);
+    out->len = fread(data, 1, (size_t)info.size, file);
     data[out->len] = 0;
     out->ptr = data;
-    fclose(f);
+    fclose(file);
 
     return out->len == info.size;
 }
 
 bool orb_os_write_file(const char* path, orb_span data) {
-    FILE* f = orb_os_fopen(path, "wb");
+    FILE* file = orb_os_fopen(path, "wb");
 
-    if (!f) return false;
+    if (!file) return false;
 
-    bool ok = fwrite(data.ptr, 1, data.len, f) == data.len;
+    bool ok = fwrite(data.ptr, 1, data.len, file) == data.len;
 
-    return fclose(f) == 0 && ok;
+    return fclose(file) == 0 && ok;
 }
 
 bool orb_path_absolute(const char* path) {

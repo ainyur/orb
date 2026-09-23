@@ -87,27 +87,27 @@ typedef struct orb_asset_table {
 uint64_t orb_asset_id(const char* stem, const char* suffix);
 
 // The handle whose id matches, or ORB_NO_INDEX.
-uint32_t orb_asset_find(const orb_asset_table* t, orb_asset_kind kind, uint64_t id);
+uint32_t orb_asset_find(const orb_asset_table* table, orb_asset_kind kind, uint64_t id);
 
 // A handle's index, or ORB_NO_INDEX when it is stale.
-static inline uint32_t orb_asset_index(const uint8_t* gens, uint32_t count, uint32_t v) {
-    uint32_t index = v & ORB_NO_INDEX, gen = v >> 24;
+static inline uint32_t orb_asset_index(const uint8_t* gens, uint32_t count, uint32_t value) {
+    uint32_t index = value & ORB_NO_INDEX, gen = value >> 24;
 
     if (index >= count || (gens ? gens[index] : 0) != gen) return ORB_NO_INDEX;
 
     return index;
 }
 
-#define orb_asset_index_of(as, h)                                                                  \
+#define orb_asset_index_of(assets, handle)                                                         \
     _Generic(                                                                                      \
-        (h),                                                                                       \
-        orb_sprite: orb_asset_index((as)->sprite_gens, (as)->sprite_count, (h).v),                 \
-        orb_anim: orb_asset_index((as)->anim_gens, (as)->anim_count, (h).v),                       \
-        orb_sample: orb_asset_index((as)->sample_gens, (as)->sample_count, (h).v),                 \
-        orb_song: orb_asset_index((as)->song_gens, (as)->song_count, (h).v),                       \
-        orb_level: orb_asset_index((as)->level_gens, (as)->level_count, (h).v),                    \
-        orb_font: orb_asset_index((as)->font_gens, (as)->font_count, (h).v),                       \
-        orb_type: orb_asset_index((as)->type_gens, (as)->type_count, (h).v)                        \
+        (handle),                                                                                  \
+        orb_sprite: orb_asset_index((assets)->sprite_gens, (assets)->sprite_count, (handle).v),    \
+        orb_anim: orb_asset_index((assets)->anim_gens, (assets)->anim_count, (handle).v),          \
+        orb_sample: orb_asset_index((assets)->sample_gens, (assets)->sample_count, (handle).v),    \
+        orb_song: orb_asset_index((assets)->song_gens, (assets)->song_count, (handle).v),          \
+        orb_level: orb_asset_index((assets)->level_gens, (assets)->level_count, (handle).v),       \
+        orb_font: orb_asset_index((assets)->font_gens, (assets)->font_count, (handle).v),          \
+        orb_type: orb_asset_index((assets)->type_gens, (assets)->type_count, (handle).v)           \
     )
 
-void orb_asset_set(orb_asset_table* t, const orb_assets* assets);
+void orb_asset_set(orb_asset_table* table, const orb_assets* assets);

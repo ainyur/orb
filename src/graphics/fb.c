@@ -3,10 +3,10 @@
 
 #include <string.h>
 
-void orb_fb_init(orb_fb* fb, orb_arena* a, orb_size size) {
+void orb_fb_init(orb_fb* fb, orb_arena* arena, orb_size size) {
     fb->width = size.width;
     fb->height = size.height;
-    fb->px = orb_arena_push(a, (size_t)size.width * size.height, 16);
+    fb->px = orb_arena_push(arena, (size_t)size.width * size.height, 16);
 }
 
 void orb_fb_clear(orb_fb* fb, uint8_t index) {

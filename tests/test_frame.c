@@ -31,8 +31,8 @@ int main(void) {
         return 1;
     }
 
-    orb_input in = {0};
-    orb_os_headless_set_input(&in);
+    orb_input input = {0};
+    orb_os_headless_set_input(&input);
 
     CHECK(host_tick());
 
@@ -50,8 +50,8 @@ int main(void) {
     CHECK_EQ(pixel(4 * 8, 2 * 8), WHITE);
 
     // the manifest binds select to M, resolved through the headless US layout
-    in.keys[ORB_KEY_M] = true;
-    orb_os_headless_set_input(&in);
+    input.keys[ORB_KEY_M] = true;
+    orb_os_headless_set_input(&input);
     CHECK(host_tick());
     CHECK_EQ(orb_api_table()->key_pressed_any(), ORB_KEY_M);
     CHECK(orb_api_table()->key_down(ORB_KEY_M));
@@ -59,13 +59,13 @@ int main(void) {
         strcmp(orb_api_table()->key_name(orb_api_table()->button_source(ORB_BTN_SELECT)), "m") == 0
     );
     CHECK(orb_api_table()->button_down(ORB_BTN_SELECT));
-    in.keys[ORB_KEY_M] = false;
-    in.keys[ORB_KEY_TAB] = true;
-    orb_os_headless_set_input(&in);
+    input.keys[ORB_KEY_M] = false;
+    input.keys[ORB_KEY_TAB] = true;
+    orb_os_headless_set_input(&input);
     CHECK(host_tick());
     CHECK(!orb_api_table()->button_down(ORB_BTN_SELECT));
-    in = (orb_input) {0};
-    orb_os_headless_set_input(&in);
+    input = (orb_input) {0};
+    orb_os_headless_set_input(&input);
 
     // sounds and the song play through the API table into the headless render
     const orb_api* api = orb_api_table();
@@ -118,37 +118,37 @@ int main(void) {
         CHECK_EQ(audio[i * 2 + 1], 0);
     }
 
-    int bx, by;
-    CHECK(find(RED, &bx, &by));
+    int body_x, body_y;
+    CHECK(find(RED, &body_x, &body_y));
 
-    CHECK_EQ(pixel(bx + 7, by + 7), RED);
-    CHECK_EQ(pixel(bx - 1, by), BACKGROUND);
-    CHECK_EQ(pixel(bx + 8, by), BACKGROUND);
+    CHECK_EQ(pixel(body_x + 7, body_y + 7), RED);
+    CHECK_EQ(pixel(body_x - 1, body_y), BACKGROUND);
+    CHECK_EQ(pixel(body_x + 8, body_y), BACKGROUND);
 
-    in.keys[ORB_KEY_RIGHT] = true;
-    orb_os_headless_set_input(&in);
+    input.keys[ORB_KEY_RIGHT] = true;
+    orb_os_headless_set_input(&input);
 
     for (int i = 0; i < 10; i++)
         CHECK(host_tick());
 
     host_render();
 
-    CHECK_EQ(pixel(bx + 10, by), BACKGROUND);
-    CHECK_EQ(pixel(bx + 12, by), GREEN);
-    CHECK_EQ(pixel(bx + 19, by), GREEN);
-    CHECK_EQ(pixel(bx + 20, by), BACKGROUND);
+    CHECK_EQ(pixel(body_x + 10, body_y), BACKGROUND);
+    CHECK_EQ(pixel(body_x + 12, body_y), GREEN);
+    CHECK_EQ(pixel(body_x + 19, body_y), GREEN);
+    CHECK_EQ(pixel(body_x + 20, body_y), BACKGROUND);
 
-    in.keys[ORB_KEY_RIGHT] = false;
-    in.keys[ORB_KEY_LEFT] = true;
-    orb_os_headless_set_input(&in);
+    input.keys[ORB_KEY_RIGHT] = false;
+    input.keys[ORB_KEY_LEFT] = true;
+    orb_os_headless_set_input(&input);
 
     CHECK(host_tick());
 
     host_render();
 
-    CHECK_EQ(pixel(bx + 7, by), GREEN);
-    CHECK_EQ(pixel(bx + 14, by), GREEN);
-    CHECK_EQ(pixel(bx + 15, by), BACKGROUND);
+    CHECK_EQ(pixel(body_x + 7, body_y), GREEN);
+    CHECK_EQ(pixel(body_x + 14, body_y), GREEN);
+    CHECK_EQ(pixel(body_x + 15, body_y), BACKGROUND);
 
     api->button_bind(ORB_BTN_SELECT, ORB_KEY_TAB);
     CHECK(orb_recast(&err));
@@ -156,14 +156,14 @@ int main(void) {
 
     host_render();
 
-    CHECK_EQ(pixel(bx + 7, by), GREEN);
+    CHECK_EQ(pixel(body_x + 7, body_y), GREEN);
 
     // handles survive a recast that changes nothing, so a game need not find again
     CHECK(api->sound_play(beep, (orb_sound_params) {.volume = 1}, 0).v != ORB_NO_VOICE.v);
 
-    in = (orb_input) {0};
-    in.keys[ORB_KEY_LEFT] = true;
-    orb_os_headless_set_input(&in);
+    input = (orb_input) {0};
+    input.keys[ORB_KEY_LEFT] = true;
+    orb_os_headless_set_input(&input);
 
     for (int i = 0; i < 40; i++)
         CHECK(host_tick());
@@ -189,14 +189,14 @@ int main(void) {
 
     static alignas(16) uint8_t scratch_mem[4 << 20], out_mem[1 << 20];
     orb_arena scratch, out;
-    orb_manifest m;
-    orb_cast_result r;
+    orb_manifest manifest;
+    orb_cast_result result;
 
     orb_arena_init(&scratch, "scratch", scratch_mem, sizeof scratch_mem);
     orb_arena_init(&out, "out", out_mem, sizeof out_mem);
 
-    CHECK(orb_cast_game(&scratch, &out, "tests/fixtures", &m, &r, &err));
-    CHECK(orb_boot(orb_game_main(), nullptr, r.file, &err));
+    CHECK(orb_cast_game(&scratch, &out, "tests/fixtures", &manifest, &result, &err));
+    CHECK(orb_boot(orb_game_main(), nullptr, result.file, &err));
     CHECK(api->song_position().ms == -1);
     CHECK(api->song_position().millibeats == -1);
     CHECK(host_tick());
@@ -205,7 +205,7 @@ int main(void) {
 
     CHECK_EQ(pixel(0, 0), WHITE);
     CHECK_EQ(pixel(1, 0), BACKGROUND);
-    CHECK(find(RED, &bx, &by));
+    CHECK(find(RED, &body_x, &body_y));
 
     orb_quit();
 

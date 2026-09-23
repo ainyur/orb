@@ -50,7 +50,7 @@ int main(void) {
     CHECK_EQ(sizeof(orb_mixer_command), 32); // the ring holds 256 of them
 
     orb_sound_params full = {.volume = 1};
-    orb_voice v;
+    orb_voice voice;
 
     mixer = (orb_mixer)ORB_MIXER_INIT;
     CHECK(
@@ -70,9 +70,9 @@ int main(void) {
     CHECK_EQ(orb_mixer_set_assets(&mixer, &assets), 0); // no render in flight, nothing to wait for
 
     // a one-shot plays its 8 frames at full scale on both sides, then frees its voice
-    v = orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), full, 0);
-    CHECK_EQ(MIXER_VOICE_INDEX(v), ORB_GAME_VOICE_FIRST);
-    CHECK_EQ(MIXER_VOICE_GEN(v), 1);
+    voice = orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), full, 0);
+    CHECK_EQ(MIXER_VOICE_INDEX(voice), ORB_GAME_VOICE_FIRST);
+    CHECK_EQ(MIXER_VOICE_GEN(voice), 1);
     CHECK_EQ(playing_count(), 1);
     render(8);
     CHECK_EQ(out[0], 1000);
@@ -84,32 +84,33 @@ int main(void) {
     CHECK_EQ(playing_count(), 0);
 
     // pan right silences the left; a stereo sample lands each channel on its side
-    v = orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), (orb_sound_params) {.volume = 1, .pan = 1}, 0);
+    voice =
+        orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), (orb_sound_params) {.volume = 1, .pan = 1}, 0);
     render(1);
     CHECK_EQ(out[0], 0);
     CHECK_EQ(out[1], 1000);
-    orb_mixer_sound_stop(&mixer, v);
+    orb_mixer_sound_stop(&mixer, voice);
     render(1);
     CHECK_EQ(out[1], 0);
     CHECK_EQ(playing_count(), 0);
-    v = orb_mixer_sound_play(&mixer, ORB_SAMPLE(1), full, 0);
+    voice = orb_mixer_sound_play(&mixer, ORB_SAMPLE(1), full, 0);
     render(1);
     CHECK_EQ(out[0], 2000);
     CHECK_EQ(out[1], -2000);
-    orb_mixer_sound_stop(&mixer, v);
+    orb_mixer_sound_stop(&mixer, voice);
 
     // sound and master volumes scale a one-shot; song volume does not
     orb_mixer_volume_set(&mixer, (orb_volumes) {.master = 0.5f, .song = 0.1f, .sound = 0.5f});
-    v = orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), full, 0);
+    voice = orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), full, 0);
     render(1);
     CHECK_EQ(out[0], 250);
-    orb_mixer_sound_stop(&mixer, v);
+    orb_mixer_sound_stop(&mixer, voice);
     orb_mixer_volume_set(&mixer, (orb_volumes) {1, 1, 1});
     render(1);
     CHECK_EQ(playing_count(), 0);
 
     // an octave up walks the sample twice as fast
-    v = orb_mixer_sound_play(
+    voice = orb_mixer_sound_play(
         &mixer, ORB_SAMPLE(0), (orb_sound_params) {.volume = 1, .pitch_cents = 1200}, 0
     );
     render(4);
@@ -118,11 +119,11 @@ int main(void) {
     CHECK_EQ(playing_count(), 0);
 
     // a one-shot never loops, even with file loop points; a stale handle is a no-op
-    v = orb_mixer_sound_play(&mixer, ORB_SAMPLE(1), full, 0);
+    voice = orb_mixer_sound_play(&mixer, ORB_SAMPLE(1), full, 0);
     render(5);
     CHECK_EQ(playing_count(), 0);
-    orb_mixer_sound_set(&mixer, v, full);
-    orb_mixer_sound_stop(&mixer, v);
+    orb_mixer_sound_set(&mixer, voice, full);
+    orb_mixer_sound_stop(&mixer, voice);
     CHECK_EQ(mixer.dropped, 0);
     render(1);
     CHECK_EQ(playing_count(), 0);
@@ -135,11 +136,13 @@ int main(void) {
 
     CHECK_EQ(playing_count(), 16);
     CHECK_EQ(orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), full, 3).v, ORB_NO_VOICE.v);
-    v = orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), full, 5);
-    CHECK_EQ(MIXER_VOICE_INDEX(v), ORB_GAME_VOICE_FIRST); // the oldest priority-5 voice
-    CHECK_EQ(MIXER_VOICE_GEN(v), MIXER_VOICE_GEN(held[0]) + 1);
-    v = orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), full, 9);
-    CHECK_EQ(MIXER_VOICE_INDEX(v), ORB_GAME_VOICE_FIRST + 1); // 5 before 9; the first is newest now
+    voice = orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), full, 5);
+    CHECK_EQ(MIXER_VOICE_INDEX(voice), ORB_GAME_VOICE_FIRST); // the oldest priority-5 voice
+    CHECK_EQ(MIXER_VOICE_GEN(voice), MIXER_VOICE_GEN(held[0]) + 1);
+    voice = orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), full, 9);
+    CHECK_EQ(
+        MIXER_VOICE_INDEX(voice), ORB_GAME_VOICE_FIRST + 1
+    );                                     // 5 before 9; the first is newest now
     orb_mixer_sound_stop(&mixer, held[0]); // stale: the first voice belongs to a newer claim
     render(1);
     CHECK_EQ(playing_count(), 16);
@@ -147,29 +150,29 @@ int main(void) {
     CHECK_EQ(playing_count(), 0);
 
     // a claim that lands while the audio thread is still on the old sound survives that sound's end
-    v = orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), full, 0);
+    voice = orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), full, 0);
     render(1);
 
     for (int i = 0; i < 15; i++)
         orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), full, 0);
 
-    orb_voice w =
+    orb_voice stolen_voice =
         orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), full, 0); // steals the first; play still queued
     orb_voice_state* first = &mixer.voices[ORB_GAME_VOICE_FIRST];
 
-    CHECK_EQ(MIXER_VOICE_INDEX(w), ORB_GAME_VOICE_FIRST);
+    CHECK_EQ(MIXER_VOICE_INDEX(stolen_voice), ORB_GAME_VOICE_FIRST);
     mixer_voice_end(first); // the old sound ends before the play is consumed
-    CHECK_EQ(atomic_load(&first->playing), MIXER_VOICE_GEN(w));
+    CHECK_EQ(atomic_load(&first->playing), MIXER_VOICE_GEN(stolen_voice));
     render(1);
     CHECK_EQ(out[0], 16000); // all sixteen at their first frame
     render(20);
     CHECK_EQ(playing_count(), 0);
 
     // a full ring drops the command and claims no voice
-    v = orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), full, 0);
+    voice = orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), full, 0);
 
     for (int i = 0; i < ORB_MIXER_RING; i++)
-        orb_mixer_sound_set(&mixer, v, full);
+        orb_mixer_sound_set(&mixer, voice, full);
 
     CHECK_EQ(mixer.dropped, 1);
     CHECK_EQ(orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), full, 0).v, ORB_NO_VOICE.v);
@@ -272,7 +275,7 @@ int main(void) {
 
     // a recast that puts a different id at a sample's index silences the voices using it
     orb_mixer_song_play(&mixer, ORB_SONG(0), true);
-    v = orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), full, 0);
+    voice = orb_mixer_sound_play(&mixer, ORB_SAMPLE(0), full, 0);
     render(1);
     CHECK_EQ(playing_count(), 1);
 

@@ -21,7 +21,7 @@ typedef struct orb_pack {
 } orb_pack;
 
 void orb_pack_frames(
-    orb_arena* a,
+    orb_arena* arena,
     const uint8_t* frames,
     uint32_t frame_count,
     orb_size frame,

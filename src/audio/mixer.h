@@ -94,19 +94,28 @@ typedef struct orb_mixer {
     }
 
 // Returns the render to wait for, 0 if none.
-[[nodiscard]] uint32_t orb_mixer_set_assets(orb_mixer* m, const orb_assets* assets);
-orb_voice orb_mixer_sound_play(orb_mixer* m, orb_sample s, orb_sound_params p, int priority);
-void orb_mixer_sound_set(orb_mixer* m, orb_voice v, orb_sound_params p);
-void orb_mixer_sound_stop(orb_mixer* m, orb_voice v);
-void orb_mixer_song_play(orb_mixer* m, orb_song s, bool loop);
-void orb_mixer_song_stop(orb_mixer* m, int fade_ms);
-void orb_mixer_song_pause(orb_mixer* m, bool paused);
-orb_song_position orb_mixer_song_position(const orb_mixer* m);
-void orb_mixer_volume_set(orb_mixer* m, orb_volumes v);
+[[nodiscard]] uint32_t orb_mixer_set_assets(orb_mixer* mixer, const orb_assets* assets);
+orb_voice orb_mixer_sound_play(
+    orb_mixer* mixer,
+    orb_sample sample,
+    orb_sound_params params,
+    int priority
+);
+void orb_mixer_sound_set(orb_mixer* mixer, orb_voice voice, orb_sound_params params);
+void orb_mixer_sound_stop(orb_mixer* mixer, orb_voice voice);
+void orb_mixer_song_play(orb_mixer* mixer, orb_song song, bool loop);
+void orb_mixer_song_stop(orb_mixer* mixer, int fade_ms);
+void orb_mixer_song_pause(orb_mixer* mixer, bool paused);
+orb_song_position orb_mixer_song_position(const orb_mixer* mixer);
+void orb_mixer_volume_set(orb_mixer* mixer, orb_volumes volumes);
 
-void orb_mixer_render(orb_mixer* m, int16_t* out, int frames); // the audio thread; the rest is main
-bool orb_mixer_rendered(const orb_mixer* m, uint32_t render);
+void orb_mixer_render(
+    orb_mixer* mixer,
+    int16_t* out,
+    int frames
+); // the audio thread; the rest is main
+bool orb_mixer_rendered(const orb_mixer* mixer, uint32_t render);
 // With no device: renders silence in chunks until *rendered frames cover
 // elapsed_ns, so sounds end, the ring drains, and song_position keeps real time.
 // True once a second, when the OS layer should try its device again.
-bool orb_mixer_idle(orb_mixer* m, uint64_t elapsed_ns, uint64_t* rendered);
+bool orb_mixer_idle(orb_mixer* mixer, uint64_t elapsed_ns, uint64_t* rendered);

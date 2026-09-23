@@ -11,11 +11,11 @@ static uint8_t at(const orb_fb* fb, int x, int y) {
 
 int main(void) {
     static alignas(16) uint8_t mem[1 << 20];
-    orb_arena a;
-    orb_arena_init(&a, "test", mem, sizeof mem);
+    orb_arena arena;
+    orb_arena_init(&arena, "test", mem, sizeof mem);
 
     orb_fb fb;
-    orb_fb_init(&fb, &a, (orb_size) {W, H});
+    orb_fb_init(&fb, &arena, (orb_size) {W, H});
 
     uint8_t pixels[8] = {1, 1, 2, 3, 1, 1, 4, 5}; // 4x2 sheet: tile 0 at x 0, tile 1 at x 2
     orb_sheet_desc sheets[1] = {{.width = 4, .height = 2, .pixels = 0}};
@@ -40,7 +40,7 @@ int main(void) {
     orb_level_desc levels[1] = {
         {.world_x = 10, .world_y = -4, .width = 6, .height = 4, .first_layer = 0, .layer_count = 2}
     };
-    orb_assets as = {
+    orb_assets assets = {
         .sheets = sheets,
         .sheet_count = 1,
         .pixels = pixels,
@@ -59,7 +59,7 @@ int main(void) {
 
     // camera at the level's origin: the layer fills the top-left 6x4
     orb_fb_clear(&fb, 0);
-    orb_tilemap_draw(&fb, &as, (orb_vec2f) {10, -4}, ORB_LEVEL(0), 0);
+    orb_tilemap_draw(&fb, &assets, (orb_vec2f) {10, -4}, ORB_LEVEL(0), 0);
     CHECK_EQ(at(&fb, 0, 0), 1); // tile 0
     CHECK_EQ(at(&fb, 2, 0), 2); // tile 1 top-left
     CHECK_EQ(at(&fb, 3, 1), 5); // tile 1 bottom-right
@@ -71,75 +71,79 @@ int main(void) {
 
     // camera offset by a fraction: floors, so 10.9 draws like 10
     orb_fb_clear(&fb, 0);
-    orb_tilemap_draw(&fb, &as, (orb_vec2f) {10.9f, -4}, ORB_LEVEL(0), 0);
+    orb_tilemap_draw(&fb, &assets, (orb_vec2f) {10.9f, -4}, ORB_LEVEL(0), 0);
     CHECK_EQ(at(&fb, 2, 0), 2);
     orb_fb_clear(&fb, 0);
-    orb_tilemap_draw(&fb, &as, (orb_vec2f) {-0.5f, -4}, ORB_LEVEL(0), 0); // floor(-0.5) = -1
+    orb_tilemap_draw(&fb, &assets, (orb_vec2f) {-0.5f, -4}, ORB_LEVEL(0), 0); // floor(-0.5) = -1
     CHECK_EQ(at(&fb, 0, 0), 0); // the level starts at screen x 11, off an 8-wide screen
     CHECK_EQ(at(&fb, 7, 0), 0);
 
     // camera past the level: clipped, and only visible cells are drawn (no crash on huge offsets)
     orb_fb_clear(&fb, 0);
     orb_tilemap_draw(
-        &fb, &as, (orb_vec2f) {13, -3}, ORB_LEVEL(0), 0
+        &fb, &assets, (orb_vec2f) {13, -3}, ORB_LEVEL(0), 0
     );                          // level origin lands at (-3, -1)
     CHECK_EQ(at(&fb, 0, 0), 5); // tile 1's bottom-right at world (13, -3)
-    orb_tilemap_draw(&fb, &as, (orb_vec2f) {1e6f, -1e6f}, ORB_LEVEL(0), 0);
+    orb_tilemap_draw(&fb, &assets, (orb_vec2f) {1e6f, -1e6f}, ORB_LEVEL(0), 0);
 
     // layer 1: two sub-layers stack, the second (tile 1) over the first (tile 0); offset (1,1)
     // parallax anchors on the camera's center relative to the level's center (LDtk's rule)
     // origin_x = 11 - floor(0.5 * cam.x + 4.25) for parallax_x 0.5
     layers[1].offset_y = 5; // origin_y = 1 - floor(cam.y) at parallax_y 0
     orb_fb_clear(&fb, 0);
-    orb_tilemap_draw(&fb, &as, (orb_vec2f) {0, 0}, ORB_LEVEL(0), 1); // origin (7,1)
-    CHECK_EQ(at(&fb, 7, 1), 2);                                      // tile 1 top-left
+    orb_tilemap_draw(&fb, &assets, (orb_vec2f) {0, 0}, ORB_LEVEL(0), 1); // origin (7,1)
+    CHECK_EQ(at(&fb, 7, 1), 2);                                          // tile 1 top-left
     CHECK_EQ(at(&fb, 7, 2), 4); // tile 1 bottom-left; column 8 is off screen
     layers[1].offset_y = 1;     // origin_y = -3 - floor(cam.y) at parallax_y 0
     orb_fb_clear(&fb, 0);
     orb_tilemap_draw(
-        &fb, &as, (orb_vec2f) {12, 0}, ORB_LEVEL(0), 1
+        &fb, &assets, (orb_vec2f) {12, 0}, ORB_LEVEL(0), 1
     ); // origin (1,-3): rows off screen
     CHECK_EQ(at(&fb, 1, 0), 0);
     orb_fb_clear(&fb, 0);
-    orb_tilemap_draw(&fb, &as, (orb_vec2f) {12, -6}, ORB_LEVEL(0), 1); // origin (1,3)
-    CHECK_EQ(at(&fb, 1, 3), 2);                                        // tile 1 over tile 0
+    orb_tilemap_draw(&fb, &assets, (orb_vec2f) {12, -6}, ORB_LEVEL(0), 1); // origin (1,3)
+    CHECK_EQ(at(&fb, 1, 3), 2);                                            // tile 1 over tile 0
     CHECK_EQ(at(&fb, 2, 4), 5);
     // parallax 1 fixes the layer on screen relative to the camera's center: origin_y is 3
     // regardless of the camera
     layers[1].parallax_y = 1;
     orb_fb_clear(&fb, 0);
-    orb_tilemap_draw(&fb, &as, (orb_vec2f) {12, 0}, ORB_LEVEL(0), 1); // origin (1,3)
+    orb_tilemap_draw(&fb, &assets, (orb_vec2f) {12, 0}, ORB_LEVEL(0), 1); // origin (1,3)
     CHECK_EQ(at(&fb, 1, 3), 2);
     CHECK_EQ(at(&fb, 2, 4), 5);
     CHECK_EQ(at(&fb, 1, 1), 0);
     orb_fb_clear(&fb, 0);
-    orb_tilemap_draw(&fb, &as, (orb_vec2f) {12, -6}, ORB_LEVEL(0), 1); // origin (1,3): unchanged
+    orb_tilemap_draw(
+        &fb, &assets, (orb_vec2f) {12, -6}, ORB_LEVEL(0), 1
+    ); // origin (1,3): unchanged
     CHECK_EQ(at(&fb, 1, 3), 2);
     CHECK_EQ(at(&fb, 2, 4), 5);
 
     // the level containing a pixel: the fixture level spans x 10..15, y -4..-1
-    CHECK_EQ(orb_tilemap_level_at(&as, (orb_vec2) {10, -4}), 0);
-    CHECK_EQ(orb_tilemap_level_at(&as, (orb_vec2) {16, -4}), ORB_NO_INDEX);
+    CHECK_EQ(orb_tilemap_level_at(&assets, (orb_vec2) {10, -4}), 0);
+    CHECK_EQ(orb_tilemap_level_at(&assets, (orb_vec2) {16, -4}), ORB_NO_INDEX);
 
     // bad handle or layer index: nothing
     orb_fb_clear(&fb, 0);
-    orb_tilemap_draw(&fb, &as, (orb_vec2f) {10, -4}, ORB_LEVEL(3), 0);
-    orb_tilemap_draw(&fb, &as, (orb_vec2f) {10, -4}, ORB_LEVEL(0), 2);
-    orb_tilemap_draw(&fb, &as, (orb_vec2f) {10, -4}, ORB_LEVEL(0), -1);
+    orb_tilemap_draw(&fb, &assets, (orb_vec2f) {10, -4}, ORB_LEVEL(3), 0);
+    orb_tilemap_draw(&fb, &assets, (orb_vec2f) {10, -4}, ORB_LEVEL(0), 2);
+    orb_tilemap_draw(&fb, &assets, (orb_vec2f) {10, -4}, ORB_LEVEL(0), -1);
     CHECK_EQ(at(&fb, 0, 0), 0);
 
     // cells by world pixel
-    CHECK_EQ(orb_tilemap_cell(&as, ORB_LEVEL(0), 0, (orb_vec2) {10, -4}), 0);
-    CHECK_EQ(orb_tilemap_cell(&as, ORB_LEVEL(0), 0, (orb_vec2) {12, -4}), 7);
-    CHECK_EQ(orb_tilemap_cell(&as, ORB_LEVEL(0), 0, (orb_vec2) {13, -3}), 7);
-    CHECK_EQ(orb_tilemap_cell(&as, ORB_LEVEL(0), 0, (orb_vec2) {15, -1}), 9);
-    CHECK_EQ(orb_tilemap_cell(&as, ORB_LEVEL(0), 0, (orb_vec2) {9, -4}), 0);  // left of the level
-    CHECK_EQ(orb_tilemap_cell(&as, ORB_LEVEL(0), 0, (orb_vec2) {16, -4}), 0); // right of it
-    CHECK_EQ(orb_tilemap_cell(&as, ORB_LEVEL(0), 0, (orb_vec2) {10, -5}), 0); // above
+    CHECK_EQ(orb_tilemap_cell(&assets, ORB_LEVEL(0), 0, (orb_vec2) {10, -4}), 0);
+    CHECK_EQ(orb_tilemap_cell(&assets, ORB_LEVEL(0), 0, (orb_vec2) {12, -4}), 7);
+    CHECK_EQ(orb_tilemap_cell(&assets, ORB_LEVEL(0), 0, (orb_vec2) {13, -3}), 7);
+    CHECK_EQ(orb_tilemap_cell(&assets, ORB_LEVEL(0), 0, (orb_vec2) {15, -1}), 9);
     CHECK_EQ(
-        orb_tilemap_cell(&as, ORB_LEVEL(0), 1, (orb_vec2) {11, -3}), 0
+        orb_tilemap_cell(&assets, ORB_LEVEL(0), 0, (orb_vec2) {9, -4}), 0
+    ); // left of the level
+    CHECK_EQ(orb_tilemap_cell(&assets, ORB_LEVEL(0), 0, (orb_vec2) {16, -4}), 0); // right of it
+    CHECK_EQ(orb_tilemap_cell(&assets, ORB_LEVEL(0), 0, (orb_vec2) {10, -5}), 0); // above
+    CHECK_EQ(
+        orb_tilemap_cell(&assets, ORB_LEVEL(0), 1, (orb_vec2) {11, -3}), 0
     ); // a layer with no cells
-    CHECK_EQ(orb_tilemap_cell(&as, ORB_LEVEL(1), 0, (orb_vec2) {10, -4}), 0); // bad handle
+    CHECK_EQ(orb_tilemap_cell(&assets, ORB_LEVEL(1), 0, (orb_vec2) {10, -4}), 0); // bad handle
 
     // camera: snap, lerp, clamp, center when the bounds are smaller than the screen, shake
     orb_camera cam = {.target = {100, 50}, .lerp = 0};
@@ -178,15 +182,15 @@ int main(void) {
     uint64_t layer_ids[2] = {orb_asset_id("floor", ""), orb_asset_id("Deco", "")};
     orb_neighbor_desc neighbors[1] = {{.level = 0, .dir = ORB_LEVEL_OVERLAP}};
     uint8_t pal[256 * 4] = {0}; // orb_api_set_assets always loads one
-    as.level_ids = level_ids;
-    as.layer_ids = layer_ids;
-    as.neighbors = neighbors;
-    as.neighbor_count = 1;
-    as.pal = pal;
+    assets.level_ids = level_ids;
+    assets.layer_ids = layer_ids;
+    assets.neighbors = neighbors;
+    assets.neighbor_count = 1;
+    assets.pal = pal;
     levels[0].neighbor_count = 1;
     layers[1].parallax_y = 0;
 
-    orb_api_boot(&a, (orb_size) {W, H}, &as);
+    orb_api_boot(&arena, (orb_size) {W, H}, &assets);
 
     const orb_api* api = orb_api_table();
     orb_level cave = api->level_find("cave");

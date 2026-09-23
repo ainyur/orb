@@ -21,11 +21,11 @@ static uint32_t gdi_high_surrogate;
 
 // Integer-scale the frame into the client area, centered, borders left to the
 // class background brush.
-static void gdi_blit(HDC dc, const uint32_t* rgb) {
+static void gdi_blit(HDC device_context, const uint32_t* rgb) {
     int scale = orb_max(1, orb_min(gdi_win.width / gdi_fb.width, gdi_win.height / gdi_fb.height));
 
-    int w = gdi_fb.width * scale, h = gdi_fb.height * scale;
-    int ox = (gdi_win.width - w) / 2, oy = (gdi_win.height - h) / 2;
+    int width = gdi_fb.width * scale, height = gdi_fb.height * scale;
+    int origin_x = (gdi_win.width - width) / 2, origin_y = (gdi_win.height - height) / 2;
     BITMAPINFO info = {
         .bmiHeader = {
             .biSize = sizeof(BITMAPINFOHEADER),
@@ -37,16 +37,17 @@ static void gdi_blit(HDC dc, const uint32_t* rgb) {
         },
     };
 
-    SetStretchBltMode(dc, COLORONCOLOR); // nearest neighbour: pixels stay square
+    SetStretchBltMode(device_context, COLORONCOLOR); // nearest neighbour: pixels stay square
     StretchDIBits(
-        dc, ox, oy, w, h, 0, 0, gdi_fb.width, gdi_fb.height, rgb, &info, DIB_RGB_COLORS, SRCCOPY
+        device_context, origin_x, origin_y, width, height, 0, 0, gdi_fb.width, gdi_fb.height, rgb,
+        &info, DIB_RGB_COLORS, SRCCOPY
     );
 }
 
 // One WM_CHAR unit: a surrogate pair is joined, a high surrogate not immediately
 // followed by a low one is dropped, control characters are dropped.
 static void gdi_char(uint32_t unit) {
-    uint32_t cp = unit;
+    uint32_t codepoint = unit;
 
     if (unit < 0xdc00 || unit >= 0xe000) gdi_high_surrogate = 0;
 
@@ -58,36 +59,37 @@ static void gdi_char(uint32_t unit) {
     if (unit >= 0xdc00 && unit < 0xe000) {
         if (!gdi_high_surrogate) return;
 
-        cp = 0x10000 + ((gdi_high_surrogate - 0xd800) << 10) + (unit - 0xdc00);
+        codepoint = 0x10000 + ((gdi_high_surrogate - 0xd800) << 10) + (unit - 0xdc00);
         gdi_high_surrogate = 0;
     }
 
-    orb_bytes_utf8_push(gdi_text, &gdi_text_len, ORB_INPUT_TEXT, cp);
+    orb_bytes_utf8_push(gdi_text, &gdi_text_len, ORB_INPUT_TEXT, codepoint);
 }
 
-static LRESULT CALLBACK gdi_proc(HWND window, UINT msg, WPARAM w, LPARAM l) {
+static LRESULT CALLBACK gdi_proc(HWND window, UINT msg, WPARAM wparam, LPARAM lparam) {
     switch (msg) {
     case WM_CHAR:
-        gdi_char((uint32_t)w);
+        gdi_char((uint32_t)wparam);
         return 0;
     case WM_KEYDOWN:
     case WM_KEYUP:
     case WM_SYSKEYDOWN:
     case WM_SYSKEYUP: {
-        unsigned code = (l >> 16) & 0x7f;
+        unsigned code = (lparam >> 16) & 0x7f;
 
         // Injected input (accessibility tools, remote desktops) may carry no scancode.
-        if (!code) code = MapVirtualKey((UINT)w, MAPVK_VK_TO_VSC) & 0x7f;
+        if (!code) code = MapVirtualKey((UINT)wparam, MAPVK_VK_TO_VSC) & 0x7f;
 
         // Print screen and pause do not arrive as plain set-1 codes.
-        int key = w == VK_SNAPSHOT ? ORB_KEY_PRINT_SCREEN
-                  : w == VK_PAUSE  ? ORB_KEY_PAUSE
-                                   : gdi_keys[code + ((l >> 24) & 1) * 128];
+        int key = wparam == VK_SNAPSHOT ? ORB_KEY_PRINT_SCREEN
+                  : wparam == VK_PAUSE  ? ORB_KEY_PAUSE
+                                        : gdi_keys[code + ((lparam >> 24) & 1) * 128];
 
         if (key) gdi_down[key] = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
 
         // DefWindowProc turns WM_SYSKEYDOWN into WM_SYSCOMMAND/SC_CLOSE for Alt+F4.
-        if (msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP) return DefWindowProc(window, msg, w, l);
+        if (msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP)
+            return DefWindowProc(window, msg, wparam, lparam);
 
         return 0;
     }
@@ -96,38 +98,38 @@ static LRESULT CALLBACK gdi_proc(HWND window, UINT msg, WPARAM w, LPARAM l) {
         return 0;
     case WM_SYSCOMMAND:
         // A lone Alt or F10 would otherwise put a window with no menu into the menu loop.
-        if ((w & 0xfff0) == SC_KEYMENU) return 0;
+        if ((wparam & 0xfff0) == SC_KEYMENU) return 0;
 
-        return DefWindowProc(window, msg, w, l);
+        return DefWindowProc(window, msg, wparam, lparam);
     case WM_SIZE:
-        gdi_win.width = LOWORD(l);
-        gdi_win.height = HIWORD(l);
+        gdi_win.width = LOWORD(lparam);
+        gdi_win.height = HIWORD(lparam);
         return 0;
     case WM_PAINT: {
-        PAINTSTRUCT ps;
-        HDC dc = BeginPaint(window, &ps);
+        PAINTSTRUCT paint;
+        HDC device_context = BeginPaint(window, &paint);
 
-        if (gdi_last_frame) gdi_blit(dc, gdi_last_frame);
+        if (gdi_last_frame) gdi_blit(device_context, gdi_last_frame);
 
-        EndPaint(window, &ps);
+        EndPaint(window, &paint);
         return 0;
     }
     case WM_CLOSE:
         gdi_closed = true;
         return 0;
     default:
-        return DefWindowProc(window, msg, w, l);
+        return DefWindowProc(window, msg, wparam, lparam);
     }
 }
 
-bool orb_os_open(const orb_os_config* cfg) {
+bool orb_os_open(const orb_os_config* config) {
     orb_size screen = {GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)};
-    int scale = orb_os_open_scale(cfg->size, screen);
+    int scale = orb_os_open_scale(config->size, screen);
 
-    gdi_fb = cfg->size;
+    gdi_fb = config->size;
     gdi_win = (orb_size) {gdi_fb.width * scale, gdi_fb.height * scale};
 
-    WNDCLASS wc = {
+    WNDCLASS window_class = {
         .lpfnWndProc = gdi_proc,
         .hInstance = GetModuleHandle(nullptr),
         .hCursor = LoadCursor(nullptr, IDC_ARROW),
@@ -135,7 +137,7 @@ bool orb_os_open(const orb_os_config* cfg) {
         .lpszClassName = L"orb",
     };
 
-    gdi_class = RegisterClass(&wc);
+    gdi_class = RegisterClass(&window_class);
 
     if (!gdi_class) {
         orb_log("cannot register the window class");
@@ -154,8 +156,8 @@ bool orb_os_open(const orb_os_config* cfg) {
     win32_wpath title;
 
     gdi_window = CreateWindowEx(
-        0, MAKEINTATOM(gdi_class), win32_wide(cfg->title, title, ORB_PATH_MAX), style, x, y,
-        outer_w, outer_h, nullptr, nullptr, wc.hInstance, nullptr
+        0, MAKEINTATOM(gdi_class), win32_wide(config->title, title, ORB_PATH_MAX), style, x, y,
+        outer_w, outer_h, nullptr, nullptr, window_class.hInstance, nullptr
     );
 
     if (!gdi_window) {
@@ -199,11 +201,11 @@ uint32_t orb_os_key_symbol(int key) {
     if (code < 0) return 0;
 
     UINT scan = code < 128 ? (UINT)code : 0xe000u | (UINT)(code - 128);
-    UINT vk = MapVirtualKey(scan, MAPVK_VSC_TO_VK_EX);
+    UINT virtual_key = MapVirtualKey(scan, MAPVK_VSC_TO_VK_EX);
     BYTE state[256] = {0};
     WCHAR text[4];
     // Flag 4 leaves any dead-key state alone.
-    int n = ToUnicode(vk, scan, state, text, 4, 4);
+    int n = ToUnicode(virtual_key, scan, state, text, 4, 4);
 
     return n == 1 && text[0] > 0x20 ? (uint32_t)text[0] : 0;
 }

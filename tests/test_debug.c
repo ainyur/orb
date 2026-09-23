@@ -10,51 +10,51 @@ static void ignore_line(const char* line) {
     (void)line;
 }
 
-static orb_span span(const char* s) {
-    return (orb_span) {(uint8_t*)s, strlen(s)};
+static orb_span span(const char* text) {
+    return (orb_span) {(uint8_t*)text, strlen(text)};
 }
 
 int main(void) {
-    uint8_t a[] = "a", b[] = "b";
+    uint8_t byte_a[] = "a", byte_b[] = "b";
     const char* path = "build/scratch/watch.txt";
 
-    CHECK(orb_os_write_file(path, (orb_span) {a, 1}));
+    CHECK(orb_os_write_file(path, (orb_span) {byte_a, 1}));
 
-    orb_watch w;
-    orb_watch_init(&w, path);
+    orb_watch watch;
+    orb_watch_init(&watch, path);
 
-    CHECK(!orb_watch_poll(&w, 0));
+    CHECK(!orb_watch_poll(&watch, 0));
 
     orb_os_sleep(10000000); // 10 ms so the new mtime differs
 
-    CHECK(orb_os_write_file(path, (orb_span) {b, 1}));
-    CHECK(!orb_watch_poll(&w, 1000000000)); // first seen: pending
-    CHECK(!orb_watch_poll(&w, 1100000000)); // 100 ms: not settled
-    CHECK(orb_watch_poll(&w, 1300000000));  // 300 ms: fires
-    CHECK(!orb_watch_poll(&w, 1400000000)); // fires once
+    CHECK(orb_os_write_file(path, (orb_span) {byte_b, 1}));
+    CHECK(!orb_watch_poll(&watch, 1000000000)); // first seen: pending
+    CHECK(!orb_watch_poll(&watch, 1100000000)); // 100 ms: not settled
+    CHECK(orb_watch_poll(&watch, 1300000000));  // 300 ms: fires
+    CHECK(!orb_watch_poll(&watch, 1400000000)); // fires once
 
     orb_os_sleep(10000000);
 
-    CHECK(orb_os_write_file(path, (orb_span) {a, 1}));
-    CHECK(!orb_watch_poll(&w, 2000000000));
+    CHECK(orb_os_write_file(path, (orb_span) {byte_a, 1}));
+    CHECK(!orb_watch_poll(&watch, 2000000000));
 
     orb_os_sleep(10000000);
 
-    CHECK(orb_os_write_file(path, (orb_span) {b, 1}));
-    CHECK(!orb_watch_poll(&w, 2150000000));
-    CHECK(!orb_watch_poll(&w, 2300000000));
-    CHECK(orb_watch_poll(&w, 2400000000));
+    CHECK(orb_os_write_file(path, (orb_span) {byte_b, 1}));
+    CHECK(!orb_watch_poll(&watch, 2150000000));
+    CHECK(!orb_watch_poll(&watch, 2300000000));
+    CHECK(orb_watch_poll(&watch, 2400000000));
 
     remove(path);
 
-    CHECK(!orb_watch_poll(&w, 3000000000));
-    CHECK(!orb_watch_poll(&w, 3300000000));
+    CHECK(!orb_watch_poll(&watch, 3000000000));
+    CHECK(!orb_watch_poll(&watch, 3300000000));
 
     orb_os_sleep(10000000);
 
-    CHECK(orb_os_write_file(path, (orb_span) {a, 1}));
-    CHECK(!orb_watch_poll(&w, 3400000000));
-    CHECK(orb_watch_poll(&w, 3700000000));
+    CHECK(orb_os_write_file(path, (orb_span) {byte_a, 1}));
+    CHECK(!orb_watch_poll(&watch, 3400000000));
+    CHECK(orb_watch_poll(&watch, 3700000000));
     const char* build_argv[] = {"make", "-s", "build/game" ORB_OS_LIB_SUFFIX, nullptr};
 
     CHECK_EQ(orb_os_run("examples/demo", build_argv, ignore_line), 0);
@@ -66,7 +66,7 @@ int main(void) {
 
     snprintf(copy_name, sizeof copy_name, ".orb-game-%u-0" ORB_OS_LIB_SUFFIX, orb_os_pid());
     orb_path_join(leftover, "examples/demo/build", copy_name);
-    CHECK(orb_os_write_file(leftover, (orb_span) {a, 1}));
+    CHECK(orb_os_write_file(leftover, (orb_span) {byte_a, 1}));
 #ifndef _WIN32
     // Held open across the boot. Inode numbers cannot express this: a freed one may be
     // reused, so an equal number proves nothing either way.
@@ -100,7 +100,7 @@ int main(void) {
     uint8_t held_byte = 0;
 
     CHECK_EQ(pread(held, &held_byte, 1, 0), 1);
-    CHECK_EQ(held_byte, a[0]);
+    CHECK_EQ(held_byte, byte_a[0]);
     CHECK_EQ(close(held), 0);
 #endif
 
@@ -142,9 +142,9 @@ int main(void) {
     CHECK(!debug_watch_sources());
     CHECK(orb_os_make_dir("build/scratch/deps/build"));
 
-    const char *a_d = "build/a.o: a.c ../inc/h.h\n", *b_d = "build/b.o: b.c \\\n ../inc/h.h\n";
-    CHECK(orb_os_write_file("build/scratch/deps/build/a.d", span(a_d)));
-    CHECK(orb_os_write_file("build/scratch/deps/build/b.d", span(b_d)));
+    const char *dep_a = "build/a.o: a.c ../inc/h.h\n", *dep_b = "build/b.o: b.c \\\n ../inc/h.h\n";
+    CHECK(orb_os_write_file("build/scratch/deps/build/a.d", span(dep_a)));
+    CHECK(orb_os_write_file("build/scratch/deps/build/b.d", span(dep_b)));
     CHECK(debug_watch_sources());
     CHECK_EQ(debug_sources.count, 3);
     CHECK(strcmp(debug_sources.at[0].path, "build/scratch/deps/a.c") == 0);

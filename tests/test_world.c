@@ -32,7 +32,7 @@ static orb_sprite_desc sprites[2] = {
     {.sheet = 0, .x = 0, .y = 0, .width = 2, .height = 2, .frame_width = 2, .frame_height = 2},
     {.sheet = 0, .x = 2, .y = 0, .width = 2, .height = 2, .frame_width = 2, .frame_height = 2},
 };
-static orb_assets as;
+static orb_assets assets;
 static orb_asset_table table;
 static alignas(16) uint8_t region_mem[1 << 20];
 static orb_arena region;
@@ -44,7 +44,7 @@ static void fixture(void) {
     layer_ids[0] = layer_ids[1] = orb_asset_id("collision", "");
     type_ids[0] = orb_asset_id("block", "");
     type_ids[1] = orb_asset_id("mover", "");
-    as = (orb_assets) {
+    assets = (orb_assets) {
         .sheets = sheets,
         .sheet_count = 1,
         .pixels = pixels,
@@ -70,7 +70,7 @@ static void fixture(void) {
         .type_ids = type_ids
     };
     table = (orb_asset_table) {};
-    orb_asset_set(&table, &as);
+    orb_asset_set(&table, &assets);
 }
 
 static void mover_update(void* state, const orb_api* orb, orb_entity_id id) {
@@ -83,9 +83,9 @@ static void mover_update(void* state, const orb_api* orb, orb_entity_id id) {
 // A body of the block type at (x, y) with the flags, gravity 0.
 static orb_entity_id body_at(float x, float y, uint16_t flags) {
     orb_entity_id id = orb_entity_spawn(ORB_TYPE(0), (orb_vec2f) {x, y});
-    orb_body* b = orb_entity_add(id, ORB_COMPONENT_BODY);
+    orb_body* added_body = orb_entity_add(id, ORB_COMPONENT_BODY);
 
-    b->flags = flags;
+    added_body->flags = flags;
     return id;
 }
 
@@ -93,7 +93,7 @@ static orb_body* body(orb_entity_id id) {
     return orb_entity_component(id, ORB_COMPONENT_BODY);
 }
 
-static orb_entity* ent(orb_entity_id id) {
+static orb_entity* entity(orb_entity_id id) {
     return orb_entity_get(id);
 }
 
@@ -121,60 +121,60 @@ static int test_cells_and_sweep(void) {
 
     // +x across the seam into Annex's wall at 64: flush at 56, the fraction dropped, impact
     // kept, velocity zeroed, WALL_RIGHT
-    orb_entity_id a = body_at(16.5f, 8, 0);
-    body(a)->velocity.x = 50;
+    orb_entity_id walker = body_at(16.5f, 8, 0);
+    body(walker)->velocity.x = 50;
     orb_world_update();
-    CHECK(ent(a)->at.x == 56);
-    CHECK(body(a)->velocity.x == 0);
-    CHECK(body(a)->impact.x == 50);
-    CHECK(body(a)->flags & ORB_BODY_WALL_RIGHT);
-    CHECK(!(body(a)->flags & ORB_BODY_CRUSHED));
+    CHECK(entity(walker)->at.x == 56);
+    CHECK(body(walker)->velocity.x == 0);
+    CHECK(body(walker)->impact.x == 50);
+    CHECK(body(walker)->flags & ORB_BODY_WALL_RIGHT);
+    CHECK(!(body(walker)->flags & ORB_BODY_CRUSHED));
     // flush against the wall, a sub-pixel push is still blocked
-    body(a)->velocity.x = 0.4f;
+    body(walker)->velocity.x = 0.4f;
     orb_world_update();
-    CHECK(ent(a)->at.x == 56);
-    CHECK(body(a)->flags & ORB_BODY_WALL_RIGHT);
+    CHECK(entity(walker)->at.x == 56);
+    CHECK(body(walker)->flags & ORB_BODY_WALL_RIGHT);
     // away from the wall, the same sub-pixel push keeps its fraction and blocks nothing
-    ent(a)->at.x = 30;
-    body(a)->velocity.x = 0.4f;
+    entity(walker)->at.x = 30;
+    body(walker)->velocity.x = 0.4f;
     orb_world_update();
-    CHECK(ent(a)->at.x > 30.39f && ent(a)->at.x < 30.41f);
-    CHECK(!(body(a)->flags & ORB_BODY_WALL_RIGHT));
+    CHECK(entity(walker)->at.x > 30.39f && entity(walker)->at.x < 30.41f);
+    CHECK(!(body(walker)->flags & ORB_BODY_WALL_RIGHT));
     // -x into Room's west wall: flush at 8, WALL_LEFT
-    ent(a)->at.x = 12.3f;
-    body(a)->velocity.x = -10;
+    entity(walker)->at.x = 12.3f;
+    body(walker)->velocity.x = -10;
     orb_world_update();
-    CHECK(ent(a)->at.x == 8);
-    CHECK(body(a)->flags & ORB_BODY_WALL_LEFT);
-    CHECK(body(a)->impact.x == -10 && body(a)->impact.y == 0);
+    CHECK(entity(walker)->at.x == 8);
+    CHECK(body(walker)->flags & ORB_BODY_WALL_LEFT);
+    CHECK(body(walker)->impact.x == -10 && body(walker)->impact.y == 0);
     clear();
 
     // gravity: falls to the floor at y 24, GROUNDED, velocity.y zeroed; a ceiling hit
     orb_world_gravity((orb_vec2f) {0, 1});
-    orb_entity_id f = body_at(16, 8, 0);
-    body(f)->gravity = 1;
+    orb_entity_id faller = body_at(16, 8, 0);
+    body(faller)->gravity = 1;
 
     for (int i = 0; i < 10; i++)
         orb_world_update();
 
-    CHECK(ent(f)->at.y == 16);
-    CHECK(body(f)->flags & ORB_BODY_GROUNDED);
-    CHECK(body(f)->velocity.y == 0);
+    CHECK(entity(faller)->at.y == 16);
+    CHECK(body(faller)->flags & ORB_BODY_GROUNDED);
+    CHECK(body(faller)->velocity.y == 0);
     // flush against the floor, a sub-pixel gravity push still reports GROUNDED every tick
     orb_world_gravity((orb_vec2f) {0, 0.4f});
 
     for (int i = 0; i < 3; i++) {
         orb_world_update();
-        CHECK(ent(f)->at.y == 16);
-        CHECK(body(f)->flags & ORB_BODY_GROUNDED);
-        CHECK(body(f)->velocity.y == 0);
+        CHECK(entity(faller)->at.y == 16);
+        CHECK(body(faller)->flags & ORB_BODY_GROUNDED);
+        CHECK(body(faller)->velocity.y == 0);
     }
 
     orb_world_gravity((orb_vec2f) {0, 1});
-    body(f)->velocity.y = -20;
+    body(faller)->velocity.y = -20;
     orb_world_update();
-    CHECK(ent(f)->at.y == 8);
-    CHECK(body(f)->flags & ORB_BODY_CEILING);
+    CHECK(entity(faller)->at.y == 8);
+    CHECK(body(faller)->flags & ORB_BODY_CEILING);
     clear();
     return 0;
 }
@@ -183,55 +183,55 @@ static int test_oneway(void) {
     orb_world_gravity((orb_vec2f) {0, 1});
 
     // the N platform at y 16: land on it from above, stay on it, drop through with DROP
-    orb_entity_id p = body_at(28, 4, 0);
-    body(p)->gravity = 1;
+    orb_entity_id lander = body_at(28, 4, 0);
+    body(lander)->gravity = 1;
 
     for (int i = 0; i < 8; i++)
         orb_world_update();
 
-    CHECK(ent(p)->at.y == 8);
-    CHECK(body(p)->flags & ORB_BODY_GROUNDED);
+    CHECK(entity(lander)->at.y == 8);
+    CHECK(body(lander)->flags & ORB_BODY_GROUNDED);
     orb_world_update();
-    CHECK(ent(p)->at.y == 8);
-    body(p)->flags |= ORB_BODY_DROP;
+    CHECK(entity(lander)->at.y == 8);
+    body(lander)->flags |= ORB_BODY_DROP;
     orb_world_update();
-    CHECK(ent(p)->at.y > 8);
-    CHECK(!(body(p)->flags & ORB_BODY_DROP));
+    CHECK(entity(lander)->at.y > 8);
+    CHECK(!(body(lander)->flags & ORB_BODY_DROP));
 
     for (int i = 0; i < 8; i++)
         orb_world_update();
 
-    CHECK(ent(p)->at.y == 16);
+    CHECK(entity(lander)->at.y == 16);
     // from below it passes through and hits the ceiling
-    ent(p)->at.y = 17;
-    body(p)->velocity.y = -20;
+    entity(lander)->at.y = 17;
+    body(lander)->velocity.y = -20;
     orb_world_update();
-    CHECK(ent(p)->at.y == 8);
+    CHECK(entity(lander)->at.y == 8);
     clear();
     orb_world_gravity((orb_vec2f) {});
 
     // S: passes moving down, blocks moving up
-    orb_entity_id s = body_at(80, 0, 0);
-    body(s)->velocity.y = 4;
+    orb_entity_id south_body = body_at(80, 0, 0);
+    body(south_body)->velocity.y = 4;
     orb_world_update();
-    CHECK(ent(s)->at.y == 4);
-    ent(s)->at.y = 16;
-    body(s)->velocity.y = -4;
+    CHECK(entity(south_body)->at.y == 4);
+    entity(south_body)->at.y = 16;
+    body(south_body)->velocity.y = -4;
     orb_world_update();
-    CHECK(ent(s)->at.y == 16);
-    CHECK(body(s)->flags & ORB_BODY_CEILING);
+    CHECK(entity(south_body)->at.y == 16);
+    CHECK(body(south_body)->flags & ORB_BODY_CEILING);
     // E blocks a body arriving from the east; W blocks one arriving from the west; the E
     // cell lets a +x move through
-    orb_entity_id e = body_at(104, 8, 0);
-    body(e)->velocity.x = -4;
+    orb_entity_id east_body = body_at(104, 8, 0);
+    body(east_body)->velocity.x = -4;
     orb_world_update();
-    CHECK(ent(e)->at.x == 104);
-    CHECK(body(e)->flags & ORB_BODY_WALL_LEFT);
-    ent(e)->at.x = 88;
-    body(e)->velocity.x = 20;
+    CHECK(entity(east_body)->at.x == 104);
+    CHECK(body(east_body)->flags & ORB_BODY_WALL_LEFT);
+    entity(east_body)->at.x = 88;
+    body(east_body)->velocity.x = 20;
     orb_world_update();
-    CHECK(ent(e)->at.x == 104);
-    CHECK(body(e)->flags & ORB_BODY_WALL_RIGHT);
+    CHECK(entity(east_body)->at.x == 104);
+    CHECK(body(east_body)->flags & ORB_BODY_WALL_RIGHT);
     clear();
     return 0;
 }
@@ -239,18 +239,18 @@ static int test_oneway(void) {
 static int test_order_and_solids(void) {
     // y before x: moving (-8, +8) from (52, 8) lands on the solid cell at (56..63, 16..23)
     // before sliding left off it
-    orb_entity_id c = body_at(52, 8, 0);
-    body(c)->velocity = (orb_vec2f) {-8, 8};
+    orb_entity_id slider = body_at(52, 8, 0);
+    body(slider)->velocity = (orb_vec2f) {-8, 8};
     orb_world_update();
-    CHECK(ent(c)->at.x == 44 && ent(c)->at.y == 8);
-    CHECK(body(c)->flags & ORB_BODY_GROUNDED);
+    CHECK(entity(slider)->at.x == 44 && entity(slider)->at.y == 8);
+    CHECK(body(slider)->flags & ORB_BODY_GROUNDED);
     clear();
 
     // a solid stops at a cell and never at a body
     orb_entity_id wall = body_at(40, 8, ORB_BODY_SOLID);
     body(wall)->velocity.x = 30;
     orb_world_update();
-    CHECK(ent(wall)->at.x == 56);
+    CHECK(entity(wall)->at.x == 56);
     CHECK(body(wall)->moved.x == 16);
     clear();
 
@@ -260,8 +260,8 @@ static int test_order_and_solids(void) {
     body(shover)->velocity.x = 20;
     orb_entity_id shoved = body_at(30, 8, 0);
     orb_world_update();
-    CHECK(ent(shover)->at.x == 36);
-    CHECK(ent(shoved)->at.x == 44);
+    CHECK(entity(shover)->at.x == 36);
+    CHECK(entity(shoved)->at.x == 44);
     CHECK(!(body(shoved)->flags & ORB_BODY_CRUSHED));
     clear();
 
@@ -271,8 +271,8 @@ static int test_order_and_solids(void) {
     body(ram)->velocity.x = 30;
     orb_entity_id victim = body_at(52, 8, 0);
     orb_world_update();
-    CHECK(ent(ram)->at.x == 56);
-    CHECK(ent(victim)->at.x == 56);
+    CHECK(entity(ram)->at.x == 56);
+    CHECK(entity(victim)->at.x == 56);
     CHECK(body(victim)->flags & ORB_BODY_CRUSHED);
     body(ram)->velocity.x = -8;
     orb_world_update();
@@ -289,19 +289,19 @@ static int test_order_and_solids(void) {
     // carry on both axes: the platform moves (2, -1); the rider follows to (18, 11) and stays on
     body(platform)->velocity = (orb_vec2f) {2, -1};
     orb_world_update();
-    CHECK(ent(platform)->at.x == 18 && ent(platform)->at.y == 15);
-    CHECK(ent(rider)->at.x == 18 && ent(rider)->at.y == 11);
+    CHECK(entity(platform)->at.x == 18 && entity(platform)->at.y == 15);
+    CHECK(entity(rider)->at.x == 18 && entity(rider)->at.y == 11);
     CHECK(body(rider)->standing_on.v == platform.v);
     CHECK(!(body(rider)->flags & ORB_BODY_CRUSHED));
     // the platform is moved by writing at: the rider still follows
     body(platform)->velocity = (orb_vec2f) {};
-    ent(platform)->at.x += 3;
+    entity(platform)->at.x += 3;
     orb_world_update();
-    CHECK(ent(rider)->at.x == 21);
+    CHECK(entity(rider)->at.x == 21);
     // the rider walks off and is released
     body(rider)->velocity.x = 20;
     orb_world_update();
-    CHECK(ent(rider)->at.x == 41);
+    CHECK(entity(rider)->at.x == 41);
     CHECK(body(rider)->standing_on.v == ORB_NO_ENTITY.v);
     clear();
 
@@ -311,7 +311,7 @@ static int test_order_and_solids(void) {
     body(passenger)->carrier = raft;
     body(raft)->velocity.x = 1;
     orb_world_update();
-    CHECK(ent(passenger)->at.x == 31);
+    CHECK(entity(passenger)->at.x == 31);
     clear();
 
     // a carried body stopped by a wall stays put while the platform goes on; not crushed,
@@ -322,53 +322,53 @@ static int test_order_and_solids(void) {
     CHECK(body(stuck)->standing_on.v == lift.v);
     body(lift)->velocity.x = 30;
     orb_world_update();
-    CHECK(ent(lift)->at.x == 56); // Annex's wall at 64 on row 2
-    CHECK(ent(stuck)->at.x == 56);
+    CHECK(entity(lift)->at.x == 56); // Annex's wall at 64 on row 2
+    CHECK(entity(stuck)->at.x == 56);
     CHECK(!(body(stuck)->flags & ORB_BODY_CRUSHED));
     clear();
 
     // a parented body is not moved but blocks; the update order runs the type update first
     orb_entity_id anchor = body_at(16, 8, 0);
     orb_entity_id blocker = body_at(0, 0, ORB_BODY_SOLID);
-    ent(blocker)->parent = anchor;
-    ent(blocker)->at = (orb_vec2f) {16, 0}; // world (32, 8)
+    entity(blocker)->parent = anchor;
+    entity(blocker)->at = (orb_vec2f) {16, 0}; // world (32, 8)
     body(blocker)->velocity.x = 5;
     orb_entity_id walker = body_at(20, 8, 0);
     body(walker)->velocity.x = 10;
     orb_world_update();
-    CHECK(ent(blocker)->at.x == 16);
-    CHECK(ent(walker)->at.x == 24);
+    CHECK(entity(blocker)->at.x == 16);
+    CHECK(entity(walker)->at.x == 24);
     clear();
 
     // a parented body inside a solid cell is crushed; a paused one keeps its last bits
     orb_entity_id holder = body_at(16, 8, 0);
     orb_entity_id hitbox = body_at(0, 0, 0);
-    ent(hitbox)->parent = holder;
-    ent(hitbox)->at = (orb_vec2f) {0, -8}; // world (16, 0): inside the ceiling row
+    entity(hitbox)->parent = holder;
+    entity(hitbox)->at = (orb_vec2f) {0, -8}; // world (16, 0): inside the ceiling row
     orb_world_update();
     CHECK(body(hitbox)->flags & ORB_BODY_CRUSHED);
-    ent(hitbox)->flags |= ORB_ENTITY_PAUSED;
+    entity(hitbox)->flags |= ORB_ENTITY_PAUSED;
     body(hitbox)->flags &= (uint16_t)~ORB_BODY_CRUSHED;
     orb_world_update();
     CHECK(!(body(hitbox)->flags & ORB_BODY_CRUSHED));
     clear();
 
     orb_type_bind(ORB_TYPE(1), nullptr, mover_update);
-    orb_entity_id m = orb_entity_spawn(ORB_TYPE(1), (orb_vec2f) {16, 8});
-    orb_entity_add(m, ORB_COMPONENT_BODY);
+    orb_entity_id mover = orb_entity_spawn(ORB_TYPE(1), (orb_vec2f) {16, 8});
+    orb_entity_add(mover, ORB_COMPONENT_BODY);
     orb_world_update();
     CHECK_EQ(mover_updates, 1);
-    CHECK(ent(m)->at.x == 19);
+    CHECK(entity(mover)->at.x == 19);
     // a paused entity is neither updated nor moved; a despawning one is freed at the end
-    ent(m)->flags |= ORB_ENTITY_PAUSED;
+    entity(mover)->flags |= ORB_ENTITY_PAUSED;
     orb_world_update();
     CHECK_EQ(mover_updates, 1);
-    CHECK(ent(m)->at.x == 19);
-    ent(m)->flags &= ~ORB_ENTITY_PAUSED;
-    orb_entity_despawn(m);
+    CHECK(entity(mover)->at.x == 19);
+    entity(mover)->flags &= ~ORB_ENTITY_PAUSED;
+    orb_entity_despawn(mover);
     orb_world_update();
     CHECK_EQ(mover_updates, 1);
-    CHECK(ent(m) == nullptr);
+    CHECK(entity(mover) == nullptr);
     orb_type_bind(ORB_TYPE(1), nullptr, nullptr);
     clear();
     return 0;
@@ -377,21 +377,22 @@ static int test_order_and_solids(void) {
 static int test_queries(void) {
     orb_entity_id list[8];
     // A at 16..23 tagged 1, B at 30..37 tagged 2, C at 40..47 untagged, all on row 1
-    orb_entity_id a = body_at(16, 8, 0), b = body_at(30, 8, 0), c = body_at(40, 8, 0);
+    orb_entity_id entity_a = body_at(16, 8, 0), entity_b = body_at(30, 8, 0),
+                  entity_c = body_at(40, 8, 0);
 
-    ((orb_tag*)orb_entity_add(a, ORB_COMPONENT_TAG))->bits = 1;
-    ((orb_tag*)orb_entity_add(b, ORB_COMPONENT_TAG))->bits = 2;
+    ((orb_tag*)orb_entity_add(entity_a, ORB_COMPONENT_TAG))->bits = 1;
+    ((orb_tag*)orb_entity_add(entity_b, ORB_COMPONENT_TAG))->bits = 2;
 
     // rect: overlap, exclusive edges, mask, except, max
-    orb_rect r = {{20, 8}, {12, 8}};
-    CHECK_EQ(orb_query_rect(r, ORB_TAG_ANY, ORB_NO_ENTITY, list, 8), 2);
-    CHECK(list[0].v == a.v && list[1].v == b.v);
-    CHECK_EQ(orb_query_rect(r, 2, ORB_NO_ENTITY, list, 8), 1);
-    CHECK(list[0].v == b.v);
-    CHECK_EQ(orb_query_rect(r, 0, ORB_NO_ENTITY, list, 8), 0);
-    CHECK_EQ(orb_query_rect(r, ORB_TAG_ANY, a, list, 8), 1);
-    CHECK(list[0].v == b.v);
-    CHECK_EQ(orb_query_rect(r, ORB_TAG_ANY, ORB_NO_ENTITY, list, 1), 1);
+    orb_rect rect = {{20, 8}, {12, 8}};
+    CHECK_EQ(orb_query_rect(rect, ORB_TAG_ANY, ORB_NO_ENTITY, list, 8), 2);
+    CHECK(list[0].v == entity_a.v && list[1].v == entity_b.v);
+    CHECK_EQ(orb_query_rect(rect, 2, ORB_NO_ENTITY, list, 8), 1);
+    CHECK(list[0].v == entity_b.v);
+    CHECK_EQ(orb_query_rect(rect, 0, ORB_NO_ENTITY, list, 8), 0);
+    CHECK_EQ(orb_query_rect(rect, ORB_TAG_ANY, entity_a, list, 8), 1);
+    CHECK(list[0].v == entity_b.v);
+    CHECK_EQ(orb_query_rect(rect, ORB_TAG_ANY, ORB_NO_ENTITY, list, 1), 1);
     CHECK_EQ(orb_query_rect((orb_rect) {{24, 8}, {6, 8}}, ORB_TAG_ANY, ORB_NO_ENTITY, list, 8), 0);
     CHECK_EQ(
         orb_query_rect((orb_rect) {{40, 8}, {2, 2}}, ORB_TAG_ANY, ORB_NO_ENTITY, list, 8), 0
@@ -399,44 +400,44 @@ static int test_queries(void) {
 
     // point: containment with exclusive far edges
     CHECK_EQ(orb_query_point((orb_vec2) {17, 9}, ORB_TAG_ANY, ORB_NO_ENTITY, list, 8), 1);
-    CHECK(list[0].v == a.v);
+    CHECK(list[0].v == entity_a.v);
     CHECK_EQ(orb_query_point((orb_vec2) {24, 9}, ORB_TAG_ANY, ORB_NO_ENTITY, list, 8), 0);
     CHECK_EQ(orb_query_point((orb_vec2) {30, 15}, ORB_TAG_ANY, ORB_NO_ENTITY, list, 8), 1);
     CHECK_EQ(orb_query_point((orb_vec2) {30, 16}, ORB_TAG_ANY, ORB_NO_ENTITY, list, 8), 0);
 
     // circle: squared distance from the box's nearest pixel, inclusive
     CHECK_EQ(orb_query_circle((orb_vec2) {28, 12}, 2, ORB_TAG_ANY, ORB_NO_ENTITY, list, 8), 1);
-    CHECK(list[0].v == b.v);
+    CHECK(list[0].v == entity_b.v);
     CHECK_EQ(orb_query_circle((orb_vec2) {28, 12}, 1, ORB_TAG_ANY, ORB_NO_ENTITY, list, 8), 0);
     CHECK_EQ(orb_query_circle((orb_vec2) {18, 10}, 0, ORB_TAG_ANY, ORB_NO_ENTITY, list, 8), 1);
-    CHECK(list[0].v == a.v);
+    CHECK(list[0].v == entity_a.v);
 
     // ray: the nearest body along x, at the entry point with the face normal
     orb_hit hit;
     CHECK(
         orb_query_ray((orb_vec2) {10, 12}, (orb_vec2) {60, 12}, ORB_TAG_ANY, 0, ORB_NO_ENTITY, &hit)
     );
-    CHECK(hit.entity.v == a.v);
+    CHECK(hit.entity.v == entity_a.v);
     CHECK(hit.at.x == 16 && hit.at.y == 12);
     CHECK(hit.normal.x == -1 && hit.normal.y == 0);
     CHECK(hit.fraction > 0.11f && hit.fraction < 0.13f);
     // except and mask skip A; a body containing from is skipped
-    CHECK(orb_query_ray((orb_vec2) {10, 12}, (orb_vec2) {60, 12}, 2, 0, a, &hit));
-    CHECK(hit.entity.v == b.v && hit.at.x == 30);
+    CHECK(orb_query_ray((orb_vec2) {10, 12}, (orb_vec2) {60, 12}, 2, 0, entity_a, &hit));
+    CHECK(hit.entity.v == entity_b.v && hit.at.x == 30);
     CHECK(
         orb_query_ray((orb_vec2) {16, 12}, (orb_vec2) {60, 12}, ORB_TAG_ANY, 0, ORB_NO_ENTITY, &hit)
     );
-    CHECK(hit.entity.v == b.v);
+    CHECK(hit.entity.v == entity_b.v);
     CHECK(
         orb_query_ray((orb_vec2) {18, 12}, (orb_vec2) {60, 12}, ORB_TAG_ANY, 0, ORB_NO_ENTITY, &hit)
     );
-    CHECK(hit.entity.v == b.v);
+    CHECK(hit.entity.v == entity_b.v);
     // a miss leaves hit alone
-    hit.entity = c;
+    hit.entity = entity_c;
     CHECK(!orb_query_ray(
         (orb_vec2) {10, 12}, (orb_vec2) {14, 12}, ORB_TAG_ANY, 0, ORB_NO_ENTITY, &hit
     ));
-    CHECK(hit.entity.v == c.v);
+    CHECK(hit.entity.v == entity_c.v);
     // cells: the seam wall at 64 on row 1, hit from the open side, at the last open pixel
     CHECK(orb_query_ray(
         (orb_vec2) {10, 12}, (orb_vec2) {70, 12}, 0, ORB_RAY_CELLS, ORB_NO_ENTITY, &hit
@@ -450,12 +451,12 @@ static int test_queries(void) {
     ));
     // solids only through the flag; a one-way solid blocks only from its solid side and only
     // with ORB_RAY_ONEWAY
-    body(c)->flags = ORB_BODY_SOLID;
+    body(entity_c)->flags = ORB_BODY_SOLID;
     CHECK(orb_query_ray(
         (orb_vec2) {10, 12}, (orb_vec2) {60, 12}, 0, ORB_RAY_SOLIDS, ORB_NO_ENTITY, &hit
     ));
-    CHECK(hit.entity.v == c.v && hit.at.x == 40);
-    body(c)->flags = ORB_BODY_SOLID | ORB_BODY_ONEWAY_W;
+    CHECK(hit.entity.v == entity_c.v && hit.at.x == 40);
+    body(entity_c)->flags = ORB_BODY_SOLID | ORB_BODY_ONEWAY_W;
     CHECK(!orb_query_ray(
         (orb_vec2) {10, 12}, (orb_vec2) {60, 12}, 0, ORB_RAY_SOLIDS, ORB_NO_ENTITY, &hit
     ));
@@ -463,7 +464,7 @@ static int test_queries(void) {
         (orb_vec2) {10, 12}, (orb_vec2) {60, 12}, 0, ORB_RAY_SOLIDS | ORB_RAY_ONEWAY, ORB_NO_ENTITY,
         &hit
     ));
-    CHECK(hit.entity.v == c.v);
+    CHECK(hit.entity.v == entity_c.v);
     CHECK(!orb_query_ray(
         (orb_vec2) {60, 12}, (orb_vec2) {10, 12}, 0, ORB_RAY_SOLIDS | ORB_RAY_ONEWAY, ORB_NO_ENTITY,
         &hit
@@ -495,39 +496,40 @@ static int test_queries(void) {
 
 static int test_draw(void) {
     static alignas(16) uint8_t fb_mem[4096];
-    orb_arena fa;
+    orb_arena arena;
     orb_fb fb;
     uint32_t rgb[16 * 16];
     orb_vec2f cam = {0, 0};
 
-    orb_arena_init(&fa, "fb", fb_mem, sizeof fb_mem);
-    orb_fb_init(&fb, &fa, (orb_size) {16, 16});
+    orb_arena_init(&arena, "fb", fb_mem, sizeof fb_mem);
+    orb_fb_init(&fb, &arena, (orb_size) {16, 16});
 
-    // two 2x2 sprites: e1 (index 1) at (2,2), e2 (index 2) at (2,3); the lower one draws last
-    orb_entity_id e1 = orb_entity_spawn(ORB_TYPE(0), (orb_vec2f) {2, 2});
-    orb_entity_id e2 = orb_entity_spawn(ORB_TYPE(0), (orb_vec2f) {2, 3});
-    orb_sprite_component* s1 = orb_entity_add(e1, ORB_COMPONENT_SPRITE);
-    orb_sprite_component* s2 = orb_entity_add(e2, ORB_COMPONENT_SPRITE);
+    // two 2x2 sprites: entity1 (index 1) at (2,2), entity2 (index 2) at (2,3); the lower one draws
+    // last
+    orb_entity_id entity1 = orb_entity_spawn(ORB_TYPE(0), (orb_vec2f) {2, 2});
+    orb_entity_id entity2 = orb_entity_spawn(ORB_TYPE(0), (orb_vec2f) {2, 3});
+    orb_sprite_component* sprite1 = orb_entity_add(entity1, ORB_COMPONENT_SPRITE);
+    orb_sprite_component* sprite2 = orb_entity_add(entity2, ORB_COMPONENT_SPRITE);
 
-    s1->sprite = ORB_SPRITE(0);
-    s2->sprite = ORB_SPRITE(1);
+    sprite1->sprite = ORB_SPRITE(0);
+    sprite2->sprite = ORB_SPRITE(1);
     orb_fb_clear(&fb, 0);
     orb_world_draw(&fb, cam, 0);
     CHECK_EQ(fb.px[2 * 16 + 2], 1);
     CHECK_EQ(fb.px[3 * 16 + 2], 2);
     CHECK_EQ(fb.px[4 * 16 + 3], 2);
-    // a bias lifts e1 above e2; a tie draws the higher slot last
-    s1->sort_bias = 5;
+    // a bias lifts entity1 above entity2; a tie draws the higher slot last
+    sprite1->sort_bias = 5;
     orb_fb_clear(&fb, 0);
     orb_world_draw(&fb, cam, 0);
     CHECK_EQ(fb.px[3 * 16 + 2], 1);
-    s1->sort_bias = 1;
+    sprite1->sort_bias = 1;
     orb_fb_clear(&fb, 0);
     orb_world_draw(&fb, cam, 0);
     CHECK_EQ(fb.px[3 * 16 + 2], 2);
-    s1->sort_bias = 0;
-    // layers: e2 on layer 1 is not drawn by layer 0; a hidden e1 is not drawn either
-    s2->layer = 1;
+    sprite1->sort_bias = 0;
+    // layers: entity2 on layer 1 is not drawn by layer 0; a hidden entity1 is not drawn either
+    sprite2->layer = 1;
     orb_fb_clear(&fb, 0);
     orb_world_draw(&fb, cam, 0);
     CHECK_EQ(fb.px[3 * 16 + 2], 1);
@@ -536,26 +538,26 @@ static int test_draw(void) {
     orb_world_draw(&fb, cam, 1);
     CHECK_EQ(fb.px[2 * 16 + 2], 0);
     CHECK_EQ(fb.px[3 * 16 + 2], 2);
-    s2->layer = 0;
-    orb_entity_get(e1)->flags &= (uint16_t)~ORB_ENTITY_VISIBLE;
+    sprite2->layer = 0;
+    orb_entity_get(entity1)->flags &= (uint16_t)~ORB_ENTITY_VISIBLE;
     orb_fb_clear(&fb, 0);
     orb_world_draw(&fb, cam, 0);
     CHECK_EQ(fb.px[2 * 16 + 2], 0);
-    orb_entity_get(e1)->flags |= ORB_ENTITY_VISIBLE;
+    orb_entity_get(entity1)->flags |= ORB_ENTITY_VISIBLE;
     // the camera, the draw offset, an animation's frame, and a remap table
     orb_fb_clear(&fb, 0);
     orb_world_draw(&fb, (orb_vec2f) {2, 2}, 0);
     CHECK_EQ(fb.px[0], 1);
-    s1->offset = (orb_vec2) {3, 0};
+    sprite1->offset = (orb_vec2) {3, 0};
     orb_fb_clear(&fb, 0);
     orb_world_draw(&fb, cam, 0);
     CHECK_EQ(fb.px[2 * 16 + 5], 1);
-    s1->offset = (orb_vec2) {0, 0};
-    s1->anim.anim = ORB_ANIM(0);
+    sprite1->offset = (orb_vec2) {0, 0};
+    sprite1->anim.anim = ORB_ANIM(0);
     orb_fb_clear(&fb, 0);
     orb_world_draw(&fb, cam, 0);
     CHECK_EQ(fb.px[2 * 16 + 2], 2); // the animation's only frame is sprite 1
-    s1->anim.anim = ORB_NO_ANIM;
+    sprite1->anim.anim = ORB_NO_ANIM;
     uint8_t remap[256];
 
     for (int i = 0; i < 256; i++)
@@ -563,11 +565,11 @@ static int test_draw(void) {
 
     remap[1] = 3;
     orb_world_remap_set(0, remap);
-    s1->remap = 0;
+    sprite1->remap = 0;
     orb_fb_clear(&fb, 0);
     orb_world_draw(&fb, cam, 0);
     CHECK_EQ(fb.px[2 * 16 + 2], 3);
-    s1->remap = 5; // an unset slot draws plain
+    sprite1->remap = 5; // an unset slot draws plain
     orb_fb_clear(&fb, 0);
     orb_world_draw(&fb, cam, 0);
     CHECK_EQ(fb.px[2 * 16 + 2], 1);
@@ -576,7 +578,7 @@ static int test_draw(void) {
     CHECK(strstr(orb_log_line(0), "remap_set"));
 
     // the debug outline: every body's box on the RGB frame, only while the variable is set
-    orb_entity_add(e1, ORB_COMPONENT_BODY);
+    orb_entity_add(entity1, ORB_COMPONENT_BODY);
 
     for (int i = 0; i < 256; i++)
         rgb[i] = 0xffffffffu;
@@ -597,7 +599,7 @@ static int test_draw(void) {
 
 int main(void) {
     static int state;
-    orb_config c = {.max_entities = 16};
+    orb_config settings = {.max_entities = 16};
     uint8_t kinds[256] = {0};
 
     kinds[1] = ORB_CELL_SOLID;
@@ -607,7 +609,7 @@ int main(void) {
     kinds[5] = ORB_CELL_ONEWAY_W;
     fixture();
     orb_arena_init(&region, "pool", region_mem, sizeof region_mem);
-    orb_entity_boot(&region, &c, &state, orb_api_table(), &table.assets);
+    orb_entity_boot(&region, &settings, &state, orb_api_table(), &table.assets);
     orb_world_collision("collision", kinds);
 
     if (test_cells_and_sweep()) return 1;

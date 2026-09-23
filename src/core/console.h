@@ -12,7 +12,7 @@ constexpr int ORB_CONSOLE_NAME = 32;
 constexpr int ORB_CONSOLE_VARS = 256;
 
 void orb_console_boot(void* state, const orb_api* api);
-void orb_console_step(orb_input* in);
+void orb_console_step(orb_input* input);
 void orb_console_draw(uint32_t* rgb, orb_size size);
 void orb_console_clear(void);
 

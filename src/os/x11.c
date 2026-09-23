@@ -24,7 +24,7 @@ static bool x11_down[ORB_KEY_COUNT];
 static XComposeStatus x11_compose;
 static bool x11_resized;
 
-bool orb_os_open(const orb_os_config* cfg) {
+bool orb_os_open(const orb_os_config* config) {
     x11_display = XOpenDisplay(nullptr);
 
     if (!x11_display) {
@@ -35,7 +35,7 @@ bool orb_os_open(const orb_os_config* cfg) {
     int screen = DefaultScreen(x11_display);
 
     x11_screen = (orb_size) {DisplayWidth(x11_display, screen), DisplayHeight(x11_display, screen)};
-    x11_fb = cfg->size;
+    x11_fb = config->size;
 
     int scale = orb_os_open_scale(x11_fb, x11_screen);
 
@@ -45,7 +45,7 @@ bool orb_os_open(const orb_os_config* cfg) {
         x11_display, RootWindow(x11_display, screen), 0, 0, (unsigned)x11_win.width,
         (unsigned)x11_win.height, 0, 0, BlackPixel(x11_display, screen)
     );
-    XStoreName(x11_display, x11_window, cfg->title);
+    XStoreName(x11_display, x11_window, config->title);
     XSelectInput(
         x11_display, x11_window,
         KeyPressMask | KeyReleaseMask | StructureNotifyMask | FocusChangeMask
@@ -75,9 +75,9 @@ bool orb_os_open(const orb_os_config* cfg) {
 
 // The layout's characters for a press, appended to text as UTF-8 (XLookupString
 // gives Latin-1), control characters dropped.
-static void x11_text(XKeyEvent* ev, char* text, int* n) {
+static void x11_text(XKeyEvent* event, char* text, int* n) {
     char latin[16];
-    int count = XLookupString(ev, latin, sizeof latin, nullptr, &x11_compose);
+    int count = XLookupString(event, latin, sizeof latin, nullptr, &x11_compose);
 
     for (int i = 0; i < count; i++)
         orb_bytes_utf8_push(text, n, ORB_INPUT_TEXT, (unsigned char)latin[i]);
@@ -89,22 +89,22 @@ bool orb_os_pump(orb_input* out) {
     memset(out->text, 0, sizeof out->text);
 
     while (XPending(x11_display)) {
-        XEvent ev;
+        XEvent event;
 
-        XNextEvent(x11_display, &ev);
+        XNextEvent(x11_display, &event);
 
-        if (ev.type == KeyPress || ev.type == KeyRelease) {
-            unsigned code = ev.xkey.keycode;
+        if (event.type == KeyPress || event.type == KeyRelease) {
+            unsigned code = event.xkey.keycode;
             int key = code >= 8 && code < 8 + 256 ? x11_keys[code - 8] : ORB_KEY_NONE;
 
-            if (key) x11_down[key] = ev.type == KeyPress;
-            if (ev.type == KeyPress) x11_text(&ev.xkey, out->text, &n);
-        } else if (ev.type == ConfigureNotify) {
-            x11_win = (orb_size) {ev.xconfigure.width, ev.xconfigure.height};
+            if (key) x11_down[key] = event.type == KeyPress;
+            if (event.type == KeyPress) x11_text(&event.xkey, out->text, &n);
+        } else if (event.type == ConfigureNotify) {
+            x11_win = (orb_size) {event.xconfigure.width, event.xconfigure.height};
             x11_resized = true;
-        } else if (ev.type == FocusOut) {
+        } else if (event.type == FocusOut) {
             memset(x11_down, 0, sizeof x11_down);
-        } else if (ev.type == ClientMessage && (Atom)ev.xclient.data.l[0] == x11_wm_delete) {
+        } else if (event.type == ClientMessage && (Atom)event.xclient.data.l[0] == x11_wm_delete) {
             return false;
         }
     }
@@ -115,13 +115,13 @@ bool orb_os_pump(orb_input* out) {
 }
 
 void orb_os_present(const uint32_t* rgb) {
-    int w = orb_min(x11_win.width, x11_screen.width);
-    int h = orb_min(x11_win.height, x11_screen.height);
-    int scale = orb_max(1, orb_min(w / x11_fb.width, h / x11_fb.height));
+    int width = orb_min(x11_win.width, x11_screen.width);
+    int height = orb_min(x11_win.height, x11_screen.height);
+    int scale = orb_max(1, orb_min(width / x11_fb.width, height / x11_fb.height));
 
     // A window smaller than the frame shows its top-left corner.
-    int cols = orb_min(x11_fb.width, w / scale), rows = orb_min(x11_fb.height, h / scale);
-    int ox = (w - cols * scale) / 2, oy = (h - rows * scale) / 2;
+    int cols = orb_min(x11_fb.width, width / scale), rows = orb_min(x11_fb.height, height / scale);
+    int origin_x = (width - cols * scale) / 2, origin_y = (height - rows * scale) / 2;
 
     // The frame overwrites its own area every time; only the borders need clearing,
     // and only when they move.
@@ -132,7 +132,7 @@ void orb_os_present(const uint32_t* rgb) {
 
     for (int y = 0; y < rows; y++) {
         const uint32_t* src = rgb + y * x11_fb.width;
-        uint32_t* dst = x11_pixels + (oy + y * scale) * x11_screen.width + ox;
+        uint32_t* dst = x11_pixels + (origin_y + y * scale) * x11_screen.width + origin_x;
 
         for (int x = 0; x < cols; x++)
             for (int k = 0; k < scale; k++)
@@ -142,7 +142,9 @@ void orb_os_present(const uint32_t* rgb) {
             memcpy(dst + k * x11_screen.width, dst, (size_t)cols * scale * sizeof *dst);
     }
 
-    XPutImage(x11_display, x11_window, x11_gc, x11_image, 0, 0, 0, 0, (unsigned)w, (unsigned)h);
+    XPutImage(
+        x11_display, x11_window, x11_gc, x11_image, 0, 0, 0, 0, (unsigned)width, (unsigned)height
+    );
     XFlush(x11_display);
 }
 

@@ -248,14 +248,15 @@ typedef struct orb_level_neighbor {
     orb_level_dir dir;
 } orb_level_neighbor;
 
-#define ORB_ANIM(i) ((orb_anim) {(uint32_t)(i)})
-#define ORB_FONT(i) ((orb_font) {(uint32_t)(i)})
-#define ORB_LEVEL(i) ((orb_level) {(uint32_t)(i)})
-#define ORB_SAMPLE(i) ((orb_sample) {(uint32_t)(i)})
-#define ORB_SONG(i) ((orb_song) {(uint32_t)(i)})
-#define ORB_SPRITE(i) ((orb_sprite) {(uint32_t)(i)})
-#define ORB_HANDLE_INDEX(h) ((h).v & ORB_NO_INDEX) // v = handle index (24 bits) | generation << 24
-#define ORB_HANDLE_GEN(h) ((h).v >> 24)
+#define ORB_ANIM(index) ((orb_anim) {(uint32_t)(index)})
+#define ORB_FONT(index) ((orb_font) {(uint32_t)(index)})
+#define ORB_LEVEL(index) ((orb_level) {(uint32_t)(index)})
+#define ORB_SAMPLE(index) ((orb_sample) {(uint32_t)(index)})
+#define ORB_SONG(index) ((orb_song) {(uint32_t)(index)})
+#define ORB_SPRITE(index) ((orb_sprite) {(uint32_t)(index)})
+#define ORB_HANDLE_INDEX(handle)                                                                   \
+    ((handle).v & ORB_NO_INDEX) // v = handle index (24 bits) | generation << 24
+#define ORB_HANDLE_GEN(handle) ((handle).v >> 24)
 
 constexpr uint32_t ORB_NO_INDEX = 0xffffffu;
 constexpr orb_anim ORB_NO_ANIM = {ORB_NO_INDEX};
@@ -274,8 +275,8 @@ typedef struct {
     uint32_t v;
 } orb_type;
 
-#define ORB_ENTITY(i) ((orb_entity_id) {(uint32_t)(i)})
-#define ORB_TYPE(i) ((orb_type) {(uint32_t)(i)})
+#define ORB_ENTITY(index) ((orb_entity_id) {(uint32_t)(index)})
+#define ORB_TYPE(index) ((orb_type) {(uint32_t)(index)})
 
 constexpr orb_entity_id ORB_NO_ENTITY = {ORB_NO_INDEX};
 constexpr orb_type ORB_NO_TYPE = {ORB_NO_INDEX};
@@ -456,18 +457,18 @@ typedef void (*orb_entity_fn)(void* state, const orb_api* orb, orb_entity_id id)
 typedef void (*orb_command_fn)(void* state, const orb_api* orb, int argc, const char* const* argv);
 typedef struct orb_api {
     void (*pal_reset)(void);
-    void (*pal_set)(int i, uint8_t r, uint8_t g, uint8_t b);
-    uint32_t (*pal_get)(int i);
+    void (*pal_set)(int index, uint8_t r, uint8_t g, uint8_t b);
+    uint32_t (*pal_get)(int index);
 
     void (*clear)(uint8_t index);
     void (*camera_set)(orb_vec2f at);
     orb_camera (*camera_update)(orb_camera camera);
 
     orb_sprite (*sprite_find)(const char* stem, int frame);
-    void (*sprite_draw)(orb_sprite s, orb_vec2 at, uint32_t flags, const uint8_t* remap);
+    void (*sprite_draw)(orb_sprite sprite, orb_vec2 at, uint32_t flags, const uint8_t* remap);
     orb_anim (*anim_find)(const char* stem, const char* tag);
-    void (*anim_start)(orb_anim_state* st, orb_anim a);
-    orb_sprite (*anim_step)(orb_anim_state* st);
+    void (*anim_start)(orb_anim_state* state, orb_anim anim);
+    orb_sprite (*anim_step)(orb_anim_state* state);
 
     int (*layer_find)(orb_level level, const char* name);
     orb_layer_info (*layer_info)(orb_level level, int layer);
@@ -535,20 +536,20 @@ typedef struct orb_api {
     );
 
     orb_font (*font_find)(const char* stem);
-    orb_size (*text_measure)(orb_font f, const char* s);
-    void (*text_draw)(orb_font f, const char* s, orb_vec2 at, const uint8_t* remap);
+    orb_size (*text_measure)(orb_font font, const char* text);
+    void (*text_draw)(orb_font font, const char* text, orb_vec2 at, const uint8_t* remap);
 
     orb_sample (*sample_find)(const char* stem);
-    orb_voice (*sound_play)(orb_sample s, orb_sound_params p, int priority);
-    void (*sound_set)(orb_voice v, orb_sound_params p);
-    void (*sound_stop)(orb_voice v);
+    orb_voice (*sound_play)(orb_sample sample, orb_sound_params params, int priority);
+    void (*sound_set)(orb_voice voice, orb_sound_params params);
+    void (*sound_stop)(orb_voice voice);
     orb_song (*song_find)(const char* stem);
-    void (*song_play)(orb_song s, bool loop);
+    void (*song_play)(orb_song song, bool loop);
     orb_song_position (*song_position)(void);
     void (*song_pause)(void);
     void (*song_resume)(void);
     void (*song_stop)(int fade_ms);
-    void (*volume_set)(orb_volumes v);
+    void (*volume_set)(orb_volumes volumes);
 
     void (*button_bind)(orb_button button, int source);
     bool (*button_down)(orb_button button);

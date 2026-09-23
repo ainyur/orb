@@ -39,21 +39,21 @@ static bool alsa_recover(int err) {
 }
 
 static bool alsa_configure(void) {
-    snd_pcm_hw_params_t* hw;
+    snd_pcm_hw_params_t* params;
     unsigned rate = ORB_AUDIO_RATE;
     snd_pcm_uframes_t period = ALSA_FRAMES, buffer = ALSA_FRAMES * 4;
 
-    snd_pcm_hw_params_alloca(&hw);
+    snd_pcm_hw_params_alloca(&params);
 
-    return snd_pcm_hw_params_any(alsa_pcm, hw) >= 0 &&
-           snd_pcm_hw_params_set_access(alsa_pcm, hw, SND_PCM_ACCESS_RW_INTERLEAVED) >= 0 &&
-           snd_pcm_hw_params_set_format(alsa_pcm, hw, SND_PCM_FORMAT_S16_LE) >= 0 &&
-           snd_pcm_hw_params_set_channels(alsa_pcm, hw, ORB_AUDIO_CHANNELS) >= 0 &&
-           snd_pcm_hw_params_set_rate_near(alsa_pcm, hw, &rate, nullptr) >= 0 &&
+    return snd_pcm_hw_params_any(alsa_pcm, params) >= 0 &&
+           snd_pcm_hw_params_set_access(alsa_pcm, params, SND_PCM_ACCESS_RW_INTERLEAVED) >= 0 &&
+           snd_pcm_hw_params_set_format(alsa_pcm, params, SND_PCM_FORMAT_S16_LE) >= 0 &&
+           snd_pcm_hw_params_set_channels(alsa_pcm, params, ORB_AUDIO_CHANNELS) >= 0 &&
+           snd_pcm_hw_params_set_rate_near(alsa_pcm, params, &rate, nullptr) >= 0 &&
            rate == ORB_AUDIO_RATE &&
-           snd_pcm_hw_params_set_period_size_near(alsa_pcm, hw, &period, nullptr) >= 0 &&
-           snd_pcm_hw_params_set_buffer_size_near(alsa_pcm, hw, &buffer) >= 0 &&
-           snd_pcm_hw_params(alsa_pcm, hw) >= 0;
+           snd_pcm_hw_params_set_period_size_near(alsa_pcm, params, &period, nullptr) >= 0 &&
+           snd_pcm_hw_params_set_buffer_size_near(alsa_pcm, params, &buffer) >= 0 &&
+           snd_pcm_hw_params(alsa_pcm, params) >= 0;
 }
 
 // Opens and configures the default device; on failure nothing is left held.

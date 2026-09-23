@@ -4,7 +4,7 @@
 
 // One level, one type with a default, one placement with every field kind, round-tripped
 // and then broken one way at a time.
-static int test_entities(orb_arena* a) {
+static int test_entities(orb_arena* arena) {
     uint8_t pal[256 * 4] = {0};
     orb_info_desc info = {.width = 8, .height = 8, .name = "e"};
     orb_level_desc levels[1] = {
@@ -26,15 +26,15 @@ static int test_entities(orb_arena* a) {
     };
     // data: int 10 | int 3 | bool 1 (padded) | string offset 24 | point (40,16) ... "box\0"
     uint8_t data[64] = {0};
-    int32_t ten = 10, three = 3, px = 40, py = 16;
+    int32_t ten = 10, three = 3, x = 40, y = 16;
     uint32_t string_at = 24, ref = 0;
 
     memcpy(data + 0, &ten, 4);
     memcpy(data + 4, &three, 4);
     data[8] = 1;
     memcpy(data + 12, &string_at, 4);
-    memcpy(data + 16, &px, 4);
-    memcpy(data + 20, &py, 4);
+    memcpy(data + 16, &x, 4);
+    memcpy(data + 20, &y, 4);
     memcpy(data + 24, "box", 4);
     memcpy(data + 28, &ref, 4);
 
@@ -64,7 +64,7 @@ static int test_entities(orb_arena* a) {
     orb_assets out;
     orb_error err;
 
-    orb_span file = orb_file_write(a, &in);
+    orb_span file = orb_file_write(arena, &in);
     CHECK(orb_file_load(file, &out, &err));
     CHECK_EQ(out.type_count, 1);
     CHECK_EQ(out.placement_count, 1);
@@ -79,18 +79,18 @@ static int test_entities(orb_arena* a) {
     fields[4] = (orb_field_desc) {.name = 5, .data = 28, .count = 1, .kind = ORB_FIELD_REF};
     ref = 1;
     memcpy(data + 28, &ref, 4);
-    file = orb_file_write(a, &in);
+    file = orb_file_write(arena, &in);
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "ref 0 names no placement"));
     ref = 0;
     memcpy(data + 28, &ref, 4);
-    file = orb_file_write(a, &in);
+    file = orb_file_write(arena, &in);
     CHECK(orb_file_load(file, &out, &err));
 
     // a string whose offset leaves the data, then one whose bytes run to the end unterminated
     string_at = 40;
     memcpy(data + 12, &string_at, 4);
-    file = orb_file_write(a, &in);
+    file = orb_file_write(arena, &in);
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "string 0 leaves"));
     string_at = 29; // "ox" and then the ref bytes, cut before any NUL
@@ -99,7 +99,7 @@ static int test_entities(orb_arena* a) {
     fields[4].count = 0;
     data[29] = 'o'; // non-zero past the "box\0" terminator, so the window holds no NUL
     data[30] = 'x';
-    file = orb_file_write(a, &in);
+    file = orb_file_write(arena, &in);
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "string 0 leaves"));
     string_at = 24;
@@ -111,16 +111,16 @@ static int test_entities(orb_arena* a) {
 
     // elements past the data, a misaligned offset, a bad kind
     fields[0].count = 9;
-    file = orb_file_write(a, &in);
+    file = orb_file_write(arena, &in);
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "field 0 runs past"));
     fields[0].count = 1;
     fields[0].data = 2;
-    file = orb_file_write(a, &in);
+    file = orb_file_write(arena, &in);
     CHECK(!orb_file_load(file, &out, &err));
     fields[0].data = 0;
     fields[0].kind = 9;
-    file = orb_file_write(a, &in);
+    file = orb_file_write(arena, &in);
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "field 0 has kind 9"));
     fields[0].kind = ORB_FIELD_INT;
@@ -128,29 +128,29 @@ static int test_entities(orb_arena* a) {
     // a placement naming a type or level out of range, a level running past its placements,
     // a type running past the fields
     placements[0].type = 1;
-    file = orb_file_write(a, &in);
+    file = orb_file_write(arena, &in);
     CHECK(!orb_file_load(file, &out, &err));
     placements[0].type = 0;
     levels[0].placement_count = 2;
-    file = orb_file_write(a, &in);
+    file = orb_file_write(arena, &in);
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "level 0 runs past its placements"));
     levels[0].placement_count = 1;
     types[0].field_count = 6;
-    file = orb_file_write(a, &in);
+    file = orb_file_write(arena, &in);
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "type 0 runs past"));
     types[0].field_count = 1;
-    file = orb_file_write(a, &in);
+    file = orb_file_write(arena, &in);
     CHECK(orb_file_load(file, &out, &err));
 
     return 0;
 }
 
 int main(void) {
-    orb_arena a;
+    orb_arena arena;
     static alignas(16) uint8_t mem[1 << 20];
-    orb_arena_init(&a, "test", mem, sizeof mem);
+    orb_arena_init(&arena, "test", mem, sizeof mem);
 
     uint8_t pal[256 * 4] = {0};
 
@@ -209,7 +209,7 @@ int main(void) {
         .song_ids = song_ids
     };
 
-    orb_span file = orb_file_write(&a, &in);
+    orb_span file = orb_file_write(&arena, &in);
     CHECK(file.len > sizeof(orb_file_header) + 6 * sizeof(orb_section));
     CHECK(((uintptr_t)file.ptr & 15) == 0);
 
@@ -250,46 +250,46 @@ int main(void) {
 
     // a sample that runs past the PCM section and a song naming a missing sample are refused
     samples[1].count = 3;
-    file = orb_file_write(&a, &in);
+    file = orb_file_write(&arena, &in);
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "PCM") != nullptr);
     samples[1].count = 2;
     songs[0].sample = 5;
-    file = orb_file_write(&a, &in);
+    file = orb_file_write(&arena, &in);
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "song") != nullptr);
     songs[0].sample = 1;
-    file = orb_file_write(&a, &in);
+    file = orb_file_write(&arena, &in);
     CHECK(orb_file_load(file, &out, &err));
 
     // a sample with a bad channel count is refused
     samples[1].channels = 3;
-    file = orb_file_write(&a, &in);
+    file = orb_file_write(&arena, &in);
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "channels") != nullptr);
     samples[1].channels = 2;
 
     // a rate or bpm out of range is refused
     samples[1].rate = 0;
-    file = orb_file_write(&a, &in);
+    file = orb_file_write(&arena, &in);
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "rate") != nullptr);
     samples[1].rate = 48000;
     songs[0].millibpm = 0;
-    file = orb_file_write(&a, &in);
+    file = orb_file_write(&arena, &in);
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "bpm") != nullptr);
     songs[0].millibpm = 120000;
 
     // a sample whose loop runs past its own frame count is refused
     samples[1].loop_end = samples[1].count + 1;
-    file = orb_file_write(&a, &in);
+    file = orb_file_write(&arena, &in);
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "loop") != nullptr);
     samples[1].loop_end = 2;
 
     // a short SAMPLE_IDS section is refused
-    file = orb_file_write(&a, &in);
+    file = orb_file_write(&arena, &in);
     {
         uint32_t section_count = ((const orb_file_header*)file.ptr)->section_count;
         orb_section* table = (orb_section*)(mem + (file.ptr - mem) + sizeof(orb_file_header));
@@ -300,7 +300,7 @@ int main(void) {
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "ids") != nullptr);
 
-    file = orb_file_write(&a, &in);
+    file = orb_file_write(&arena, &in);
     CHECK(orb_file_load(file, &out, &err));
 
     mem[file.ptr - mem + 4] = 99; // version
@@ -370,7 +370,7 @@ int main(void) {
     in.level_ids = level_ids;
     in.layer_ids = layer_ids;
 
-    file = orb_file_write(&a, &in);
+    file = orb_file_write(&arena, &in);
     CHECK(orb_file_load(file, &out, &err));
     CHECK_EQ(out.level_count, 2);
     CHECK_EQ(out.levels[1].world_y, -8);
@@ -392,48 +392,48 @@ int main(void) {
 
     // a level whose layers run past the layer section
     levels[1].layer_count = 2;
-    file = orb_file_write(&a, &in);
+    file = orb_file_write(&arena, &in);
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "level 1") != nullptr);
     levels[1].layer_count = 1;
 
     // a layer whose tiles run past the tile section
     layers[2].tiles = 9;
-    file = orb_file_write(&a, &in);
+    file = orb_file_write(&arena, &in);
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "layer 2") != nullptr);
     layers[2].tiles = 8;
 
     // a layer whose cells run past the cell section
     layers[1].cells = 1;
-    file = orb_file_write(&a, &in);
+    file = orb_file_write(&arena, &in);
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "cells") != nullptr);
     layers[1].cells = 0;
 
     // too many sub-layers, a missing tileset, a tile id past the tileset, a bad neighbor
     layers[0].sublayers = 9;
-    file = orb_file_write(&a, &in);
+    file = orb_file_write(&arena, &in);
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "sub-layers") != nullptr);
     layers[0].sublayers = 2;
     layers[0].tileset = 4;
-    file = orb_file_write(&a, &in);
+    file = orb_file_write(&arena, &in);
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "tileset") != nullptr);
     layers[0].tileset = 0;
     tiles[1] = 3; // tileset count is 2, so ids 1 and 2 are the only valid stored values
-    file = orb_file_write(&a, &in);
+    file = orb_file_write(&arena, &in);
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "tile") != nullptr);
     tiles[1] = 2;
     neighbors[0].level = 2;
-    file = orb_file_write(&a, &in);
+    file = orb_file_write(&arena, &in);
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "neighbor") != nullptr);
     neighbors[0].level = 1;
     tilesets[0].sheet = 1;
-    file = orb_file_write(&a, &in);
+    file = orb_file_write(&arena, &in);
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "sheet") != nullptr);
     tilesets[0].sheet = 0;
@@ -441,7 +441,7 @@ int main(void) {
     // a file sealed before levels existed loads with none
     in.tileset_count = in.level_count = in.layer_count = in.neighbor_count = 0;
     in.tile_count = in.cell_count = 0;
-    file = orb_file_write(&a, &in);
+    file = orb_file_write(&arena, &in);
     CHECK(orb_file_load(file, &out, &err));
     CHECK_EQ(out.level_count, 0);
 
@@ -466,7 +466,7 @@ int main(void) {
         .font_ids = font_ids
     };
     orb_assets font_out = {};
-    orb_span font_file = orb_file_write(&a, &font_in);
+    orb_span font_file = orb_file_write(&arena, &font_in);
 
     CHECK(orb_file_load(font_file, &font_out, &err));
     CHECK_EQ(font_out.font_count, 1);
@@ -476,23 +476,23 @@ int main(void) {
     CHECK_EQ(font_out.font_ids[0], orb_asset_id("body", "font"));
 
     glyphs[3].x = 61; // 61 + 4 leaves a 64-wide sheet
-    orb_arena_reset(&a);
-    CHECK(!orb_file_load(orb_file_write(&a, &font_in), &font_out, &err));
+    orb_arena_reset(&arena);
+    CHECK(!orb_file_load(orb_file_write(&arena, &font_in), &font_out, &err));
 
     glyphs[3].x = 0;
     fonts[0].line_height = 0;
-    orb_arena_reset(&a);
-    CHECK(!orb_file_load(orb_file_write(&a, &font_in), &font_out, &err));
+    orb_arena_reset(&arena);
+    CHECK(!orb_file_load(orb_file_write(&arena, &font_in), &font_out, &err));
 
     fonts[0].line_height = 8;
     fonts[0].sheet = 1; // only one sheet exists
-    orb_arena_reset(&a);
-    CHECK(!orb_file_load(orb_file_write(&a, &font_in), &font_out, &err));
+    orb_arena_reset(&arena);
+    CHECK(!orb_file_load(orb_file_write(&arena, &font_in), &font_out, &err));
 
     fonts[0].sheet = 0;
     fonts[0].first_glyph = 1; // 95 glyphs from index 1 leave the 95-element section
-    orb_arena_reset(&a);
-    CHECK(!orb_file_load(orb_file_write(&a, &font_in), &font_out, &err));
+    orb_arena_reset(&arena);
+    CHECK(!orb_file_load(orb_file_write(&arena, &font_in), &font_out, &err));
 
     fonts[0].first_glyph = 0;
 
@@ -507,28 +507,28 @@ int main(void) {
     };
     orb_assets binding_out = {};
 
-    orb_arena_reset(&a);
-    CHECK(orb_file_load(orb_file_write(&a, &binding_in), &binding_out, &err));
+    orb_arena_reset(&arena);
+    CHECK(orb_file_load(orb_file_write(&arena, &binding_in), &binding_out, &err));
     CHECK_EQ(binding_out.binding_count, ORB_BTN_COUNT);
     CHECK(strcmp(binding_out.bindings[ORB_BTN_SELECT].symbol, "select") == 0);
 
     binding_in.binding_count = 0;
-    orb_arena_reset(&a);
-    CHECK(orb_file_load(orb_file_write(&a, &binding_in), &binding_out, &err));
+    orb_arena_reset(&arena);
+    CHECK(orb_file_load(orb_file_write(&arena, &binding_in), &binding_out, &err));
     CHECK_EQ(binding_out.binding_count, 0);
 
     binding_in.binding_count = 5;
-    orb_arena_reset(&a);
-    CHECK(!orb_file_load(orb_file_write(&a, &binding_in), &binding_out, &err));
+    orb_arena_reset(&arena);
+    CHECK(!orb_file_load(orb_file_write(&arena, &binding_in), &binding_out, &err));
     CHECK(strstr(err.text, "0 or 12 are valid") != nullptr);
 
     binding_in.binding_count = ORB_BTN_COUNT;
     memset(bindings[3].symbol, 'x', sizeof bindings[3].symbol);
-    orb_arena_reset(&a);
-    CHECK(!orb_file_load(orb_file_write(&a, &binding_in), &binding_out, &err));
+    orb_arena_reset(&arena);
+    CHECK(!orb_file_load(orb_file_write(&arena, &binding_in), &binding_out, &err));
     CHECK(strstr(err.text, "binding 3 has no terminator") != nullptr);
 
-    if (test_entities(&a)) return 1;
+    if (test_entities(&arena)) return 1;
 
     return 0;
 }

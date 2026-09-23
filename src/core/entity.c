@@ -28,9 +28,9 @@ uint32_t orb_entity_slot(orb_entity_id id) {
 }
 
 orb_entity* orb_entity_at(uint32_t slot) {
-    orb_entity* e = &entity_pool.entities[slot];
+    orb_entity* entity = &entity_pool.entities[slot];
 
-    return e->self.v == ORB_NO_INDEX ? nullptr : e;
+    return entity->self.v == ORB_NO_INDEX ? nullptr : entity;
 }
 
 static void* entity_slot_component(uint32_t slot, int kind) {
@@ -42,10 +42,10 @@ static uint32_t entity_type_index(orb_type type) {
 }
 
 // The placement an entity was spawned from, or nullptr.
-static const orb_placement_desc* entity_placement(const orb_entity* e) {
-    if (e->placement >= entity_assets->placement_count) return nullptr;
+static const orb_placement_desc* entity_placement(const orb_entity* entity) {
+    if (entity->placement >= entity_assets->placement_count) return nullptr;
 
-    return &entity_assets->placements[e->placement];
+    return &entity_assets->placements[entity->placement];
 }
 
 // The field named id within fields[first, first + count), or nullptr.
@@ -57,17 +57,18 @@ static const orb_field_desc* entity_field_in(uint32_t first, uint32_t count, uin
 }
 
 // The named field on the entity's placement, else on its type, or nullptr.
-static const orb_field_desc* entity_field(const orb_entity* e, const char* name) {
+static const orb_field_desc* entity_field(const orb_entity* entity, const char* name) {
     uint64_t id = orb_asset_id(name, "");
-    const orb_placement_desc* p = entity_placement(e);
+    const orb_placement_desc* placement = entity_placement(entity);
 
-    if (p) {
-        const orb_field_desc* f = entity_field_in(p->first_field, p->field_count, id);
+    if (placement) {
+        const orb_field_desc* field =
+            entity_field_in(placement->first_field, placement->field_count, id);
 
-        if (f) return f;
+        if (field) return field;
     }
 
-    uint32_t type = entity_type_index(e->type);
+    uint32_t type = entity_type_index(entity->type);
 
     if (type == ORB_NO_INDEX) return nullptr;
 
@@ -88,11 +89,11 @@ static const uint8_t* entity_element(
 
     if (slot == ORB_NO_INDEX) return nullptr;
 
-    const orb_field_desc* f = entity_field(&entity_pool.entities[slot], name);
+    const orb_field_desc* field = entity_field(&entity_pool.entities[slot], name);
 
-    if (!f || f->kind != kind || index < 0 || index >= f->count) return nullptr;
+    if (!field || field->kind != kind || index < 0 || index >= field->count) return nullptr;
 
-    return entity_assets->field_data + f->data + (uint32_t)index * orb_field_width(kind);
+    return entity_assets->field_data + field->data + (uint32_t)index * orb_field_width(kind);
 }
 
 // Fills the slot at the head of the free ring and runs the type's init; ORB_NO_ENTITY when
@@ -105,20 +106,20 @@ static orb_entity_id entity_spawn_slot(
     uint32_t placement,
     uint64_t iid
 ) {
-    orb_pool* p = &entity_pool;
+    orb_pool* pool = &entity_pool;
 
-    if (p->free_count == 0) return ORB_NO_ENTITY;
+    if (pool->free_count == 0) return ORB_NO_ENTITY;
 
-    uint32_t slot = p->free_slots[p->free_head];
+    uint32_t slot = pool->free_slots[pool->free_head];
 
-    p->free_head = (p->free_head + 1) % p->max;
-    p->free_count--;
+    pool->free_head = (pool->free_head + 1) % pool->max;
+    pool->free_count--;
 
-    orb_entity* e = &p->entities[slot];
+    orb_entity* entity = &pool->entities[slot];
 
-    *e = (orb_entity) {
+    *entity = (orb_entity) {
         .iid = iid,
-        .self = ORB_ENTITY(slot | (uint32_t)p->gens[slot] << 24),
+        .self = ORB_ENTITY(slot | (uint32_t)pool->gens[slot] << 24),
         .type = ORB_TYPE(type | (uint32_t)entity_assets->type_gens[type] << 24),
         .level = level == ORB_NO_INDEX
                      ? ORB_NO_LEVEL
@@ -132,44 +133,44 @@ static orb_entity_id entity_spawn_slot(
 
     const orb_type_fns* fns = &entity_types[type];
 
-    if (fns->init) fns->init(entity_state, entity_api, e->self);
+    if (fns->init) fns->init(entity_state, entity_api, entity->self);
 
-    return e->self;
+    return entity->self;
 }
 
 // Frees the slot: children are orphaned at their world position, the generation moves on
 // (255 wraps to 1), and the slot joins the tail of the free ring.
 static void entity_free(uint32_t slot) {
-    orb_pool* p = &entity_pool;
-    orb_entity* e = &p->entities[slot];
+    orb_pool* pool = &entity_pool;
+    orb_entity* entity = &pool->entities[slot];
 
-    for (uint32_t i = 0; i < p->max; i++) {
-        orb_entity* child = &p->entities[i];
+    for (uint32_t i = 0; i < pool->max; i++) {
+        orb_entity* child = &pool->entities[i];
 
-        if (child->self.v == ORB_NO_INDEX || child->parent.v != e->self.v) continue;
+        if (child->self.v == ORB_NO_INDEX || child->parent.v != entity->self.v) continue;
 
         child->at = orb_entity_world_at(child->self);
         child->parent = ORB_NO_ENTITY;
     }
 
-    e->self = ORB_NO_ENTITY;
-    e->components = 0;
-    p->gens[slot] = p->gens[slot] == 255 ? 1 : (uint8_t)(p->gens[slot] + 1);
-    p->free_slots[(p->free_head + p->free_count) % p->max] = slot;
-    p->free_count++;
+    entity->self = ORB_NO_ENTITY;
+    entity->components = 0;
+    pool->gens[slot] = pool->gens[slot] == 255 ? 1 : (uint8_t)(pool->gens[slot] + 1);
+    pool->free_slots[(pool->free_head + pool->free_count) % pool->max] = slot;
+    pool->free_count++;
 }
 
 // Live, non-despawning handles, all or of one type index, in slot order.
 static int entity_list(uint32_t type, orb_entity_id* out, int max) {
     int n = 0;
 
-    for (uint32_t s = 0; s < entity_pool.max && n < max; s++) {
-        const orb_entity* e = orb_entity_at(s);
+    for (uint32_t slot = 0; slot < entity_pool.max && n < max; slot++) {
+        const orb_entity* entity = orb_entity_at(slot);
 
-        if (!e || e->flags & ORB_ENTITY_DESPAWNING) continue;
-        if (type != ORB_NO_INDEX && ORB_HANDLE_INDEX(e->type) != type) continue;
+        if (!entity || entity->flags & ORB_ENTITY_DESPAWNING) continue;
+        if (type != ORB_NO_INDEX && ORB_HANDLE_INDEX(entity->type) != type) continue;
 
-        out[n++] = e->self;
+        out[n++] = entity->self;
     }
 
     return n;
@@ -194,11 +195,12 @@ orb_entity_id orb_entity_spawn(orb_type type, orb_vec2f at) {
         return ORB_NO_ENTITY;
     }
 
-    const orb_type_desc* t = &entity_assets->types[index];
+    const orb_type_desc* type_desc = &entity_assets->types[index];
     orb_vec2 pixel = {orb_floor(at.x), orb_floor(at.y)};
     uint32_t level = orb_tilemap_level_at(entity_assets, pixel);
-    orb_entity_id id =
-        entity_spawn_slot(index, at, (orb_size) {t->width, t->height}, level, ORB_NO_INDEX, 0);
+    orb_entity_id id = entity_spawn_slot(
+        index, at, (orb_size) {type_desc->width, type_desc->height}, level, ORB_NO_INDEX, 0
+    );
 
     if (id.v == ORB_NO_INDEX)
         orb_log("the entity pool is full at %u; type %u not spawned", entity_pool.max, index);
@@ -223,30 +225,30 @@ void* orb_entity_add(orb_entity_id id, int kind) {
 
     if (slot == ORB_NO_INDEX || kind < 0 || kind >= entity_pool.kinds) return nullptr;
 
-    orb_entity* e = &entity_pool.entities[slot];
-    void* c = entity_slot_component(slot, kind);
+    orb_entity* entity = &entity_pool.entities[slot];
+    void* component = entity_slot_component(slot, kind);
 
-    if (e->components & 1u << kind) return c;
+    if (entity->components & 1u << kind) return component;
 
-    memset(c, 0, entity_pool.sizes[kind]);
-    e->components |= 1u << kind;
+    memset(component, 0, entity_pool.sizes[kind]);
+    entity->components |= 1u << kind;
 
     if (kind == ORB_COMPONENT_SPRITE) {
-        orb_sprite_component* s = c;
+        orb_sprite_component* sprite_component = component;
 
-        s->sprite = ORB_NO_SPRITE;
-        s->anim.anim = ORB_NO_ANIM;
-        s->remap = -1;
+        sprite_component->sprite = ORB_NO_SPRITE;
+        sprite_component->anim.anim = ORB_NO_ANIM;
+        sprite_component->remap = -1;
     } else if (kind == ORB_COMPONENT_BODY) {
-        orb_body* b = c;
+        orb_body* body = component;
 
-        b->box.size = e->size;
-        b->standing_on = ORB_NO_ENTITY;
-        b->carrier = ORB_NO_ENTITY;
-        b->last_at = orb_entity_world_at(id);
+        body->box.size = entity->size;
+        body->standing_on = ORB_NO_ENTITY;
+        body->carrier = ORB_NO_ENTITY;
+        body->last_at = orb_entity_world_at(id);
     }
 
-    return c;
+    return component;
 }
 
 void orb_entity_remove(orb_entity_id id, int kind) {
@@ -266,15 +268,15 @@ void* orb_entity_component(orb_entity_id id, int kind) {
 }
 
 orb_vec2f orb_entity_world_at(orb_entity_id id) {
-    const orb_entity* e = orb_entity_get(id);
+    const orb_entity* entity = orb_entity_get(id);
 
-    if (!e) return (orb_vec2f) {};
+    if (!entity) return (orb_vec2f) {};
 
-    const orb_entity* parent = orb_entity_get(e->parent);
+    const orb_entity* parent = orb_entity_get(entity->parent);
 
-    if (!parent) return e->at;
+    if (!parent) return entity->at;
 
-    return (orb_vec2f) {parent->at.x + e->at.x, parent->at.y + e->at.y};
+    return (orb_vec2f) {parent->at.x + entity->at.x, parent->at.y + entity->at.y};
 }
 
 int orb_entity_all(orb_entity_id* out, int max) {
@@ -292,55 +294,56 @@ int orb_entity_field_count(orb_entity_id id, const char* name) {
 
     if (slot == ORB_NO_INDEX) return 0;
 
-    const orb_field_desc* f = entity_field(&entity_pool.entities[slot], name);
+    const orb_field_desc* field = entity_field(&entity_pool.entities[slot], name);
 
-    return f ? f->count : 0;
+    return field ? field->count : 0;
 }
 
 int32_t orb_entity_field_int(orb_entity_id id, const char* name, int index) {
-    const uint8_t* p = entity_element(id, name, index, ORB_FIELD_INT);
+    const uint8_t* bytes = entity_element(id, name, index, ORB_FIELD_INT);
 
-    return p ? orb_bytes_i32(p) : 0;
+    return bytes ? orb_bytes_i32(bytes) : 0;
 }
 
 float orb_entity_field_float(orb_entity_id id, const char* name, int index) {
-    const uint8_t* p = entity_element(id, name, index, ORB_FIELD_FLOAT);
-    uint32_t bits = p ? orb_bytes_u32(p) : 0;
-    float v;
+    const uint8_t* bytes = entity_element(id, name, index, ORB_FIELD_FLOAT);
+    uint32_t bits = bytes ? orb_bytes_u32(bytes) : 0;
+    float value;
 
-    memcpy(&v, &bits, 4);
-    return v;
+    memcpy(&value, &bits, 4);
+    return value;
 }
 
 bool orb_entity_field_bool(orb_entity_id id, const char* name, int index) {
-    const uint8_t* p = entity_element(id, name, index, ORB_FIELD_BOOL);
+    const uint8_t* bytes = entity_element(id, name, index, ORB_FIELD_BOOL);
 
-    return p && p[0] != 0;
+    return bytes && bytes[0] != 0;
 }
 
 const char* orb_entity_field_string(orb_entity_id id, const char* name, int index) {
-    const uint8_t* p = entity_element(id, name, index, ORB_FIELD_STRING);
+    const uint8_t* bytes = entity_element(id, name, index, ORB_FIELD_STRING);
 
-    return p ? (const char*)entity_assets->field_data + orb_bytes_u32(p) : "";
+    return bytes ? (const char*)entity_assets->field_data + orb_bytes_u32(bytes) : "";
 }
 
 orb_vec2 orb_entity_field_point(orb_entity_id id, const char* name, int index) {
-    const uint8_t* p = entity_element(id, name, index, ORB_FIELD_POINT);
+    const uint8_t* bytes = entity_element(id, name, index, ORB_FIELD_POINT);
 
-    return p ? (orb_vec2) {orb_bytes_i32(p), orb_bytes_i32(p + 4)} : (orb_vec2) {};
+    return bytes ? (orb_vec2) {orb_bytes_i32(bytes), orb_bytes_i32(bytes + 4)} : (orb_vec2) {};
 }
 
 orb_entity_id orb_entity_field_ref(orb_entity_id id, const char* name, int index) {
-    const uint8_t* p = entity_element(id, name, index, ORB_FIELD_REF);
+    const uint8_t* bytes = entity_element(id, name, index, ORB_FIELD_REF);
 
-    if (!p) return ORB_NO_ENTITY;
+    if (!bytes) return ORB_NO_ENTITY;
 
-    uint32_t target = orb_bytes_u32(p);
+    uint32_t target = orb_bytes_u32(bytes);
 
-    for (uint32_t s = 0; s < entity_pool.max; s++) {
-        const orb_entity* e = orb_entity_at(s);
+    for (uint32_t slot = 0; slot < entity_pool.max; slot++) {
+        const orb_entity* entity = orb_entity_at(slot);
 
-        if (e && !(e->flags & ORB_ENTITY_DESPAWNING) && e->placement == target) return e->self;
+        if (entity && !(entity->flags & ORB_ENTITY_DESPAWNING) && entity->placement == target)
+            return entity->self;
     }
 
     return ORB_NO_ENTITY;
@@ -354,11 +357,12 @@ void orb_level_despawn(orb_level level) {
         return;
     }
 
-    for (uint32_t s = 0; s < entity_pool.max; s++) {
-        orb_entity* e = orb_entity_at(s);
+    for (uint32_t slot = 0; slot < entity_pool.max; slot++) {
+        orb_entity* entity = orb_entity_at(slot);
 
-        if (!e || e->flags & ORB_ENTITY_PERSISTENT || e->level.v == ORB_NO_INDEX) continue;
-        if (ORB_HANDLE_INDEX(e->level) == index) e->flags |= ORB_ENTITY_DESPAWNING;
+        if (!entity || entity->flags & ORB_ENTITY_PERSISTENT || entity->level.v == ORB_NO_INDEX)
+            continue;
+        if (ORB_HANDLE_INDEX(entity->level) == index) entity->flags |= ORB_ENTITY_DESPAWNING;
     }
 }
 
@@ -372,14 +376,14 @@ void orb_level_spawn(orb_level level) {
 
     orb_level_despawn(level);
 
-    const orb_level_desc* d = &entity_assets->levels[index];
+    const orb_level_desc* desc = &entity_assets->levels[index];
 
-    for (uint32_t i = 0; i < d->placement_count; i++) {
-        uint32_t at = d->first_placement + i;
-        const orb_placement_desc* p = &entity_assets->placements[at];
+    for (uint32_t i = 0; i < desc->placement_count; i++) {
+        uint32_t at = desc->first_placement + i;
+        const orb_placement_desc* placement = &entity_assets->placements[at];
         orb_entity_id id = entity_spawn_slot(
-            p->type, (orb_vec2f) {(float)p->x, (float)p->y}, (orb_size) {p->width, p->height},
-            index, at, p->iid
+            placement->type, (orb_vec2f) {(float)placement->x, (float)placement->y},
+            (orb_size) {placement->width, placement->height}, index, at, placement->iid
         );
 
         if (id.v == ORB_NO_INDEX) {
@@ -404,51 +408,51 @@ static uint32_t entity_type_remap(const orb_assets* previous, uint32_t old_index
 // Placements are re-found by iid; each entity's type index comes from the found placement,
 // or else is mapped through the previous asset set's type ids. Generations are rebuilt last.
 void orb_entity_revalidate(const orb_assets* previous) {
-    for (uint32_t s = 0; s < entity_pool.max; s++) {
-        orb_entity* e = orb_entity_at(s);
+    for (uint32_t slot = 0; slot < entity_pool.max; slot++) {
+        orb_entity* entity = orb_entity_at(slot);
 
-        if (!e) continue;
+        if (!entity) continue;
 
-        e->type = ORB_TYPE(entity_type_remap(previous, ORB_HANDLE_INDEX(e->type)));
+        entity->type = ORB_TYPE(entity_type_remap(previous, ORB_HANDLE_INDEX(entity->type)));
 
-        if (e->placement == ORB_NO_INDEX && e->iid == 0) continue;
+        if (entity->placement == ORB_NO_INDEX && entity->iid == 0) continue;
 
-        const orb_placement_desc* p = entity_placement(e);
+        const orb_placement_desc* placement = entity_placement(entity);
 
-        if (!p || p->iid != e->iid) {
-            p = nullptr;
-            e->placement = ORB_NO_INDEX;
+        if (!placement || placement->iid != entity->iid) {
+            placement = nullptr;
+            entity->placement = ORB_NO_INDEX;
 
             for (uint32_t i = 0; i < entity_assets->placement_count; i++) {
-                if (entity_assets->placements[i].iid != e->iid) continue;
+                if (entity_assets->placements[i].iid != entity->iid) continue;
 
-                p = &entity_assets->placements[i];
-                e->placement = i;
+                placement = &entity_assets->placements[i];
+                entity->placement = i;
                 break;
             }
         }
 
-        if (p) e->type = ORB_TYPE(p->type);
+        if (placement) entity->type = ORB_TYPE(placement->type);
     }
 
-    for (uint32_t s = 0; s < entity_pool.max; s++) {
-        orb_entity* e = orb_entity_at(s);
+    for (uint32_t slot = 0; slot < entity_pool.max; slot++) {
+        orb_entity* entity = orb_entity_at(slot);
 
-        if (!e) continue;
+        if (!entity) continue;
 
-        uint32_t index = ORB_HANDLE_INDEX(e->type);
+        uint32_t index = ORB_HANDLE_INDEX(entity->type);
 
-        e->type = index < entity_assets->type_count
-                      ? ORB_TYPE(index | (uint32_t)entity_assets->type_gens[index] << 24)
-                      : ORB_NO_TYPE;
+        entity->type = index < entity_assets->type_count
+                           ? ORB_TYPE(index | (uint32_t)entity_assets->type_gens[index] << 24)
+                           : ORB_NO_TYPE;
     }
 }
 
 void orb_entity_free_despawning(void) {
-    for (uint32_t s = 0; s < entity_pool.max; s++) {
-        const orb_entity* e = orb_entity_at(s);
+    for (uint32_t slot = 0; slot < entity_pool.max; slot++) {
+        const orb_entity* entity = orb_entity_at(slot);
 
-        if (e && e->flags & ORB_ENTITY_DESPAWNING) entity_free(s);
+        if (entity && entity->flags & ORB_ENTITY_DESPAWNING) entity_free(slot);
     }
 }
 
@@ -533,18 +537,19 @@ static void entity_command_entities(void*, const orb_api*, int argc, const char*
         if (type == ORB_NO_INDEX) return;
     }
 
-    for (uint32_t s = 0; s < entity_pool.max; s++) {
-        const orb_entity* e = orb_entity_at(s);
+    for (uint32_t slot = 0; slot < entity_pool.max; slot++) {
+        const orb_entity* entity = orb_entity_at(slot);
 
-        if (!e || (type != ORB_NO_INDEX && ORB_HANDLE_INDEX(e->type) != type)) continue;
+        if (!entity || (type != ORB_NO_INDEX && ORB_HANDLE_INDEX(entity->type) != type)) continue;
 
-        orb_vec2f at = orb_entity_world_at(e->self);
+        orb_vec2f at = orb_entity_world_at(entity->self);
 
         orb_log(
-            "%u type %u (%g, %g) %dx%d %c%c%c%c", s, ORB_HANDLE_INDEX(e->type), at.x, at.y,
-            e->size.width, e->size.height, e->flags & ORB_ENTITY_VISIBLE ? 'v' : '-',
-            e->flags & ORB_ENTITY_PAUSED ? 'p' : '-', e->flags & ORB_ENTITY_PERSISTENT ? 'P' : '-',
-            e->flags & ORB_ENTITY_DESPAWNING ? 'd' : '-'
+            "%u type %u (%g, %g) %dx%d %c%c%c%c", slot, ORB_HANDLE_INDEX(entity->type), at.x, at.y,
+            entity->size.width, entity->size.height, entity->flags & ORB_ENTITY_VISIBLE ? 'v' : '-',
+            entity->flags & ORB_ENTITY_PAUSED ? 'p' : '-',
+            entity->flags & ORB_ENTITY_PERSISTENT ? 'P' : '-',
+            entity->flags & ORB_ENTITY_DESPAWNING ? 'd' : '-'
         );
         n++;
     }
@@ -553,43 +558,47 @@ static void entity_command_entities(void*, const orb_api*, int argc, const char*
 }
 
 // One field row: its name id, kind, count, and values.
-static void entity_log_field(const orb_field_desc* f) {
+static void entity_log_field(const orb_field_desc* field) {
     static const char* const kinds[] = {"int", "float", "bool", "string", "point", "ref"};
     char line[ORB_LOG_LINE_MAX];
     int n = snprintf(
-        line, sizeof line, "  %016llx %s[%u]:", (unsigned long long)f->name, kinds[f->kind],
-        f->count
+        line, sizeof line, "  %016llx %s[%u]:", (unsigned long long)field->name, kinds[field->kind],
+        field->count
     );
 
-    for (uint32_t k = 0; k < f->count && n < (int)sizeof line; k++) {
-        const uint8_t* p = entity_assets->field_data + f->data + k * orb_field_width(f->kind);
+    for (uint32_t k = 0; k < field->count && n < (int)sizeof line; k++) {
+        const uint8_t* bytes =
+            entity_assets->field_data + field->data + k * orb_field_width(field->kind);
         size_t room = sizeof line - (size_t)n;
 
-        switch (f->kind) {
+        switch (field->kind) {
         case ORB_FIELD_INT:
-            n += snprintf(line + n, room, " %d", orb_bytes_i32(p));
+            n += snprintf(line + n, room, " %d", orb_bytes_i32(bytes));
             break;
         case ORB_FIELD_FLOAT: {
-            uint32_t bits = orb_bytes_u32(p);
-            float v;
+            uint32_t bits = orb_bytes_u32(bytes);
+            float value;
 
-            memcpy(&v, &bits, 4);
-            n += snprintf(line + n, room, " %g", v);
+            memcpy(&value, &bits, 4);
+            n += snprintf(line + n, room, " %g", value);
             break;
         }
         case ORB_FIELD_BOOL:
-            n += snprintf(line + n, room, " %s", p[0] ? "true" : "false");
+            n += snprintf(line + n, room, " %s", bytes[0] ? "true" : "false");
             break;
         case ORB_FIELD_STRING:
             n += snprintf(
-                line + n, room, " \"%s\"", (const char*)entity_assets->field_data + orb_bytes_u32(p)
+                line + n, room, " \"%s\"",
+                (const char*)entity_assets->field_data + orb_bytes_u32(bytes)
             );
             break;
         case ORB_FIELD_POINT:
-            n += snprintf(line + n, room, " (%d, %d)", orb_bytes_i32(p), orb_bytes_i32(p + 4));
+            n += snprintf(
+                line + n, room, " (%d, %d)", orb_bytes_i32(bytes), orb_bytes_i32(bytes + 4)
+            );
             break;
         case ORB_FIELD_REF:
-            n += snprintf(line + n, room, " #%u", orb_bytes_u32(p));
+            n += snprintf(line + n, room, " #%u", orb_bytes_u32(bytes));
             break;
         }
     }
@@ -613,18 +622,18 @@ static void entity_command_entity(void*, const orb_api*, int argc, const char* c
 
     if (slot == ORB_NO_INDEX) return;
 
-    const orb_entity* e = &entity_pool.entities[slot];
-    orb_vec2f at = orb_entity_world_at(e->self);
-    const orb_placement_desc* p = entity_placement(e);
-    uint32_t type = ORB_HANDLE_INDEX(e->type);
+    const orb_entity* entity = &entity_pool.entities[slot];
+    orb_vec2f at = orb_entity_world_at(entity->self);
+    const orb_placement_desc* placement = entity_placement(entity);
+    uint32_t type = ORB_HANDLE_INDEX(entity->type);
 
     orb_log(
         "entity %u: type %u level %u placement %u at (%g, %g) %dx%d flags %#x parent %u", slot,
-        type, ORB_HANDLE_INDEX(e->level), e->placement, at.x, at.y, e->size.width, e->size.height,
-        e->flags, ORB_HANDLE_INDEX(e->parent)
+        type, ORB_HANDLE_INDEX(entity->level), entity->placement, at.x, at.y, entity->size.width,
+        entity->size.height, entity->flags, ORB_HANDLE_INDEX(entity->parent)
     );
 
-    if (p) entity_log_fields(p->first_field, p->field_count);
+    if (placement) entity_log_fields(placement->first_field, placement->field_count);
 
     if (type < entity_assets->type_count)
         entity_log_fields(
@@ -632,7 +641,7 @@ static void entity_command_entity(void*, const orb_api*, int argc, const char* c
         );
 
     for (int kind = 0; kind < entity_pool.kinds; kind++) {
-        if (!(e->components & 1u << kind)) continue;
+        if (!(entity->components & 1u << kind)) continue;
 
         const uint8_t* bytes = entity_slot_component(slot, kind);
 
@@ -668,8 +677,8 @@ static void entity_console_register(void) {
     orb_console_var_bool("entities.debug", &orb_entity_debug, "outline every body");
 }
 
-size_t orb_entity_region_size(const orb_config* c) {
-    size_t slots = c->max_entities, total = 0;
+size_t orb_entity_region_size(const orb_config* config) {
+    size_t slots = config->max_entities, total = 0;
 
     total += slots * sizeof(orb_entity) + 16;
     total += slots + 16;
@@ -678,46 +687,46 @@ size_t orb_entity_region_size(const orb_config* c) {
     total += slots * sizeof(uint32_t) + 16;
     total += slots * (sizeof(orb_sprite_component) + sizeof(orb_body) + sizeof(orb_tag)) + 3 * 16;
 
-    for (int i = 0; i < ORB_MAX_COMPONENTS - ORB_COMPONENT_GAME && c->components[i]; i++)
-        total += slots * c->components[i] + 16;
+    for (int i = 0; i < ORB_MAX_COMPONENTS - ORB_COMPONENT_GAME && config->components[i]; i++)
+        total += slots * config->components[i] + 16;
 
     return total;
 }
 
-bool orb_entity_reset(const orb_config* c) {
-    if (c->max_entities == 0 || c->max_entities > ORB_MAX_ENTITIES)
-        orb_fatal("max_entities %u is not 1 to %u", c->max_entities, ORB_MAX_ENTITIES);
+bool orb_entity_reset(const orb_config* config) {
+    if (config->max_entities == 0 || config->max_entities > ORB_MAX_ENTITIES)
+        orb_fatal("max_entities %u is not 1 to %u", config->max_entities, ORB_MAX_ENTITIES);
 
-    if (orb_entity_region_size(c) > entity_region->size) return false;
+    if (orb_entity_region_size(config) > entity_region->size) return false;
 
     orb_arena_reset(entity_region);
 
-    orb_pool* p = &entity_pool;
+    orb_pool* pool = &entity_pool;
 
-    *p = (orb_pool) {.max = c->max_entities};
-    p->entities = orb_arena_push_array(entity_region, orb_entity, p->max);
-    p->gens = orb_arena_push_array(entity_region, uint8_t, p->max);
-    p->free_slots = orb_arena_push_array(entity_region, uint32_t, p->max);
-    p->sort = orb_arena_push_array(entity_region, orb_sort_entry, p->max);
-    p->solids = orb_arena_push_array(entity_region, uint32_t, p->max);
-    p->sizes[ORB_COMPONENT_SPRITE] = sizeof(orb_sprite_component);
-    p->sizes[ORB_COMPONENT_BODY] = sizeof(orb_body);
-    p->sizes[ORB_COMPONENT_TAG] = sizeof(orb_tag);
-    p->kinds = ORB_COMPONENT_GAME;
+    *pool = (orb_pool) {.max = config->max_entities};
+    pool->entities = orb_arena_push_array(entity_region, orb_entity, pool->max);
+    pool->gens = orb_arena_push_array(entity_region, uint8_t, pool->max);
+    pool->free_slots = orb_arena_push_array(entity_region, uint32_t, pool->max);
+    pool->sort = orb_arena_push_array(entity_region, orb_sort_entry, pool->max);
+    pool->solids = orb_arena_push_array(entity_region, uint32_t, pool->max);
+    pool->sizes[ORB_COMPONENT_SPRITE] = sizeof(orb_sprite_component);
+    pool->sizes[ORB_COMPONENT_BODY] = sizeof(orb_body);
+    pool->sizes[ORB_COMPONENT_TAG] = sizeof(orb_tag);
+    pool->kinds = ORB_COMPONENT_GAME;
 
-    for (int i = 0; i < ORB_MAX_COMPONENTS - ORB_COMPONENT_GAME && c->components[i]; i++)
-        p->sizes[p->kinds++] = c->components[i];
+    for (int i = 0; i < ORB_MAX_COMPONENTS - ORB_COMPONENT_GAME && config->components[i]; i++)
+        pool->sizes[pool->kinds++] = config->components[i];
 
-    for (int k = 0; k < p->kinds; k++)
-        p->components[k] = orb_arena_push(entity_region, (size_t)p->sizes[k] * p->max, 16);
+    for (int k = 0; k < pool->kinds; k++)
+        pool->components[k] = orb_arena_push(entity_region, (size_t)pool->sizes[k] * pool->max, 16);
 
-    for (uint32_t i = 0; i < p->max; i++) {
-        p->entities[i].self = ORB_NO_ENTITY;
-        p->gens[i] = 1;
-        p->free_slots[i] = i;
+    for (uint32_t i = 0; i < pool->max; i++) {
+        pool->entities[i].self = ORB_NO_ENTITY;
+        pool->gens[i] = 1;
+        pool->free_slots[i] = i;
     }
 
-    p->free_count = p->max;
+    pool->free_count = pool->max;
     orb_entity_types_clear();
     return true;
 }

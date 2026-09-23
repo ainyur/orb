@@ -33,7 +33,7 @@ int main(void) {
 
     // the directories are overridden to point at the checked-in fixtures; a game
     // that keeps the conventional layout names none of them
-    const char* manifest =
+    const char* manifest_json =
         "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
         " \"palette\": \"" ART "art/palette.aseprite\",\n"
         " \"art\": \"" ART "art\", \"sfx\": \"" ART "sfx\", \"music\": \"" ART "music\",\n"
@@ -42,216 +42,224 @@ int main(void) {
         " \"buttons\": {\"select\": \"m\", \"a\": \"space\"},\n"
         " \"songs\": {\"loop\": 120}}\n";
 
-    CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)manifest, strlen(manifest)}));
+    CHECK(orb_os_write_file(
+        DIR "/orb.json", (orb_span) {(uint8_t*)manifest_json, strlen(manifest_json)}
+    ));
 
-    orb_manifest m;
-    orb_cast_result r;
-    CHECK(orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
-    CHECK(strcmp(m.id, "fixture") == 0);
-    CHECK_EQ(m.size.width, 64);
-    CHECK_EQ(m.size.height, 32);
-    CHECK_EQ(m.song_count, 1);
-    CHECK(strcmp(m.buttons[ORB_BTN_SELECT], "m") == 0);
-    CHECK(strcmp(m.buttons[ORB_BTN_A], "space") == 0);
-    CHECK_EQ(m.buttons[ORB_BTN_UP][0], 0);
-    CHECK(r.file.ptr >= out_mem && r.file.ptr < out_mem + sizeof out_mem);
+    orb_manifest manifest;
+    orb_cast_result result;
+    CHECK(orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
+    CHECK(strcmp(manifest.id, "fixture") == 0);
+    CHECK_EQ(manifest.size.width, 64);
+    CHECK_EQ(manifest.size.height, 32);
+    CHECK_EQ(manifest.song_count, 1);
+    CHECK(strcmp(manifest.buttons[ORB_BTN_SELECT], "m") == 0);
+    CHECK(strcmp(manifest.buttons[ORB_BTN_A], "space") == 0);
+    CHECK_EQ(manifest.buttons[ORB_BTN_UP][0], 0);
+    CHECK(result.file.ptr >= out_mem && result.file.ptr < out_mem + sizeof out_mem);
 
     // every file and directory the cast read, once each: what scry watches, so a
     // file added to a directory recasts without touching orb.json. The world
     // casts before the fonts and the art, so the project and its two level
     // files come first; the font directory and its file follow, ahead of the
     // art walk and the tileset it pulls in.
-    CHECK_EQ(r.read_count, 14);
-    CHECK(strcmp(r.reads[0], "orb.json") == 0);
-    CHECK(strcmp(r.reads[1], ART "art/palette.aseprite") == 0);
-    CHECK(strcmp(r.reads[2], ART "levels/world.ldtk") == 0);
-    CHECK(strcmp(r.reads[3], ART "levels/world/Room.ldtkl") == 0);
-    CHECK(strcmp(r.reads[4], ART "levels/world/Annex.ldtkl") == 0);
-    CHECK(strcmp(r.reads[5], ART "fonts") == 0);
-    CHECK(strcmp(r.reads[6], ART "fonts/body.aseprite") == 0);
-    CHECK(strcmp(r.reads[7], ART "art") == 0);
-    CHECK(strcmp(r.reads[8], ART "art/player.aseprite") == 0);
-    CHECK(strcmp(r.reads[9], ART "levels/tiles.aseprite") == 0);
-    CHECK(strcmp(r.reads[13], ART "music/loop.wav") == 0);
+    CHECK_EQ(result.read_count, 14);
+    CHECK(strcmp(result.reads[0], "orb.json") == 0);
+    CHECK(strcmp(result.reads[1], ART "art/palette.aseprite") == 0);
+    CHECK(strcmp(result.reads[2], ART "levels/world.ldtk") == 0);
+    CHECK(strcmp(result.reads[3], ART "levels/world/Room.ldtkl") == 0);
+    CHECK(strcmp(result.reads[4], ART "levels/world/Annex.ldtkl") == 0);
+    CHECK(strcmp(result.reads[5], ART "fonts") == 0);
+    CHECK(strcmp(result.reads[6], ART "fonts/body.aseprite") == 0);
+    CHECK(strcmp(result.reads[7], ART "art") == 0);
+    CHECK(strcmp(result.reads[8], ART "art/player.aseprite") == 0);
+    CHECK(strcmp(result.reads[9], ART "levels/tiles.aseprite") == 0);
+    CHECK(strcmp(result.reads[13], ART "music/loop.wav") == 0);
 
-    orb_assets as;
-    CHECK(orb_file_load(r.file, &as, &err));
-    CHECK_EQ(as.binding_count, ORB_BTN_COUNT);
-    CHECK(strcmp(as.bindings[ORB_BTN_UP].symbol, "up") == 0); // the default's symbol
-    CHECK(strcmp(as.bindings[ORB_BTN_A].symbol, "space") == 0);
-    CHECK(strcmp(as.bindings[ORB_BTN_SELECT].symbol, "m") == 0);
-    CHECK_EQ(as.pal[1 * 4 + 2], 64);
-    CHECK_EQ(as.pal[2 * 4 + 0], 255);
+    orb_assets assets;
+    CHECK(orb_file_load(result.file, &assets, &err));
+    CHECK_EQ(assets.binding_count, ORB_BTN_COUNT);
+    CHECK(strcmp(assets.bindings[ORB_BTN_UP].symbol, "up") == 0); // the default's symbol
+    CHECK(strcmp(assets.bindings[ORB_BTN_A].symbol, "space") == 0);
+    CHECK(strcmp(assets.bindings[ORB_BTN_SELECT].symbol, "m") == 0);
+    CHECK_EQ(assets.pal[1 * 4 + 2], 64);
+    CHECK_EQ(assets.pal[2 * 4 + 0], 255);
     // sprites, then the font sheet, then the world's tileset sheet
-    CHECK_EQ(as.sheet_count, 3);
-    CHECK_EQ(as.sprite_count, 2);
-    CHECK_EQ(as.sprites[0].width, 8);
-    CHECK_EQ(as.sprites[0].ox, 4);
-    CHECK_EQ(as.sprites[0].frame_width, 16);
-    CHECK_EQ(as.sprites[1].ox, 6);
+    CHECK_EQ(assets.sheet_count, 3);
+    CHECK_EQ(assets.sprite_count, 2);
+    CHECK_EQ(assets.sprites[0].width, 8);
+    CHECK_EQ(assets.sprites[0].ox, 4);
+    CHECK_EQ(assets.sprites[0].frame_width, 16);
+    CHECK_EQ(assets.sprites[1].ox, 6);
 
-    const orb_sheet_desc* sh = &as.sheets[0];
-    const orb_sprite_desc* sp = &as.sprites[0];
-    CHECK_EQ(as.pixels[sh->pixels + sp->y * sh->width + sp->x], 2);
+    const orb_sheet_desc* sheet = &assets.sheets[0];
+    const orb_sprite_desc* sprite = &assets.sprites[0];
+    CHECK_EQ(assets.pixels[sheet->pixels + sprite->y * sheet->width + sprite->x], 2);
 
-    CHECK_EQ(as.sample_count, 2);
-    CHECK_EQ(as.song_count, 1);
+    CHECK_EQ(assets.sample_count, 2);
+    CHECK_EQ(assets.song_count, 1);
 
-    CHECK_EQ(as.anim_count, 1);
-    CHECK_EQ(as.anims[0].first_sprite, 0);
-    CHECK_EQ(as.anims[0].count, 2);
-    CHECK_EQ(as.durations[as.anims[0].first_duration], 6);
-    CHECK_EQ(as.durations[as.anims[0].first_duration + 1], 12);
+    CHECK_EQ(assets.anim_count, 1);
+    CHECK_EQ(assets.anims[0].first_sprite, 0);
+    CHECK_EQ(assets.anims[0].count, 2);
+    CHECK_EQ(assets.durations[assets.anims[0].first_duration], 6);
+    CHECK_EQ(assets.durations[assets.anims[0].first_duration + 1], 12);
 
     // ids are what a game finds assets by: the file stem plus frame number or
     // tag, case-insensitive, hashed the same way at cast and at find
-    CHECK(as.sprite_ids != nullptr);
-    CHECK(as.sprite_ids[0] == orb_asset_id("player", "0"));
-    CHECK(as.sprite_ids[1] == orb_asset_id("Player", "1"));
-    CHECK(as.anim_ids != nullptr);
-    CHECK(as.anim_ids[0] == orb_asset_id("player", "walk"));
+    CHECK(assets.sprite_ids != nullptr);
+    CHECK(assets.sprite_ids[0] == orb_asset_id("player", "0"));
+    CHECK(assets.sprite_ids[1] == orb_asset_id("Player", "1"));
+    CHECK(assets.anim_ids != nullptr);
+    CHECK(assets.anim_ids[0] == orb_asset_id("player", "walk"));
     CHECK(orb_asset_id("player", "walk") != orb_asset_id("player", "0"));
 
     // sounds first, then each song's sample; a song's sample is never a sound
-    CHECK_EQ(as.sample_count, 2);
-    CHECK_EQ(as.samples[0].count, 4800);
-    CHECK_EQ(as.samples[0].channels, 1);
-    CHECK_EQ(as.samples[0].rate, 48000);
-    CHECK_EQ(as.samples[0].loop_end, 0);
-    CHECK_EQ(as.samples[1].first, 4800);
-    CHECK_EQ(as.samples[1].channels, 2);
-    CHECK_EQ(as.samples[1].count, 96000);
-    CHECK_EQ(as.samples[1].loop_start, 0);
-    CHECK_EQ(as.samples[1].loop_end, 96000);
-    CHECK_EQ(as.pcm_count, 4800 + 2 * 96000);
-    CHECK_EQ(as.pcm[0], -12000);
-    CHECK_EQ(as.song_count, 1);
-    CHECK_EQ(as.songs[0].sample, 1);
-    CHECK_EQ(as.songs[0].millibpm, 120000);
-    CHECK(as.sample_ids[0] == orb_asset_id("beep", ""));
-    CHECK(as.sample_ids[1] == orb_asset_id("loop", "song"));
-    CHECK(as.song_ids[0] == orb_asset_id("LOOP", ""));
+    CHECK_EQ(assets.sample_count, 2);
+    CHECK_EQ(assets.samples[0].count, 4800);
+    CHECK_EQ(assets.samples[0].channels, 1);
+    CHECK_EQ(assets.samples[0].rate, 48000);
+    CHECK_EQ(assets.samples[0].loop_end, 0);
+    CHECK_EQ(assets.samples[1].first, 4800);
+    CHECK_EQ(assets.samples[1].channels, 2);
+    CHECK_EQ(assets.samples[1].count, 96000);
+    CHECK_EQ(assets.samples[1].loop_start, 0);
+    CHECK_EQ(assets.samples[1].loop_end, 96000);
+    CHECK_EQ(assets.pcm_count, 4800 + 2 * 96000);
+    CHECK_EQ(assets.pcm[0], -12000);
+    CHECK_EQ(assets.song_count, 1);
+    CHECK_EQ(assets.songs[0].sample, 1);
+    CHECK_EQ(assets.songs[0].millibpm, 120000);
+    CHECK(assets.sample_ids[0] == orb_asset_id("beep", ""));
+    CHECK(assets.sample_ids[1] == orb_asset_id("loop", "song"));
+    CHECK(assets.song_ids[0] == orb_asset_id("LOOP", ""));
 
     // the world: one tileset sheet after the art and font sheets, two levels, six layers
-    CHECK_EQ(as.sheet_count, 3);
-    CHECK_EQ(as.tileset_count, 1);
-    CHECK_EQ(as.tilesets[0].sheet, 2);
-    CHECK_EQ(as.tilesets[0].grid, 8);
-    CHECK_EQ(as.tilesets[0].columns, 4);
-    CHECK_EQ(as.tilesets[0].count, 8);
-    CHECK_EQ(as.sheets[2].width, 32);
-    CHECK_EQ(as.pixels[as.sheets[2].pixels + 8 * 32 + 24], 6); // tile 7's marker at its (0,0)
-    CHECK_EQ(as.pixels[as.sheets[2].pixels + 8 * 32 + 25], 5); // tile 7's body
-    CHECK_EQ(as.level_count, 2);
-    CHECK_EQ(as.level_ids[0], orb_asset_id("room", ""));
-    CHECK_EQ(as.level_ids[1], orb_asset_id("Annex", ""));
-    CHECK_EQ(as.levels[0].width, 64);
-    CHECK_EQ(as.levels[0].layer_count, 3);
-    CHECK_EQ(as.levels[1].world_x, 64);
-    CHECK_EQ(as.levels[1].first_layer, 3);
-    CHECK_EQ(as.levels[1].layer_count, 3); // deco and collision are empty in Annex but still exist
-    CHECK_EQ(as.layer_count, 6);
-    CHECK_EQ(as.layer_ids[0], orb_asset_id("floor", ""));
-    CHECK_EQ(as.layer_ids[2], orb_asset_id("deco", ""));
+    CHECK_EQ(assets.sheet_count, 3);
+    CHECK_EQ(assets.tileset_count, 1);
+    CHECK_EQ(assets.tilesets[0].sheet, 2);
+    CHECK_EQ(assets.tilesets[0].grid, 8);
+    CHECK_EQ(assets.tilesets[0].columns, 4);
+    CHECK_EQ(assets.tilesets[0].count, 8);
+    CHECK_EQ(assets.sheets[2].width, 32);
+    CHECK_EQ(
+        assets.pixels[assets.sheets[2].pixels + 8 * 32 + 24], 6
+    ); // tile 7's marker at its (0,0)
+    CHECK_EQ(assets.pixels[assets.sheets[2].pixels + 8 * 32 + 25], 5); // tile 7's body
+    CHECK_EQ(assets.level_count, 2);
+    CHECK_EQ(assets.level_ids[0], orb_asset_id("room", ""));
+    CHECK_EQ(assets.level_ids[1], orb_asset_id("Annex", ""));
+    CHECK_EQ(assets.levels[0].width, 64);
+    CHECK_EQ(assets.levels[0].layer_count, 3);
+    CHECK_EQ(assets.levels[1].world_x, 64);
+    CHECK_EQ(assets.levels[1].first_layer, 3);
+    CHECK_EQ(
+        assets.levels[1].layer_count, 3
+    ); // deco and collision are empty in Annex but still exist
+    CHECK_EQ(assets.layer_count, 6);
+    CHECK_EQ(assets.layer_ids[0], orb_asset_id("floor", ""));
+    CHECK_EQ(assets.layer_ids[2], orb_asset_id("deco", ""));
 
     // floor: one sub-layer, tile 0 stored as 1, the two flipped tile 7s
-    const orb_layer_desc* floor = &as.layers[0];
+    const orb_layer_desc* floor = &assets.layers[0];
     CHECK_EQ(floor->sublayers, 1);
     CHECK_EQ(floor->columns, 8);
     CHECK_EQ(floor->rows, 4);
     CHECK_EQ(floor->cells, ORB_NO_INDEX);
-    CHECK_EQ(as.tiles[floor->tiles + 0], 1);
-    CHECK_EQ(as.tiles[floor->tiles + 2 * 8 + 3], 8 | ORB_TILE_FLIP_X);
-    CHECK_EQ(as.tiles[floor->tiles + 2 * 8 + 4], 8 | ORB_TILE_FLIP_Y);
+    CHECK_EQ(assets.tiles[floor->tiles + 0], 1);
+    CHECK_EQ(assets.tiles[floor->tiles + 2 * 8 + 3], 8 | ORB_TILE_FLIP_X);
+    CHECK_EQ(assets.tiles[floor->tiles + 2 * 8 + 4], 8 | ORB_TILE_FLIP_Y);
 
     // collision: cells on the border, three sub-layers from the stacked cells
-    const orb_layer_desc* collision = &as.layers[1];
+    const orb_layer_desc* collision = &assets.layers[1];
     CHECK(collision->cells != ORB_NO_INDEX);
-    CHECK_EQ(as.cells[collision->cells + 0], 1);
-    CHECK_EQ(as.cells[collision->cells + 1 * 8 + 1], 0);
+    CHECK_EQ(assets.cells[collision->cells + 0], 1);
+    CHECK_EQ(assets.cells[collision->cells + 1 * 8 + 1], 0);
     CHECK_EQ(collision->sublayers, 3);
-    CHECK_EQ(as.tiles[collision->tiles + 0], 2);              // tile 1 at (0,0), depth 0
-    CHECK_EQ(as.tiles[collision->tiles + 32 + 0], 5);         // tile 4 at (0,0), depth 1
-    CHECK_EQ(as.tiles[collision->tiles + 64 + 0], 3);         // tile 2 at (0,0), depth 2
-    CHECK_EQ(as.tiles[collision->tiles + 32 + 3 * 8 + 7], 5); // tile 4 at (7,3), depth 1
-    CHECK_EQ(as.tiles[collision->tiles + 64 + 3 * 8 + 7], 0); // nothing at (7,3), depth 2
-    CHECK_EQ(as.tiles[collision->tiles + 1 * 8 + 1], 0);      // interior is empty
+    CHECK_EQ(assets.tiles[collision->tiles + 0], 2);              // tile 1 at (0,0), depth 0
+    CHECK_EQ(assets.tiles[collision->tiles + 32 + 0], 5);         // tile 4 at (0,0), depth 1
+    CHECK_EQ(assets.tiles[collision->tiles + 64 + 0], 3);         // tile 2 at (0,0), depth 2
+    CHECK_EQ(assets.tiles[collision->tiles + 32 + 3 * 8 + 7], 5); // tile 4 at (7,3), depth 1
+    CHECK_EQ(assets.tiles[collision->tiles + 64 + 3 * 8 + 7], 0); // nothing at (7,3), depth 2
+    CHECK_EQ(assets.tiles[collision->tiles + 1 * 8 + 1], 0);      // interior is empty
 
     // deco: offset, parallax, one flipped tile
-    const orb_layer_desc* deco = &as.layers[2];
+    const orb_layer_desc* deco = &assets.layers[2];
     CHECK_EQ(deco->offset_x, 2);
     CHECK_EQ(deco->offset_y, 3);
     CHECK(deco->parallax_x == 0.5f);
     CHECK(deco->parallax_y == 0.25f);
-    CHECK_EQ(as.tiles[deco->tiles + 1 * 8 + 2], 4 | ORB_TILE_FLIP_X | ORB_TILE_FLIP_Y);
+    CHECK_EQ(assets.tiles[deco->tiles + 1 * 8 + 2], 4 | ORB_TILE_FLIP_X | ORB_TILE_FLIP_Y);
 
     // neighbors resolve to level indices
-    CHECK_EQ(as.neighbor_count, 2);
-    CHECK_EQ(as.levels[0].neighbor_count, 2);
-    CHECK_EQ(as.neighbors[0].level, 1);
-    CHECK_EQ(as.neighbors[0].dir, ORB_LEVEL_E);
-    CHECK_EQ(as.neighbors[1].dir, ORB_LEVEL_HIGHER);
+    CHECK_EQ(assets.neighbor_count, 2);
+    CHECK_EQ(assets.levels[0].neighbor_count, 2);
+    CHECK_EQ(assets.neighbors[0].level, 1);
+    CHECK_EQ(assets.neighbors[0].dir, ORB_LEVEL_E);
+    CHECK_EQ(assets.neighbors[1].dir, ORB_LEVEL_HIGHER);
 
     // entities: three types, four placements in Room and none in Annex, the crate's two
     // defaults, crate-a's six values with its ref resolved to crate-b, and no field for the
     // color or the null values
-    CHECK_EQ(as.type_count, 3);
-    CHECK_EQ(as.type_ids[0], orb_asset_id("crate", ""));
-    CHECK_EQ(as.type_ids[2], orb_asset_id("Player", ""));
-    CHECK_EQ(as.types[0].width, 8);
-    CHECK_EQ(as.types[0].field_count, 2);
-    CHECK_EQ(as.types[1].field_count, 0);
-    CHECK_EQ(as.placement_count, 4);
-    CHECK_EQ(as.levels[0].first_placement, 0);
-    CHECK_EQ(as.levels[0].placement_count, 4);
-    CHECK_EQ(as.levels[1].placement_count, 0);
-    CHECK_EQ(as.placements[0].type, 0);
-    CHECK_EQ(as.placements[0].level, 0);
-    CHECK_EQ(as.placements[0].x, 16);
-    CHECK_EQ(as.placements[0].y, 8);
-    CHECK(as.placements[0].iid == orb_asset_id("crate-a", ""));
-    CHECK_EQ(as.placements[0].field_count, 6);
-    CHECK_EQ(as.placements[1].field_count, 0);
-    CHECK_EQ(as.placements[3].type, 2);
-    CHECK_EQ(as.placements[3].x, 24);
-    CHECK_EQ(as.field_count, 8);
+    CHECK_EQ(assets.type_count, 3);
+    CHECK_EQ(assets.type_ids[0], orb_asset_id("crate", ""));
+    CHECK_EQ(assets.type_ids[2], orb_asset_id("Player", ""));
+    CHECK_EQ(assets.types[0].width, 8);
+    CHECK_EQ(assets.types[0].field_count, 2);
+    CHECK_EQ(assets.types[1].field_count, 0);
+    CHECK_EQ(assets.placement_count, 4);
+    CHECK_EQ(assets.levels[0].first_placement, 0);
+    CHECK_EQ(assets.levels[0].placement_count, 4);
+    CHECK_EQ(assets.levels[1].placement_count, 0);
+    CHECK_EQ(assets.placements[0].type, 0);
+    CHECK_EQ(assets.placements[0].level, 0);
+    CHECK_EQ(assets.placements[0].x, 16);
+    CHECK_EQ(assets.placements[0].y, 8);
+    CHECK(assets.placements[0].iid == orb_asset_id("crate-a", ""));
+    CHECK_EQ(assets.placements[0].field_count, 6);
+    CHECK_EQ(assets.placements[1].field_count, 0);
+    CHECK_EQ(assets.placements[3].type, 2);
+    CHECK_EQ(assets.placements[3].x, 24);
+    CHECK_EQ(assets.field_count, 8);
 
-    const orb_field_desc* hp_default = &as.fields[as.types[0].first_field];
+    const orb_field_desc* hp_default = &assets.fields[assets.types[0].first_field];
     CHECK(hp_default->name == orb_asset_id("hp", ""));
     CHECK_EQ(hp_default->kind, ORB_FIELD_INT);
-    CHECK_EQ(orb_bytes_i32(as.field_data + hp_default->data), 10);
+    CHECK_EQ(orb_bytes_i32(assets.field_data + hp_default->data), 10);
 
     const orb_field_desc* label_default = hp_default + 1;
     CHECK_EQ(label_default->kind, ORB_FIELD_STRING);
     CHECK(
         strcmp(
-            (const char*)as.field_data + orb_bytes_u32(as.field_data + label_default->data), "box"
+            (const char*)assets.field_data + orb_bytes_u32(assets.field_data + label_default->data),
+            "box"
         ) == 0
     );
 
-    const orb_field_desc* crate_a = &as.fields[as.placements[0].first_field];
-    CHECK_EQ(orb_bytes_i32(as.field_data + crate_a[0].data), 3);
+    const orb_field_desc* crate_a = &assets.fields[assets.placements[0].first_field];
+    CHECK_EQ(orb_bytes_i32(assets.field_data + crate_a[0].data), 3);
     CHECK_EQ(crate_a[1].kind, ORB_FIELD_BOOL);
-    CHECK_EQ(as.field_data[crate_a[1].data], 1);
+    CHECK_EQ(assets.field_data[crate_a[1].data], 1);
     CHECK_EQ(crate_a[2].count, 3);
-    CHECK_EQ(orb_bytes_i32(as.field_data + crate_a[2].data + 8), 3);
+    CHECK_EQ(orb_bytes_i32(assets.field_data + crate_a[2].data + 8), 3);
     CHECK(crate_a[3].name == orb_asset_id("kind", ""));
     CHECK(
         strcmp(
-            (const char*)as.field_data + orb_bytes_u32(as.field_data + crate_a[3].data), "Wood"
+            (const char*)assets.field_data + orb_bytes_u32(assets.field_data + crate_a[3].data),
+            "Wood"
         ) == 0
     );
     CHECK_EQ(crate_a[4].kind, ORB_FIELD_POINT);
-    CHECK_EQ(orb_bytes_i32(as.field_data + crate_a[4].data), 40);
-    CHECK_EQ(orb_bytes_i32(as.field_data + crate_a[4].data + 4), 16);
+    CHECK_EQ(orb_bytes_i32(assets.field_data + crate_a[4].data), 40);
+    CHECK_EQ(orb_bytes_i32(assets.field_data + crate_a[4].data + 4), 16);
     CHECK_EQ(crate_a[5].kind, ORB_FIELD_REF);
-    CHECK_EQ(orb_bytes_u32(as.field_data + crate_a[5].data), 1);
-    CHECK_EQ(as.fields[0].data & 3, 0);
+    CHECK_EQ(orb_bytes_u32(assets.field_data + crate_a[5].data), 1);
+    CHECK_EQ(assets.fields[0].data & 3, 0);
     CHECK_EQ(crate_a[5].data & 3, 0);
 
     // scratch peaks at the packed PCM plus the largest file plus the art, the font, and the
     // world, whose entity definitions and instances now add to its parsed size
-    CHECK(scratch.peak < 2 * as.pcm_count * sizeof(int16_t) + (150 << 10));
+    CHECK(scratch.peak < 2 * assets.pcm_count * sizeof(int16_t) + (150 << 10));
 
     // no project: no levels, and the directory is watched so its creation recasts
     const char* no_project =
@@ -263,13 +271,13 @@ int main(void) {
     );
     orb_arena_reset(&scratch);
     orb_arena_reset(&out);
-    CHECK(orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
-    CHECK(orb_file_load(r.file, &as, &err));
-    CHECK_EQ(as.level_count, 0);
-    CHECK_EQ(as.sheet_count, 1);
+    CHECK(orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
+    CHECK(orb_file_load(result.file, &assets, &err));
+    CHECK_EQ(assets.level_count, 0);
+    CHECK_EQ(assets.sheet_count, 1);
     bool watched = false;
-    for (int i = 0; i < r.read_count; i++)
-        if (strcmp(r.reads[i], "levels") == 0) watched = true;
+    for (int i = 0; i < result.read_count; i++)
+        if (strcmp(result.reads[i], "levels") == 0) watched = true;
     CHECK(watched);
 
     // "world" naming a bare filename has no directory part (cast_dir_of("w.ldtk")
@@ -283,12 +291,12 @@ int main(void) {
     );
     orb_arena_reset(&scratch);
     orb_arena_reset(&out);
-    CHECK(orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
-    CHECK(orb_file_load(r.file, &as, &err));
-    CHECK_EQ(as.level_count, 0);
+    CHECK(orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
+    CHECK(orb_file_load(result.file, &assets, &err));
+    CHECK_EQ(assets.level_count, 0);
     bool dot_watched = false;
-    for (int i = 0; i < r.read_count; i++)
-        if (strcmp(r.reads[i], ".") == 0) dot_watched = true;
+    for (int i = 0; i < result.read_count; i++)
+        if (strcmp(result.reads[i], ".") == 0) dot_watched = true;
     CHECK(dot_watched);
 
     // a cell that nine tiles land on is more sub-layers than a layer allows,
@@ -345,7 +353,7 @@ int main(void) {
     ));
     orb_arena_reset(&scratch);
     orb_arena_reset(&out);
-    CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
+    CHECK(!orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
     CHECK(strstr(err.text, "sub-layers") != nullptr);
 
     int mismatch_len = snprintf(stack_project, sizeof stack_project, stack_project_template, 16);
@@ -355,7 +363,7 @@ int main(void) {
     ));
     orb_arena_reset(&scratch);
     orb_arena_reset(&out);
-    CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
+    CHECK(!orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
     CHECK(strstr(err.text, "32x16") != nullptr);
 
     // two level identifiers that fold to one name are refused
@@ -378,7 +386,7 @@ int main(void) {
     ));
     orb_arena_reset(&scratch);
     orb_arena_reset(&out);
-    CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
+    CHECK(!orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
     CHECK(strstr(err.text, "share a name") != nullptr);
 
     // a neighbour naming a level iid that does not exist is refused
@@ -397,7 +405,7 @@ int main(void) {
     ));
     orb_arena_reset(&scratch);
     orb_arena_reset(&out);
-    CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
+    CHECK(!orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
     CHECK(strstr(err.text, "not a level") != nullptr);
 
     // clean up so later casts in this file, which use the default world path,
@@ -412,9 +420,9 @@ int main(void) {
 
     if (orb_os_stat(sample_project, &sample_info)) {
         static uint8_t big_scratch[48 << 20], big_out[8 << 20];
-        orb_arena bs, bo;
-        orb_arena_init(&bs, "scratch", big_scratch, sizeof big_scratch);
-        orb_arena_init(&bo, "out", big_out, sizeof big_out);
+        orb_arena sample_scratch, sample_out;
+        orb_arena_init(&sample_scratch, "scratch", big_scratch, sizeof big_scratch);
+        orb_arena_init(&sample_out, "out", big_out, sizeof big_out);
         // the tileset file doubles as the palette, so every color matches
         const char* sample_manifest =
             "{\"id\": \"sample\", \"name\": \"Sample\", \"size\": [320, 180],\n"
@@ -426,15 +434,15 @@ int main(void) {
             DIR "/orb.json", (orb_span) {(uint8_t*)sample_manifest, strlen(sample_manifest)}
         ));
 
-        CHECK(orb_cast_game(&bs, &bo, DIR, &m, &r, &err));
-        CHECK(orb_file_load(r.file, &as, &err));
-        CHECK_EQ(as.level_count, 12);
-        CHECK_EQ(as.tileset_count, 1);
-        CHECK_EQ(as.tilesets[0].columns, 36);
-        CHECK(as.layer_count >= 24);
+        CHECK(orb_cast_game(&sample_scratch, &sample_out, DIR, &manifest, &result, &err));
+        CHECK(orb_file_load(result.file, &assets, &err));
+        CHECK_EQ(assets.level_count, 12);
+        CHECK_EQ(assets.tileset_count, 1);
+        CHECK_EQ(assets.tilesets[0].columns, 36);
+        CHECK(assets.layer_count >= 24);
         printf(
-            "sample: %u levels, %u layers, %u tiles, %u cells\n", as.level_count, as.layer_count,
-            as.tile_count, as.cell_count
+            "sample: %u levels, %u layers, %u tiles, %u cells\n", assets.level_count,
+            assets.layer_count, assets.tile_count, assets.cell_count
         );
     } else
         printf("sample: LDtk samples not installed, skipped\n");
@@ -450,20 +458,20 @@ int main(void) {
     const char* nested = "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
                          " \"palette\": \"" ART "art/palette.aseprite\"}\n";
     CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)nested, strlen(nested)}));
-    CHECK(orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
-    CHECK(orb_file_load(r.file, &as, &err));
-    CHECK_EQ(as.sprite_count, 2);
-    CHECK_EQ(as.sample_count, 0); // no sfx or music directory is no error, and both are watched
-    CHECK_EQ(r.read_count, 9);    // "levels" and "fonts" too: missing, but both are watched
-    CHECK(strcmp(r.reads[2], "levels") == 0);
-    CHECK(strcmp(r.reads[3], "fonts") == 0);
-    CHECK(strcmp(r.reads[4], "art") == 0);
-    CHECK(strcmp(r.reads[5], "art/sub") == 0);
-    CHECK(strcmp(r.reads[6], "art/sub/hero.aseprite") == 0);
-    CHECK(strcmp(r.reads[7], "sfx") == 0);
-    CHECK(strcmp(r.reads[8], "music") == 0);
+    CHECK(orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
+    CHECK(orb_file_load(result.file, &assets, &err));
+    CHECK_EQ(assets.sprite_count, 2);
+    CHECK_EQ(assets.sample_count, 0); // no sfx or music directory is no error, and both are watched
+    CHECK_EQ(result.read_count, 9);   // "levels" and "fonts" too: missing, but both are watched
+    CHECK(strcmp(result.reads[2], "levels") == 0);
+    CHECK(strcmp(result.reads[3], "fonts") == 0);
+    CHECK(strcmp(result.reads[4], "art") == 0);
+    CHECK(strcmp(result.reads[5], "art/sub") == 0);
+    CHECK(strcmp(result.reads[6], "art/sub/hero.aseprite") == 0);
+    CHECK(strcmp(result.reads[7], "sfx") == 0);
+    CHECK(strcmp(result.reads[8], "music") == 0);
     CHECK(orb_os_write_file(DIR "/art/hero.aseprite", player));
-    CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
+    CHECK(!orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
     CHECK(strstr(err.text, "art/hero.aseprite") != nullptr);
     CHECK(strstr(err.text, "art/sub/hero.aseprite") != nullptr);
     remove(DIR "/art/hero.aseprite");
@@ -471,17 +479,19 @@ int main(void) {
     // every key but id, name, and size has a default
     const char* plain = "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32]}\n";
     CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)plain, strlen(plain)}));
-    CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err)); // no art/palette.aseprite here
+    CHECK(
+        !orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err)
+    ); // no art/palette.aseprite here
     CHECK(strstr(err.text, "art/palette.aseprite") != nullptr);
 
     // a leftover asset_headroom is ignored like any key the manifest does not know
     const char* leftover =
         "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32], \"asset_headroom\": 1}\n";
     CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)leftover, strlen(leftover)}));
-    CHECK(orb_manifest_load(&scratch, DIR, &m, &err));
-    CHECK(strcmp(m.art, "art") == 0);
-    CHECK(strcmp(m.sfx, "sfx") == 0);
-    CHECK(strcmp(m.music, "music") == 0);
+    CHECK(orb_manifest_load(&scratch, DIR, &manifest, &err));
+    CHECK(strcmp(manifest.art, "art") == 0);
+    CHECK(strcmp(manifest.sfx, "sfx") == 0);
+    CHECK(strcmp(manifest.music, "music") == 0);
 
     // a song names its tempo in orb.json, since a rendered file carries none; a
     // song without one and a tempo without a song are both refused
@@ -489,7 +499,7 @@ int main(void) {
                          " \"palette\": \"" ART "art/palette.aseprite\",\n"
                          " \"music\": \"" ART "music\"}\n";
     CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)silent, strlen(silent)}));
-    CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
+    CHECK(!orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
     CHECK(strstr(err.text, "loop.wav") != nullptr);
     CHECK(strstr(err.text, "bpm") != nullptr);
 
@@ -497,7 +507,7 @@ int main(void) {
                           " \"palette\": \"" ART "art/palette.aseprite\",\n"
                           " \"songs\": {\"title\": 120}}\n";
     CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)phantom, strlen(phantom)}));
-    CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
+    CHECK(!orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
     CHECK(strstr(err.text, "title") != nullptr);
     CHECK(strstr(err.text, "music") != nullptr);
 
@@ -506,7 +516,7 @@ int main(void) {
                        " \"palette\": \"" ART "art/palette.aseprite\",\n"
                        " \"songs\": [\"loop\"]}\n";
     CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)bare, strlen(bare)}));
-    CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
+    CHECK(!orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
     CHECK(strstr(err.text, "songs") != nullptr);
     CHECK(strstr(err.text, "bpm") != nullptr);
 
@@ -514,7 +524,7 @@ int main(void) {
                        " \"palette\": \"" ART "art/palette.aseprite\",\n"
                        " \"songs\": {\"loop\": 0}}\n";
     CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)slow, strlen(slow)}));
-    CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
+    CHECK(!orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
     CHECK(strstr(err.text, "loop") != nullptr);
     CHECK(strstr(err.text, "bpm") != nullptr);
 
@@ -522,7 +532,7 @@ int main(void) {
                        " \"palette\": \"" ART "art/palette.aseprite\",\n"
                        " \"songs\": {\"loop\": 1e999}}\n";
     CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)fast, strlen(fast)}));
-    CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
+    CHECK(!orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
     CHECK(strstr(err.text, "bpm") != nullptr);
 
     // a sound must be mono, since pan positions it; only a song may be stereo
@@ -530,7 +540,7 @@ int main(void) {
                          " \"palette\": \"" ART "art/palette.aseprite\",\n"
                          " \"sfx\": \"" ART "music\"}\n";
     CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)stereo, strlen(stereo)}));
-    CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
+    CHECK(!orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
     CHECK(strstr(err.text, "loop.wav") != nullptr);
     CHECK(strstr(err.text, "mono") != nullptr);
 
@@ -555,26 +565,28 @@ int main(void) {
         ));
         orb_arena_reset(&scratch);
         orb_arena_reset(&out);
-        CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
+        CHECK(!orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
         CHECK(strstr(err.text, bad_reason[i]) != nullptr);
     }
 
-    CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)manifest, strlen(manifest)}));
+    CHECK(orb_os_write_file(
+        DIR "/orb.json", (orb_span) {(uint8_t*)manifest_json, strlen(manifest_json)}
+    ));
 
-    CHECK(!orb_manifest_load(&scratch, "build/scratch", &m, &err));
+    CHECK(!orb_manifest_load(&scratch, "build/scratch", &manifest, &err));
     CHECK(strstr(err.text, "orb.json") != nullptr);
 
     static alignas(16) uint8_t tiny_mem[4096];
     orb_arena tiny;
     orb_arena_init(&tiny, "cast scratch", tiny_mem, sizeof tiny_mem);
-    CHECK(!orb_cast_game(&tiny, &out, DIR, &m, &r, &err));
+    CHECK(!orb_cast_game(&tiny, &out, DIR, &manifest, &result, &err));
     CHECK(strstr(err.text, "cast scratch") != nullptr);
     CHECK(strstr(err.text, "exhausted:") != nullptr);
     CHECK(strstr(err.text, "over its 4.0 KB size") != nullptr);
 
     orb_arena_init(&tiny, "asset half B", tiny_mem, 512);
 
-    CHECK(!orb_cast_game(&scratch, &tiny, DIR, &m, &r, &err));
+    CHECK(!orb_cast_game(&scratch, &tiny, DIR, &manifest, &result, &err));
     CHECK(strstr(err.text, "asset half B") != nullptr);
 
     // an unresolved ref is a cast error naming the level, the entity, and the field
@@ -615,7 +627,7 @@ int main(void) {
     ));
     orb_arena_reset(&scratch);
     orb_arena_reset(&out);
-    CHECK(!orb_cast_game(&scratch, &out, "build/scratch/badref", &m, &r, &err));
+    CHECK(!orb_cast_game(&scratch, &out, "build/scratch/badref", &manifest, &result, &err));
     CHECK(strstr(err.text, "level Hall: entity Door: field to: ref nowhere"));
 
     // a WAV loop whose start is not before its end is dropped, not a cast error: the
@@ -659,12 +671,12 @@ int main(void) {
     orb_arena_reset(&scratch);
     orb_arena_reset(&out);
     orb_log_clear();
-    CHECK(orb_cast_game(&scratch, &out, "build/scratch/badloop", &m, &r, &err));
+    CHECK(orb_cast_game(&scratch, &out, "build/scratch/badloop", &manifest, &result, &err));
     CHECK(strstr(orb_log_line(0), "bad.wav") != nullptr);
     CHECK(strstr(orb_log_line(0), "dropped") != nullptr);
 
     orb_assets badloop_as;
-    CHECK(orb_file_load(r.file, &badloop_as, &err));
+    CHECK(orb_file_load(result.file, &badloop_as, &err));
     CHECK_EQ(badloop_as.sample_count, 1);
     CHECK_EQ(badloop_as.samples[0].loop_start, 0);
     CHECK_EQ(badloop_as.samples[0].loop_end, 0);

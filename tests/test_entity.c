@@ -45,15 +45,15 @@ static orb_placement_desc placements[3] = {
 };
 static orb_field_desc fields[6];
 static uint8_t data[40];
-static orb_assets as;
+static orb_assets assets;
 static orb_asset_table table;
 static alignas(16) uint8_t region_mem[1 << 20];
 static orb_arena region;
 static int inits, updates;
 static orb_entity_id last_init;
 
-static void put32(int at, int32_t v) {
-    memcpy(data + at, &v, 4);
+static void put32(int at, int32_t value) {
+    memcpy(data + at, &value, 4);
 }
 
 static void fixture(void) {
@@ -88,7 +88,7 @@ static void fixture(void) {
     put32(28, 40);
     put32(32, 16);
     put32(36, 1);
-    as = (orb_assets) {
+    assets = (orb_assets) {
         .levels = levels,
         .level_count = 1,
         .level_ids = level_ids,
@@ -103,7 +103,7 @@ static void fixture(void) {
         .field_data_count = 40
     };
     table = (orb_asset_table) {};
-    orb_asset_set(&table, &as);
+    orb_asset_set(&table, &assets);
 }
 
 static void crate_init(void* state, const orb_api* orb, orb_entity_id id) {
@@ -125,17 +125,17 @@ static orb_config config(void) {
 
 int main(void) {
     static int state;
-    orb_config c = config();
+    orb_config settings = config();
 
     fixture();
     orb_arena_init(&region, "pool", region_mem, sizeof region_mem);
-    orb_entity_boot(&region, &c, &state, orb_api_table(), &table.assets);
+    orb_entity_boot(&region, &settings, &state, orb_api_table(), &table.assets);
 
-    orb_pool* p = orb_entity_pool();
-    CHECK_EQ(p->max, 4);
-    CHECK_EQ(p->kinds, 4);
-    CHECK_EQ(p->sizes[ORB_COMPONENT_GAME], 12);
-    CHECK_EQ(p->free_count, 4);
+    orb_pool* pool = orb_entity_pool();
+    CHECK_EQ(pool->max, 4);
+    CHECK_EQ(pool->kinds, 4);
+    CHECK_EQ(pool->sizes[ORB_COMPONENT_GAME], 12);
+    CHECK_EQ(pool->free_count, 4);
 
     orb_type crate = ORB_TYPE(0), marker = ORB_TYPE(1);
     orb_level room = ORB_LEVEL(0);
@@ -150,30 +150,33 @@ int main(void) {
     // level_spawn: three placements, slots 0..2 in placement order, crate init twice
     orb_level_spawn(room);
     CHECK_EQ(inits, 2);
-    CHECK_EQ(p->free_count, 1);
-    orb_entity* a = orb_entity_at(0);
-    CHECK(a);
-    CHECK_EQ(ORB_HANDLE_GEN(a->self), 1);
-    CHECK_EQ(a->placement, 0);
-    CHECK(a->iid == 0xa);
-    CHECK_EQ(ORB_HANDLE_INDEX(a->level), 0);
-    CHECK(a->at.x == 16 && a->at.y == 8);
-    CHECK_EQ(a->size.width, 8);
-    CHECK(a->flags & ORB_ENTITY_VISIBLE);
+    CHECK_EQ(pool->free_count, 1);
+    orb_entity* entity_a = orb_entity_at(0);
+    CHECK(entity_a);
+    CHECK_EQ(ORB_HANDLE_GEN(entity_a->self), 1);
+    CHECK_EQ(entity_a->placement, 0);
+    CHECK(entity_a->iid == 0xa);
+    CHECK_EQ(ORB_HANDLE_INDEX(entity_a->level), 0);
+    CHECK(entity_a->at.x == 16 && entity_a->at.y == 8);
+    CHECK_EQ(entity_a->size.width, 8);
+    CHECK(entity_a->flags & ORB_ENTITY_VISIBLE);
     CHECK_EQ(orb_entity_at(2)->size.width, 4);
     CHECK_EQ(orb_entity_at(3) == nullptr, 1);
 
     // a runtime spawn: type size, the level containing it, no placement, defaults read
-    orb_entity_id r = orb_entity_spawn(crate, (orb_vec2f) {20.5f, 9});
-    CHECK_EQ(ORB_HANDLE_INDEX(r), 3);
+    orb_entity_id runtime = orb_entity_spawn(crate, (orb_vec2f) {20.5f, 9});
+    CHECK_EQ(ORB_HANDLE_INDEX(runtime), 3);
     CHECK_EQ(inits, 3);
-    CHECK(last_init.v == r.v);
-    orb_entity* re = orb_entity_get(r);
-    CHECK(re && re->placement == ORB_NO_INDEX && ORB_HANDLE_INDEX(re->level) == 0);
-    CHECK_EQ(orb_entity_field_int(r, "hp", 0), 10);
-    CHECK(strcmp(orb_entity_field_string(r, "label", 0), "box") == 0);
-    CHECK_EQ(orb_entity_field_count(r, "loot"), 0);
-    CHECK_EQ(orb_entity_field_point(r, "exit", 0).x, 0);
+    CHECK(last_init.v == runtime.v);
+    orb_entity* runtime_entity = orb_entity_get(runtime);
+    CHECK(
+        runtime_entity && runtime_entity->placement == ORB_NO_INDEX &&
+        ORB_HANDLE_INDEX(runtime_entity->level) == 0
+    );
+    CHECK_EQ(orb_entity_field_int(runtime, "hp", 0), 10);
+    CHECK(strcmp(orb_entity_field_string(runtime, "label", 0), "box") == 0);
+    CHECK_EQ(orb_entity_field_count(runtime, "loot"), 0);
+    CHECK_EQ(orb_entity_field_point(runtime, "exit", 0).x, 0);
 
     // the pool is full: log, ORB_NO_ENTITY; a stale type too
     orb_log_clear();
@@ -183,14 +186,14 @@ int main(void) {
     CHECK(orb_entity_spawn(ORB_NO_TYPE, (orb_vec2f) {0, 0}).v == ORB_NO_ENTITY.v);
 
     // a spawn outside every level has no level
-    orb_entity_despawn(r);
+    orb_entity_despawn(runtime);
     orb_entity_free_despawning();
-    r = orb_entity_spawn(crate, (orb_vec2f) {-50, -50});
-    CHECK(orb_entity_get(r)->level.v == ORB_NO_LEVEL.v);
+    runtime = orb_entity_spawn(crate, (orb_vec2f) {-50, -50});
+    CHECK(orb_entity_get(runtime)->level.v == ORB_NO_LEVEL.v);
 
     // fields on a placed entity: the placement's values first, the type's defaults second,
     // zero for a missing name, a bad index, or a kind mismatch
-    orb_entity_id ida = a->self, idb = orb_entity_at(1)->self, idm = orb_entity_at(2)->self;
+    orb_entity_id ida = entity_a->self, idb = orb_entity_at(1)->self, idm = orb_entity_at(2)->self;
     CHECK_EQ(orb_entity_field_int(ida, "hp", 0), 3);
     CHECK_EQ(orb_entity_field_int(ida, "HP", 0), 3);
     CHECK(strcmp(orb_entity_field_string(ida, "label", 0), "box") == 0);
@@ -219,13 +222,13 @@ int main(void) {
     CHECK(orb_entity_get(ORB_NO_ENTITY) == nullptr);
 
     // FIFO reuse: slot 1 freed first, then slot 3; spawns take 1 then 3, at generation 2
-    orb_entity_despawn(r);
+    orb_entity_despawn(runtime);
     orb_entity_free_despawning();
-    orb_entity_id n1 = orb_entity_spawn(marker, (orb_vec2f) {1, 1});
-    orb_entity_id n2 = orb_entity_spawn(marker, (orb_vec2f) {2, 2});
-    CHECK_EQ(ORB_HANDLE_INDEX(n1), 1);
-    CHECK_EQ(ORB_HANDLE_GEN(n1), 2);
-    CHECK_EQ(ORB_HANDLE_INDEX(n2), 3);
+    orb_entity_id marker1 = orb_entity_spawn(marker, (orb_vec2f) {1, 1});
+    orb_entity_id marker2 = orb_entity_spawn(marker, (orb_vec2f) {2, 2});
+    CHECK_EQ(ORB_HANDLE_INDEX(marker1), 1);
+    CHECK_EQ(ORB_HANDLE_GEN(marker1), 2);
+    CHECK_EQ(ORB_HANDLE_INDEX(marker2), 3);
     CHECK(orb_entity_get(idb) == nullptr); // the old handle at slot 1 stays stale
 
     // components: add zeroes and sets the built-in defaults, a second add keeps the slot,
@@ -240,8 +243,11 @@ int main(void) {
     CHECK(body->velocity.x == 5);
     CHECK(orb_entity_component(ida, ORB_COMPONENT_BODY) == body);
     CHECK(orb_entity_component(ida, ORB_COMPONENT_SPRITE) == nullptr);
-    orb_sprite_component* sc = orb_entity_add(ida, ORB_COMPONENT_SPRITE);
-    CHECK(sc->sprite.v == ORB_NO_SPRITE.v && sc->anim.anim.v == ORB_NO_ANIM.v && sc->remap == -1);
+    orb_sprite_component* sprite = orb_entity_add(ida, ORB_COMPONENT_SPRITE);
+    CHECK(
+        sprite->sprite.v == ORB_NO_SPRITE.v && sprite->anim.anim.v == ORB_NO_ANIM.v &&
+        sprite->remap == -1
+    );
     int32_t* game = orb_entity_add(ida, ORB_COMPONENT_GAME);
     CHECK(game && game[0] == 0 && game[1] == 0 && game[2] == 0);
     CHECK(orb_entity_add(ida, ORB_COMPONENT_GAME + 1) == nullptr);
@@ -255,17 +261,17 @@ int main(void) {
     CHECK(orb_entity_add(ORB_NO_ENTITY, ORB_COMPONENT_BODY) == nullptr);
 
     // parents: one level of relative position; a freed parent orphans at the world position
-    orb_entity* m1 = orb_entity_get(n1);
-    m1->parent = ida;
-    m1->at = (orb_vec2f) {1, 1};
-    CHECK(orb_entity_world_at(n1).x == 17 && orb_entity_world_at(n1).y == 9);
-    orb_entity_get(n2)->parent = n1;
-    orb_entity_get(n2)->at = (orb_vec2f) {1, 1};
-    CHECK(orb_entity_world_at(n2).x == 2); // the parent's own parent is ignored
+    orb_entity* marker1_entity = orb_entity_get(marker1);
+    marker1_entity->parent = ida;
+    marker1_entity->at = (orb_vec2f) {1, 1};
+    CHECK(orb_entity_world_at(marker1).x == 17 && orb_entity_world_at(marker1).y == 9);
+    orb_entity_get(marker2)->parent = marker1;
+    orb_entity_get(marker2)->at = (orb_vec2f) {1, 1};
+    CHECK(orb_entity_world_at(marker2).x == 2); // the parent's own parent is ignored
     orb_entity_despawn(ida);
     orb_entity_free_despawning();
-    CHECK(m1->parent.v == ORB_NO_ENTITY.v);
-    CHECK(m1->at.x == 17 && m1->at.y == 9);
+    CHECK(marker1_entity->parent.v == ORB_NO_ENTITY.v);
+    CHECK(marker1_entity->at.x == 17 && marker1_entity->at.y == 9);
 
     // enumeration and level_despawn: persistent entities stay
     orb_entity_id list[8];
@@ -335,11 +341,11 @@ int main(void) {
     CHECK_EQ(orb_entity_of_type(crate, others, 8), 2);
     orb_entity* other = orb_entity_get(others[1]);
     orb_entity_id spawned = orb_entity_spawn(marker, (orb_vec2f) {2, 2});
-    orb_entity* spawned_e = orb_entity_get(spawned);
-    CHECK(spawned_e->placement == ORB_NO_INDEX && spawned_e->iid == 0);
+    orb_entity* spawned_entity = orb_entity_get(spawned);
+    CHECK(spawned_entity->placement == ORB_NO_INDEX && spawned_entity->iid == 0);
 
     uint64_t previous_type_ids[2] = {type_ids[0], type_ids[1]};
-    orb_assets previous = as;
+    orb_assets previous = assets;
     previous.type_ids = previous_type_ids;
 
     orb_type_desc swapped_type = types[0];
@@ -351,7 +357,7 @@ int main(void) {
     placements[0].type = 1;
     placements[1].type = 1;
     placements[2].type = 0;
-    orb_asset_set(&table, &as);
+    orb_asset_set(&table, &assets);
     orb_entity_revalidate(&previous);
     CHECK_EQ(ORB_HANDLE_INDEX(other->type), 1);
     CHECK_EQ(orb_entity_field_int(other->self, "hp", 0), 3);
@@ -359,14 +365,14 @@ int main(void) {
         orb_entity_of_type(ORB_TYPE(1 | (uint32_t)table.assets.type_gens[1] << 24), list, 8), 2
     );
     CHECK(list[1].v == other->self.v);
-    CHECK_EQ(ORB_HANDLE_INDEX(spawned_e->type), 0);
-    CHECK_EQ(ORB_HANDLE_GEN(spawned_e->type), table.assets.type_gens[0]);
+    CHECK_EQ(ORB_HANDLE_INDEX(spawned_entity->type), 0);
+    CHECK_EQ(ORB_HANDLE_GEN(spawned_entity->type), table.assets.type_gens[0]);
 
     // a placed entity whose placement disappears in the same recast that reorders types
     // keeps its type, mapped through the previous asset set's type ids
     uint32_t other_type_before = ORB_HANDLE_INDEX(other->type);
     uint64_t previous2_type_ids[2] = {type_ids[0], type_ids[1]};
-    orb_assets previous2 = as;
+    orb_assets previous2 = assets;
     previous2.type_ids = previous2_type_ids;
 
     placements[1].iid = 0xf00d; // other's placement (iid 0xdead) is gone
@@ -377,19 +383,19 @@ int main(void) {
     uint64_t swapped_id2 = type_ids[0];
     type_ids[0] = type_ids[1];
     type_ids[1] = swapped_id2;
-    orb_asset_set(&table, &as);
+    orb_asset_set(&table, &assets);
     orb_entity_revalidate(&previous2);
     CHECK_EQ(other->placement, ORB_NO_INDEX);
     CHECK_EQ(ORB_HANDLE_INDEX(other->type), 1 - other_type_before);
 
     // a reset with a different component list empties the pool; one past the region fails
-    c.components[1] = 8;
-    CHECK(orb_entity_reset(&c));
-    CHECK_EQ(p->kinds, 5);
+    settings.components[1] = 8;
+    CHECK(orb_entity_reset(&settings));
+    CHECK_EQ(pool->kinds, 5);
     CHECK_EQ(orb_entity_all(list, 8), 0);
     CHECK(orb_entity_type_fns(0)->init == nullptr);
-    c.max_entities = 1 << 16;
-    CHECK(!orb_entity_reset(&c));
+    settings.max_entities = 1 << 16;
+    CHECK(!orb_entity_reset(&settings));
 
     return 0;
 }

@@ -7,25 +7,25 @@ int main(void) {
     orb_input_resolve(&(orb_assets) {0});
 
     // edges across two snapshots, by key
-    orb_input in = {0};
+    orb_input input = {0};
 
-    orb_input_step(&in);
-    in.keys[ORB_KEY_M] = true;
-    orb_input_step(&in);
+    orb_input_step(&input);
+    input.keys[ORB_KEY_M] = true;
+    orb_input_step(&input);
     CHECK(orb_key_down(ORB_KEY_M));
     CHECK(orb_key_pressed(ORB_KEY_M));
     CHECK(!orb_key_released(ORB_KEY_M));
-    orb_input_step(&in);
+    orb_input_step(&input);
     CHECK(orb_key_down(ORB_KEY_M));
     CHECK(!orb_key_pressed(ORB_KEY_M));
-    in.keys[ORB_KEY_M] = false;
-    orb_input_step(&in);
+    input.keys[ORB_KEY_M] = false;
+    orb_input_step(&input);
     CHECK(!orb_key_down(ORB_KEY_M));
     CHECK(orb_key_released(ORB_KEY_M));
 
     // buttons go through the default binding
-    in.keys[ORB_KEY_Z] = true;
-    orb_input_step(&in);
+    input.keys[ORB_KEY_Z] = true;
+    orb_input_step(&input);
     CHECK(orb_button_down(ORB_BTN_A));
     CHECK(orb_button_pressed(ORB_BTN_A));
     CHECK_EQ(orb_button_source(ORB_BTN_A), ORB_KEY_Z);
@@ -34,27 +34,27 @@ int main(void) {
     // rebinding: M drives select, and two buttons may share a source
     orb_button_bind(ORB_BTN_SELECT, ORB_KEY_M);
     orb_button_bind(ORB_BTN_START, ORB_KEY_M);
-    in.keys[ORB_KEY_M] = true;
-    orb_input_step(&in);
+    input.keys[ORB_KEY_M] = true;
+    orb_input_step(&input);
     CHECK(orb_button_down(ORB_BTN_SELECT));
     CHECK(orb_button_down(ORB_BTN_START));
     CHECK_EQ(orb_button_source(ORB_BTN_SELECT), ORB_KEY_M);
 
     // an unbound button is never down
     orb_button_bind(ORB_BTN_SELECT, ORB_SOURCE_NONE);
-    orb_input_step(&in);
+    orb_input_step(&input);
     CHECK(!orb_button_down(ORB_BTN_SELECT));
     CHECK(!orb_button_released(ORB_BTN_SELECT));
 
     // capture: the lowest position that went down this tick
-    in = (orb_input) {0};
-    orb_input_step(&in);
+    input = (orb_input) {0};
+    orb_input_step(&input);
     CHECK_EQ(orb_key_pressed_any(), ORB_KEY_NONE);
-    in.keys[ORB_KEY_X] = true;
-    in.keys[ORB_KEY_C] = true;
-    orb_input_step(&in);
+    input.keys[ORB_KEY_X] = true;
+    input.keys[ORB_KEY_C] = true;
+    orb_input_step(&input);
     CHECK_EQ(orb_key_pressed_any(), ORB_KEY_C); // 6 before 27
-    orb_input_step(&in);
+    orb_input_step(&input);
     CHECK_EQ(orb_key_pressed_any(), ORB_KEY_NONE); // still down, not new
 
     // out of range is a no-op

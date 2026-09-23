@@ -27,33 +27,33 @@ static orb_watch debug_so_watch;
 static debug_watches debug_assets, debug_sources;
 static uint8_t debug_depfile_mem[1 << 16];
 
-void orb_watch_init(orb_watch* w, const char* path) {
-    snprintf(w->path, sizeof w->path, "%s", path);
-    w->mtime = orb_os_file_mtime(path);
-    w->pending_mtime = 0;
-    w->pending_since = 0;
+void orb_watch_init(orb_watch* watch, const char* path) {
+    snprintf(watch->path, sizeof watch->path, "%s", path);
+    watch->mtime = orb_os_file_mtime(path);
+    watch->pending_mtime = 0;
+    watch->pending_since = 0;
 }
 
-bool orb_watch_poll(orb_watch* w, uint64_t now) {
-    uint64_t mtime = orb_os_file_mtime(w->path);
+bool orb_watch_poll(orb_watch* watch, uint64_t now) {
+    uint64_t mtime = orb_os_file_mtime(watch->path);
 
     if (mtime == 0) return false; // missing, mid-save: wait for it to come back
 
-    if (mtime == w->mtime) {
-        w->pending_mtime = 0;
+    if (mtime == watch->mtime) {
+        watch->pending_mtime = 0;
         return false;
     }
 
-    if (mtime != w->pending_mtime) {
-        w->pending_mtime = mtime;
-        w->pending_since = now;
+    if (mtime != watch->pending_mtime) {
+        watch->pending_mtime = mtime;
+        watch->pending_since = now;
         return false;
     }
 
-    if (now - w->pending_since < DEBUG_SETTLE_NS) return false;
+    if (now - watch->pending_since < DEBUG_SETTLE_NS) return false;
 
-    w->mtime = mtime;
-    w->pending_mtime = 0;
+    watch->mtime = mtime;
+    watch->pending_mtime = 0;
     return true;
 }
 
@@ -111,37 +111,38 @@ static const orb_game* debug_load_game(void) {
     return game;
 }
 
-static void debug_watch_add(debug_watches* w, const char* rel) {
+static void debug_watch_add(debug_watches* watches, const char* rel) {
     orb_path path;
 
     orb_path_join(path, debug_dir, rel);
 
-    for (int i = 0; i < w->count; i++)
-        if (strcmp(w->at[i].path, path) == 0) return;
+    for (int i = 0; i < watches->count; i++)
+        if (strcmp(watches->at[i].path, path) == 0) return;
 
-    if (w->count == DEBUG_MAX_WATCHES) orb_fatal("more than %d watched files", DEBUG_MAX_WATCHES);
+    if (watches->count == DEBUG_MAX_WATCHES)
+        orb_fatal("more than %d watched files", DEBUG_MAX_WATCHES);
 
-    orb_watch_init(&w->at[w->count++], path);
+    orb_watch_init(&watches->at[watches->count++], path);
 }
 
 // Polls every watch, so each one's settle timer advances; true when any fired.
-static bool debug_watch_any(debug_watches* w, uint64_t now) {
+static bool debug_watch_any(debug_watches* watches, uint64_t now) {
     bool changed = false;
 
-    for (int i = 0; i < w->count; i++)
-        if (orb_watch_poll(&w->at[i], now)) changed = true;
+    for (int i = 0; i < watches->count; i++)
+        if (orb_watch_poll(&watches->at[i], now)) changed = true;
 
     return changed;
 }
 
 // Watch what the last cast read, the way sources are watched through what the build read.
 static void debug_watch_assets(void) {
-    const orb_cast_result* r = orb_last_cast();
+    const orb_cast_result* result = orb_last_cast();
 
     debug_assets.count = 0;
 
-    for (int i = 0; i < r->read_count; i++)
-        debug_watch_add(&debug_assets, r->reads[i]);
+    for (int i = 0; i < result->read_count; i++)
+        debug_watch_add(&debug_assets, result->reads[i]);
 }
 
 static void debug_watch_depfile(orb_span text) {
@@ -174,10 +175,10 @@ static void debug_watch_depfile(orb_span text) {
 static bool debug_watch_sources(void) {
     static orb_os_entry entries[DEBUG_MAX_WATCHES];
     orb_path build;
-    orb_arena a;
+    orb_arena arena;
 
     orb_path_join(build, debug_dir, "build");
-    orb_arena_init(&a, "depfile", debug_depfile_mem, sizeof debug_depfile_mem);
+    orb_arena_init(&arena, "depfile", debug_depfile_mem, sizeof debug_depfile_mem);
 
     int n = orb_os_list_dir(build, entries, DEBUG_MAX_WATCHES), depfiles = 0;
 
@@ -200,9 +201,9 @@ static bool debug_watch_sources(void) {
         if (!orb_has_suffix(entries[i].name, ".d")) continue;
 
         orb_path_join(path, build, entries[i].name);
-        orb_arena_reset(&a);
+        orb_arena_reset(&arena);
 
-        if (!orb_os_read_file(path, &a, &text)) orb_fatal("cannot read %s", path);
+        if (!orb_os_read_file(path, &arena, &text)) orb_fatal("cannot read %s", path);
 
         debug_watch_depfile(text);
     }
@@ -275,14 +276,14 @@ static void debug_command_watch(void*, const orb_api*, int, const char* const*) 
 }
 
 static void debug_command_stats(void*, const orb_api*, int, const char* const*) {
-    orb_stats st = orb_stats_get();
+    orb_stats stats = orb_stats_get();
 
     orb_log(
         "state %s, pool %s, assets %s, cast peak %s; release %s + %s sealed; frame %d ticks, %u us",
-        orb_bytes_format(st.state).text, orb_bytes_format(st.pool).text,
-        orb_bytes_format(st.assets).text, orb_bytes_format(st.cast_peak).text,
-        orb_bytes_format(st.release).text, orb_bytes_format(st.assets).text, st.frame_ticks,
-        st.frame_us
+        orb_bytes_format(stats.state).text, orb_bytes_format(stats.pool).text,
+        orb_bytes_format(stats.assets).text, orb_bytes_format(stats.cast_peak).text,
+        orb_bytes_format(stats.release).text, orb_bytes_format(stats.assets).text,
+        stats.frame_ticks, stats.frame_us
     );
 }
 
@@ -336,9 +337,9 @@ int orb_debug_cast(const char* dir, bool seal, const char* out_path) {
     orb_arena boot;
     orb_arena_init(&boot, "boot", boot_mem, sizeof boot_mem);
     orb_error err;
-    orb_manifest m;
+    orb_manifest manifest;
 
-    if (!orb_manifest_load(&boot, dir, &m, &err)) {
+    if (!orb_manifest_load(&boot, dir, &manifest, &err)) {
         orb_log("orb: %s", err.text);
         return 1;
     }
@@ -352,10 +353,10 @@ int orb_debug_cast(const char* dir, bool seal, const char* out_path) {
     }
 
     orb_cast_result result;
-    orb_assets as;
+    orb_assets assets;
 
-    if (!orb_cast_game(&scratch, &out, dir, &m, &result, &err) ||
-        !orb_file_load(result.file, &as, &err)) {
+    if (!orb_cast_game(&scratch, &out, dir, &manifest, &result, &err) ||
+        !orb_file_load(result.file, &assets, &err)) {
         orb_log("orb: %s", err.text);
         return 1;
     }
@@ -370,7 +371,7 @@ int orb_debug_cast(const char* dir, bool seal, const char* out_path) {
             return 1;
         }
 
-        snprintf(name, sizeof name, "%s.orb", m.id);
+        snprintf(name, sizeof name, "%s.orb", manifest.id);
         orb_path_join(sealed, bin, name);
         out_path = sealed;
     }
@@ -383,10 +384,10 @@ int orb_debug_cast(const char* dir, bool seal, const char* out_path) {
     printf(
         "%s %u sprites, %u animations, %u levels, %u layers, %u types, %u entities, %u samples, "
         "%u songs, %u fonts, %u glyphs (%s sealed; cast peak %s)\n",
-        out_path ? "sealed" : "cast", as.sprite_count, as.anim_count, as.level_count,
-        as.layer_count, as.type_count, as.placement_count, as.sample_count, as.song_count,
-        as.font_count, as.glyph_count, orb_bytes_format(result.file.len).text,
-        orb_bytes_format(scratch.peak).text
+        out_path ? "sealed" : "cast", assets.sprite_count, assets.anim_count, assets.level_count,
+        assets.layer_count, assets.type_count, assets.placement_count, assets.sample_count,
+        assets.song_count, assets.font_count, assets.glyph_count,
+        orb_bytes_format(result.file.len).text, orb_bytes_format(scratch.peak).text
     );
 
     return 0;

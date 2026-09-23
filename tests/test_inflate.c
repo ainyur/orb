@@ -6,10 +6,10 @@ static size_t unhex(const char* hex, uint8_t* out) {
     size_t n = 0;
 
     for (; hex[0] && hex[1]; hex += 2, n++) {
-        unsigned v;
+        unsigned value;
 
-        sscanf(hex, "%2x", &v);
-        out[n] = (uint8_t)v;
+        sscanf(hex, "%2x", &value);
+        out[n] = (uint8_t)value;
     }
 
     return n;

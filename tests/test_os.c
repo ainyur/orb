@@ -19,9 +19,9 @@ int main(int argc, char** argv) {
 
     if (argc > 1) CHECK(strcmp(argv[1], "h\xc3\xa9llo") == 0);
 
-    orb_arena a;
+    orb_arena arena;
 
-    orb_arena_init(&a, "test", mem, sizeof mem);
+    orb_arena_init(&arena, "test", mem, sizeof mem);
 
     // the key tables: evdev codes and set-1 scancodes land on HID positions
     CHECK_EQ(x11_keys[30], 4);   // KEY_A
@@ -40,17 +40,17 @@ int main(int argc, char** argv) {
     CHECK(orb_os_write_file("build/scratch/os.bin", (orb_span) {bytes, 3}));
     orb_span back;
 
-    CHECK(orb_os_read_file("build/scratch/os.bin", &a, &back));
+    CHECK(orb_os_read_file("build/scratch/os.bin", &arena, &back));
     CHECK_EQ(back.len, 3);
     CHECK_EQ(back.ptr[2], 3);
     CHECK_EQ(back.ptr[3], 0); // NUL after the data
-    CHECK(!orb_os_read_file("build/scratch/does-not-exist", &a, &back));
+    CHECK(!orb_os_read_file("build/scratch/does-not-exist", &arena, &back));
     CHECK(orb_os_file_mtime("build/scratch/os.bin") > 0);
     CHECK_EQ(orb_os_file_mtime("build/scratch/does-not-exist"), 0);
 
     // copy a file byte for byte: how scry loads a copy of the game library
     CHECK(orb_os_copy_file("build/scratch/os.bin", "build/scratch/os-copy.bin"));
-    CHECK(orb_os_read_file("build/scratch/os-copy.bin", &a, &back));
+    CHECK(orb_os_read_file("build/scratch/os-copy.bin", &arena, &back));
     CHECK_EQ(back.len, 3);
     CHECK_EQ(back.ptr[1], 2);
     CHECK(!orb_os_copy_file("build/scratch/does-not-exist", "build/scratch/nope"));
@@ -59,7 +59,7 @@ int main(int argc, char** argv) {
     // UTF-8 paths
     CHECK(orb_os_make_dir("build/scratch/h\xc3\xa9llo"));
     CHECK(orb_os_write_file("build/scratch/h\xc3\xa9llo/\xc3\xbc.bin", (orb_span) {bytes, 3}));
-    CHECK(orb_os_read_file("build/scratch/h\xc3\xa9llo/\xc3\xbc.bin", &a, &back));
+    CHECK(orb_os_read_file("build/scratch/h\xc3\xa9llo/\xc3\xbc.bin", &arena, &back));
     CHECK_EQ(back.len, 3);
     CHECK(orb_os_file_mtime("build/scratch/h\xc3\xa9llo/\xc3\xbc.bin") > 0);
     CHECK(orb_os_copy_file(
@@ -76,14 +76,14 @@ int main(int argc, char** argv) {
 
 #ifdef _WIN32
     orb_path longname;
-    int at = snprintf(longname, sizeof longname, "build/scratch/long/");
+    int offset = snprintf(longname, sizeof longname, "build/scratch/long/");
 
     CHECK(orb_os_make_dir("build/scratch/long"));
 
     for (int i = 0; i < 120; i++)
-        at += snprintf(longname + at, sizeof longname - (size_t)at, "\xc3\xa9");
+        offset += snprintf(longname + offset, sizeof longname - (size_t)offset, "\xc3\xa9");
 
-    snprintf(longname + at, sizeof longname - (size_t)at, ".bin");
+    snprintf(longname + offset, sizeof longname - (size_t)offset, ".bin");
     CHECK(orb_os_write_file(longname, (orb_span) {bytes, 3}));
     CHECK_EQ(orb_os_list_dir("build/scratch/long", names, 8), 1);
 #endif
@@ -101,14 +101,14 @@ int main(int argc, char** argv) {
     CHECK(strcmp(names[1].name, "dir") == 0 && names[1].dir);
 
     // clock
-    uint64_t t0 = orb_os_ticks();
+    uint64_t start = orb_os_ticks();
 
     orb_os_sleep(2000000);
-    CHECK(orb_os_ticks() - t0 >= 2000000);
+    CHECK(orb_os_ticks() - start >= 2000000);
 
     // headless window
-    orb_os_config cfg = {.title = "test", .size = {4, 2}};
-    CHECK(orb_os_open(&cfg));
+    orb_os_config config = {.title = "test", .size = {4, 2}};
+    CHECK(orb_os_open(&config));
     orb_input scripted = {0};
 
     scripted.keys[ORB_KEY_RIGHT] = true;

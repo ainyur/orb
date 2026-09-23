@@ -4,12 +4,12 @@
 
 int main(void) {
     static alignas(16) uint8_t mem[1 << 20];
-    orb_arena a;
+    orb_arena arena;
 
-    orb_arena_init(&a, "test", mem, sizeof mem);
+    orb_arena_init(&arena, "test", mem, sizeof mem);
 
     orb_fb fb;
-    orb_fb_init(&fb, &a, (orb_size) {8, 4});
+    orb_fb_init(&fb, &arena, (orb_size) {8, 4});
     orb_fb_clear(&fb, 7);
 
     CHECK_EQ(fb.px[0], 7);
@@ -91,7 +91,7 @@ int main(void) {
     };
     orb_anim_desc anims[1] = {{.first_sprite = 0, .first_duration = 0, .count = 2}};
     uint16_t durations[2] = {2, 1};
-    orb_assets as = {
+    orb_assets assets = {
         .pal = rgba,
         .sheets = sheets,
         .sheet_count = 1,
@@ -107,45 +107,47 @@ int main(void) {
 
     orb_fb_clear(&fb, 0);
     orb_sprite_draw(
-        &fb, &as, (orb_vec2f) {}, ORB_SPRITE(0), (orb_vec2) {1, 0}, 0, nullptr
+        &fb, &assets, (orb_vec2f) {}, ORB_SPRITE(0), (orb_vec2) {1, 0}, 0, nullptr
     ); // origin (1,1) -> lands at (2,1)
     CHECK_EQ(fb.px[1 * 8 + 2], 1);
     CHECK_EQ(fb.px[2 * 8 + 3], 6);
     orb_fb_clear(&fb, 0);
     orb_sprite_draw(
-        &fb, &as, (orb_vec2f) {}, ORB_SPRITE(0), (orb_vec2) {0, 0}, ORB_FLIP_X, nullptr
+        &fb, &assets, (orb_vec2f) {}, ORB_SPRITE(0), (orb_vec2) {0, 0}, ORB_FLIP_X, nullptr
     ); // x = fw - ox - w = 1
     CHECK_EQ(fb.px[1 * 8 + 1], 2);
     CHECK_EQ(fb.px[1 * 8 + 2], 1);
 
     orb_fb_clear(&fb, 0);
     orb_sprite_draw(
-        &fb, &as, (orb_vec2f) {2, 0}, ORB_SPRITE(1), (orb_vec2) {4, 0}, 0, nullptr
+        &fb, &assets, (orb_vec2f) {2, 0}, ORB_SPRITE(1), (orb_vec2) {4, 0}, 0, nullptr
     ); // camera subtracts 2 -> x 2
     CHECK_EQ(fb.px[0 * 8 + 2], 3);
     orb_sprite_draw(
-        &fb, &as, (orb_vec2f) {}, ORB_SPRITE(99), (orb_vec2) {0, 0}, 0, nullptr
+        &fb, &assets, (orb_vec2f) {}, ORB_SPRITE(99), (orb_vec2) {0, 0}, 0, nullptr
     ); // invalid handle: nothing
 
     orb_fb_clear(&fb, 0);
-    orb_sprite_draw(&fb, &as, (orb_vec2f) {-0.5f, 0}, ORB_SPRITE(1), (orb_vec2) {1, 0}, 0, nullptr);
+    orb_sprite_draw(
+        &fb, &assets, (orb_vec2f) {-0.5f, 0}, ORB_SPRITE(1), (orb_vec2) {1, 0}, 0, nullptr
+    );
     CHECK_EQ(fb.px[0 * 8 + 2], 3); // floor(-0.5) is -1, so x 1 lands at 2
 
-    orb_anim_state st;
+    orb_anim_state state;
 
-    orb_anim_start(&st, ORB_ANIM(0));
-    CHECK_EQ(orb_anim_step(&as, &st).v, 0);
-    CHECK_EQ(orb_anim_step(&as, &st).v, 0);
-    CHECK_EQ(orb_anim_step(&as, &st).v, 1);
-    CHECK_EQ(orb_anim_step(&as, &st).v, 0);
+    orb_anim_start(&state, ORB_ANIM(0));
+    CHECK_EQ(orb_anim_step(&assets, &state).v, 0);
+    CHECK_EQ(orb_anim_step(&assets, &state).v, 0);
+    CHECK_EQ(orb_anim_step(&assets, &state).v, 1);
+    CHECK_EQ(orb_anim_step(&assets, &state).v, 0);
 
-    st.frame = 5;
-    st.ticks = 0;
+    state.frame = 5;
+    state.ticks = 0;
 
-    CHECK_EQ(orb_anim_step(&as, &st).v, 1);
-    CHECK_EQ(st.frame, 0); // frame 1 lasts one tick, so it advanced
+    CHECK_EQ(orb_anim_step(&assets, &state).v, 1);
+    CHECK_EQ(state.frame, 0); // frame 1 lasts one tick, so it advanced
 
-    orb_api_boot(&a, (orb_size) {8, 4}, &as);
+    orb_api_boot(&arena, (orb_size) {8, 4}, &assets);
 
     const orb_api* api = orb_api_table();
 
@@ -170,10 +172,10 @@ int main(void) {
     // games find assets by name: file stem plus frame number or tag
     uint64_t sprite_ids[2] = {orb_asset_id("player", "0"), orb_asset_id("player", "1")};
     uint64_t anim_ids[1] = {orb_asset_id("player", "walk")};
-    as.sprite_ids = sprite_ids;
-    as.anim_ids = anim_ids;
+    assets.sprite_ids = sprite_ids;
+    assets.anim_ids = anim_ids;
 
-    orb_api_set_assets(&as);
+    orb_api_set_assets(&assets);
 
     orb_sprite frame1 = api->sprite_find("player", 1);
 
@@ -192,18 +194,18 @@ int main(void) {
     // finding again in reload yields a handle at the new generation
     uint64_t recast_sprite_ids[2] = {orb_asset_id("player", "0"), orb_asset_id("hero", "0")};
     uint64_t recast_anim_ids[1] = {orb_asset_id("hero", "walk")}; // a new half
-    as.sprite_ids = recast_sprite_ids;
-    as.anim_ids = recast_anim_ids;
+    assets.sprite_ids = recast_sprite_ids;
+    assets.anim_ids = recast_anim_ids;
 
-    orb_api_set_assets(&as);
+    orb_api_set_assets(&assets);
 
     api->clear(0);
     api->sprite_draw(frame1, (orb_vec2) {0, 0}, 0, nullptr); // index 1 changed: nothing
     CHECK_EQ(orb_api_fb()->px[0], 0);
     api->sprite_draw(ORB_SPRITE(0), (orb_vec2) {0, 0}, 0, nullptr); // index 0 did not
     CHECK_EQ(orb_api_fb()->px[1 * 8 + 1], 1);
-    api->anim_start(&st, ORB_ANIM(0));
-    CHECK_EQ(api->anim_step(&st).v, 0xffffffu);
+    api->anim_start(&state, ORB_ANIM(0));
+    CHECK_EQ(api->anim_step(&state).v, 0xffffffu);
     CHECK_EQ(api->sprite_find("player", 1).v, ORB_NO_SPRITE.v);
 
     orb_sprite hero = api->sprite_find("hero", 0);
@@ -213,8 +215,8 @@ int main(void) {
     api->clear(0);
     api->sprite_draw(hero, (orb_vec2) {0, 0}, 0, nullptr);
     CHECK_EQ(orb_api_fb()->px[0], 3);
-    api->anim_start(&st, api->anim_find("hero", "walk"));
-    CHECK_EQ(api->anim_step(&st).v, 0);
+    api->anim_start(&state, api->anim_find("hero", "walk"));
+    CHECK_EQ(api->anim_step(&state).v, 0);
 
     return 0;
 }

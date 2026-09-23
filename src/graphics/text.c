@@ -1,62 +1,65 @@
 #include "text.h"
 
-static const orb_font_desc* text_font(const orb_assets* assets, orb_font f) {
-    uint32_t index = orb_asset_index_of(assets, f);
+static const orb_font_desc* text_font(const orb_assets* assets, orb_font font) {
+    uint32_t index = orb_asset_index_of(assets, font);
 
     return index == ORB_NO_INDEX ? nullptr : &assets->fonts[index];
 }
 
 static const orb_glyph_desc* text_glyph(
     const orb_assets* assets,
-    const orb_font_desc* d,
+    const orb_font_desc* desc,
     unsigned char c
 ) {
     if (c < ORB_FONT_FIRST || c >= ORB_FONT_FIRST + ORB_FONT_GLYPHS) return nullptr;
 
-    return &assets->glyphs[d->first_glyph + c - ORB_FONT_FIRST];
+    return &assets->glyphs[desc->first_glyph + c - ORB_FONT_FIRST];
 }
 
-orb_size orb_text_measure(const orb_assets* assets, orb_font f, const char* s) {
-    const orb_font_desc* d = text_font(assets, f);
+orb_size orb_text_measure(const orb_assets* assets, orb_font font, const char* text) {
+    const orb_font_desc* desc = text_font(assets, font);
 
-    if (!d || !s || !s[0]) return (orb_size) {0, 0};
+    if (!desc || !text || !text[0]) return (orb_size) {0, 0};
 
     int width = 0;
 
-    for (const unsigned char* c = (const unsigned char*)s; *c; c++) {
-        const orb_glyph_desc* g = text_glyph(assets, d, *c);
+    for (const unsigned char* c = (const unsigned char*)text; *c; c++) {
+        const orb_glyph_desc* glyph = text_glyph(assets, desc, *c);
 
-        if (g) width += g->advance;
+        if (glyph) width += glyph->advance;
     }
 
-    return (orb_size) {width, d->line_height};
+    return (orb_size) {width, desc->line_height};
 }
 
 void orb_text_draw(
     orb_fb* fb,
     const orb_assets* assets,
-    orb_font f,
-    const char* s,
+    orb_font font,
+    const char* text,
     orb_vec2 at,
     const uint8_t* remap
 ) {
-    const orb_font_desc* d = text_font(assets, f);
+    const orb_font_desc* desc = text_font(assets, font);
 
-    if (!d || !s) return;
+    if (!desc || !text) return;
 
-    const orb_sheet_desc* sheet = &assets->sheets[d->sheet];
+    const orb_sheet_desc* sheet = &assets->sheets[desc->sheet];
 
-    for (const unsigned char* c = (const unsigned char*)s; *c; c++) {
-        const orb_glyph_desc* g = text_glyph(assets, d, *c);
+    for (const unsigned char* c = (const unsigned char*)text; *c; c++) {
+        const orb_glyph_desc* glyph = text_glyph(assets, desc, *c);
 
-        if (!g) continue;
+        if (!glyph) continue;
 
-        if (g->width) {
-            const uint8_t* src = assets->pixels + sheet->pixels + g->y * sheet->width + g->x;
+        if (glyph->width) {
+            const uint8_t* src =
+                assets->pixels + sheet->pixels + glyph->y * sheet->width + glyph->x;
 
-            orb_fb_blit(fb, src, sheet->width, (orb_size) {g->width, d->line_height}, at, 0, remap);
+            orb_fb_blit(
+                fb, src, sheet->width, (orb_size) {glyph->width, desc->line_height}, at, 0, remap
+            );
         }
 
-        at.x += g->advance;
+        at.x += glyph->advance;
     }
 }

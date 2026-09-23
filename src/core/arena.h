@@ -21,19 +21,19 @@ typedef struct orb_arena {
     bool refused;     // the failed push was refused a commit rather than out of size
 } orb_arena;
 
-void orb_arena_init(orb_arena* a, const char* name, void* mem, size_t size);
-bool orb_arena_reserve(orb_arena* a, const char* name, size_t size); // false when refused
-void orb_arena_release(orb_arena* a);                                // reserved arenas only
+void orb_arena_init(orb_arena* arena, const char* name, void* mem, size_t size);
+bool orb_arena_reserve(orb_arena* arena, const char* name, size_t size); // false when refused
+void orb_arena_release(orb_arena* arena);                                // reserved arenas only
 orb_arena orb_arena_carve(orb_arena* parent, const char* name, size_t size);
 
-void* orb_arena_push(orb_arena* a, size_t size, size_t align);
-void* orb_arena_push_checked(orb_arena* a, size_t elem, size_t count, size_t align);
+void* orb_arena_push(orb_arena* arena, size_t size, size_t align);
+void* orb_arena_push_checked(orb_arena* arena, size_t elem, size_t count, size_t align);
 
-#define orb_arena_push_array(a, T, count)                                                          \
-    ((T*)orb_arena_push_checked((a), sizeof(T), (size_t)(count), alignof(T)))
+#define orb_arena_push_array(arena, T, count)                                                      \
+    ((T*)orb_arena_push_checked((arena), sizeof(T), (size_t)(count), alignof(T)))
 
-void orb_arena_reset(orb_arena* a);
+void orb_arena_reset(orb_arena* arena);
 
 // The failed push as text, "'<name>' exhausted: 3.2 MB over its 1.0 GB size" or
 // "'<name>' cannot commit 1.0 MB". Returns false, as orb_error_set does.
-bool orb_arena_error(const orb_arena* a, orb_error* err);
+bool orb_arena_error(const orb_arena* arena, orb_error* err);

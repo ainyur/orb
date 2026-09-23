@@ -49,33 +49,35 @@ static HRESULT wasapi_start(void) {
     };
     DWORD flags = AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
                   AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY;
-    HRESULT hr = CoCreateInstance(
+    HRESULT result = CoCreateInstance(
         &CLSID_MMDeviceEnumerator, nullptr, CLSCTX_ALL, &IID_IMMDeviceEnumerator,
         (void**)&enumerator
     );
 
-    if (SUCCEEDED(hr))
-        hr = IMMDeviceEnumerator_GetDefaultAudioEndpoint(enumerator, eRender, eConsole, &device);
-    if (SUCCEEDED(hr))
-        hr = IMMDevice_Activate(
+    if (SUCCEEDED(result))
+        result =
+            IMMDeviceEnumerator_GetDefaultAudioEndpoint(enumerator, eRender, eConsole, &device);
+    if (SUCCEEDED(result))
+        result = IMMDevice_Activate(
             device, &IID_IAudioClient, CLSCTX_ALL, nullptr, (void**)&wasapi_client
         );
-    if (SUCCEEDED(hr))
-        hr = IAudioClient_Initialize(
+    if (SUCCEEDED(result))
+        result = IAudioClient_Initialize(
             wasapi_client, AUDCLNT_SHAREMODE_SHARED, flags, WASAPI_BUFFER, 0, &format, nullptr
         );
-    if (SUCCEEDED(hr)) hr = IAudioClient_SetEventHandle(wasapi_client, wasapi_event);
-    if (SUCCEEDED(hr)) hr = IAudioClient_GetBufferSize(wasapi_client, &wasapi_buffer_frames);
-    if (SUCCEEDED(hr))
-        hr =
+    if (SUCCEEDED(result)) result = IAudioClient_SetEventHandle(wasapi_client, wasapi_event);
+    if (SUCCEEDED(result))
+        result = IAudioClient_GetBufferSize(wasapi_client, &wasapi_buffer_frames);
+    if (SUCCEEDED(result))
+        result =
             IAudioClient_GetService(wasapi_client, &IID_IAudioRenderClient, (void**)&wasapi_render);
-    if (SUCCEEDED(hr)) hr = IAudioClient_Start(wasapi_client);
+    if (SUCCEEDED(result)) result = IAudioClient_Start(wasapi_client);
 
     if (device) IMMDevice_Release(device);
     if (enumerator) IMMDeviceEnumerator_Release(enumerator);
-    if (FAILED(hr)) wasapi_release();
+    if (FAILED(result)) wasapi_release();
 
-    return hr;
+    return result;
 }
 
 // One buffer: wait for the engine, then fill what the padding leaves free. A
@@ -90,9 +92,9 @@ static HRESULT wasapi_fill(void) {
     if (atomic_load(&wasapi_stop)) return S_OK;
 
     UINT32 padding;
-    HRESULT hr = IAudioClient_GetCurrentPadding(wasapi_client, &padding);
+    HRESULT result = IAudioClient_GetCurrentPadding(wasapi_client, &padding);
 
-    if (FAILED(hr)) return hr;
+    if (FAILED(result)) return result;
 
     UINT32 frames = wasapi_buffer_frames - padding;
 
@@ -107,9 +109,9 @@ static HRESULT wasapi_fill(void) {
 
     BYTE* data;
 
-    hr = IAudioRenderClient_GetBuffer(wasapi_render, frames, &data);
+    result = IAudioRenderClient_GetBuffer(wasapi_render, frames, &data);
 
-    if (FAILED(hr)) return hr;
+    if (FAILED(result)) return result;
 
     orb_audio_render((int16_t*)data, (int)frames);
     return IAudioRenderClient_ReleaseBuffer(wasapi_render, frames, 0);
@@ -122,16 +124,16 @@ static HRESULT wasapi_fill(void) {
 // cannot spin the thread through open and release.
 static HRESULT wasapi_outage(void) {
     uint64_t start = orb_os_ticks(), rendered = 0;
-    HRESULT hr = E_FAIL;
+    HRESULT result = E_FAIL;
 
     while (!atomic_load(&wasapi_stop)) {
         WaitForSingleObject(wasapi_event, WASAPI_TICK_MS);
 
-        if (orb_audio_idle(orb_os_ticks() - start, &rendered) && SUCCEEDED(hr = wasapi_start()))
-            return hr;
+        if (orb_audio_idle(orb_os_ticks() - start, &rendered) && SUCCEEDED(result = wasapi_start()))
+            return result;
     }
 
-    return hr;
+    return result;
 }
 
 static DWORD WINAPI wasapi_run(void* arg) {
@@ -139,24 +141,25 @@ static DWORD WINAPI wasapi_run(void* arg) {
     orb_log_off_main = true;
 
     HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-    HRESULT hr = SUCCEEDED(com) ? wasapi_start() : com; // without COM every open fails, but
-                                                        // the outage loop still keeps time
+    HRESULT result = SUCCEEDED(com) ? wasapi_start() : com; // without COM every open fails, but
+                                                            // the outage loop still keeps time
 
-    if (FAILED(hr)) orb_log("no audio device: WASAPI error 0x%08lx; retrying", (unsigned long)hr);
+    if (FAILED(result))
+        orb_log("no audio device: WASAPI error 0x%08lx; retrying", (unsigned long)result);
 
     while (!atomic_load(&wasapi_stop)) {
-        if (FAILED(hr)) {
-            hr = wasapi_outage();
+        if (FAILED(result)) {
+            result = wasapi_outage();
 
-            if (SUCCEEDED(hr)) orb_log("audio: device open");
+            if (SUCCEEDED(result)) orb_log("audio: device open");
 
             continue;
         }
 
-        hr = wasapi_fill();
+        result = wasapi_fill();
 
-        if (FAILED(hr)) {
-            orb_log("audio: WASAPI error 0x%08lx; device lost, retrying", (unsigned long)hr);
+        if (FAILED(result)) {
+            orb_log("audio: WASAPI error 0x%08lx; device lost, retrying", (unsigned long)result);
             wasapi_release();
         }
     }

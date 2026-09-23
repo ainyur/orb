@@ -240,5 +240,5 @@ static inline uint32_t orb_field_width(orb_field_kind kind) {
     return kind == ORB_FIELD_BOOL ? 1 : kind == ORB_FIELD_POINT ? 8 : 4;
 }
 
-orb_span orb_file_write(orb_arena* a, const orb_assets* in);
+orb_span orb_file_write(orb_arena* arena, const orb_assets* in);
 [[nodiscard]] bool orb_file_load(orb_span file, orb_assets* out, orb_error* err);

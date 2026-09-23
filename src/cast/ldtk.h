@@ -28,11 +28,11 @@ typedef struct orb_ldtk_neighbor {
 } orb_ldtk_neighbor;
 
 typedef union orb_ldtk_value {
-    int32_t i;
-    float f;
-    bool b;
-    const char* s;  // a string, or the iid a ref names until the cast resolves it
-    orb_vec2 point; // world pixels
+    int32_t integer;
+    float number;
+    bool boolean;
+    const char* string; // a string, or the iid a ref names until the cast resolves it
+    orb_vec2 point;     // world pixels
 } orb_ldtk_value;
 
 typedef struct orb_ldtk_field {
@@ -104,14 +104,14 @@ typedef struct orb_ldtk {
 } orb_ldtk;
 
 [[nodiscard]] bool orb_ldtk_parse(
-    orb_arena* a,
+    orb_arena* arena,
     orb_span text,
     const char* name,
     orb_ldtk* out,
     orb_error* err
 );
 [[nodiscard]] bool orb_ldtk_parse_level(
-    orb_arena* a,
+    orb_arena* arena,
     orb_span text,
     const char* name,
     const orb_ldtk* project,

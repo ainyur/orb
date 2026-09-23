@@ -39,10 +39,10 @@ static int test_log(void) {
 }
 
 static int test_text(void) {
-    orb_input in = {0};
+    orb_input input = {0};
 
-    memcpy(in.text, "ab\xc3\xa9", 5);
-    orb_os_headless_set_input(&in);
+    memcpy(input.text, "ab\xc3\xa9", 5);
+    orb_os_headless_set_input(&input);
 
     orb_input got;
 
@@ -54,14 +54,14 @@ static int test_text(void) {
 }
 
 static int test_font(void) {
-    for (int g = 1; g < 95; g++) {
+    for (int glyph = 1; glyph < 95; glyph++) {
         bool any = false;
 
         for (int row = 0; row < 6; row++)
-            if (ORB_CONSOLE_FONT[g][row] & 0xe0) any = true;
+            if (ORB_CONSOLE_FONT[glyph][row] & 0xe0) any = true;
 
         CHECK(any);
-        CHECK_EQ(ORB_CONSOLE_FONT[g][0] & 0x1f, 0); // only the high 3 bits carry pixels
+        CHECK_EQ(ORB_CONSOLE_FONT[glyph][0] & 0x1f, 0); // only the high 3 bits carry pixels
     }
 
     CHECK_EQ(ORB_CONSOLE_FONT[0][0], 0);       // space is blank
@@ -93,7 +93,7 @@ static const char* last(void) {
 static int test_run(void) {
     if (boot()) return 1;
 
-    game_state* g = (game_state*)host_state.base;
+    game_state* self = (game_state*)host_state.base;
 
     orb_log_clear();
     orb_console_run("early");
@@ -102,27 +102,27 @@ static int test_run(void) {
     orb_console_run("speed");
     CHECK(strcmp(last(), "speed = 1") == 0);
     orb_console_run("speed 3");
-    CHECK_EQ(g->speed, 3);
+    CHECK_EQ(self->speed, 3);
     CHECK(strcmp(last(), "speed = 1") == 0); // a set prints nothing
     orb_console_run("speed 0x10");
-    CHECK_EQ(g->speed, 16);
+    CHECK_EQ(self->speed, 16);
     orb_console_run("speed nope");
     CHECK(strcmp(last(), "bad value for speed: nope") == 0);
-    CHECK_EQ(g->speed, 16);
+    CHECK_EQ(self->speed, 16);
     orb_console_run("speed 1 2");
     CHECK(strcmp(last(), "speed takes one value") == 0);
     orb_console_run("scale 1.5");
-    CHECK(g->scale == 1.5f);
+    CHECK(self->scale == 1.5f);
     orb_console_run("scale inf");
     CHECK(strcmp(last(), "bad value for scale: inf") == 0);
     orb_console_run("scale");
     CHECK(strcmp(last(), "scale = 1.5") == 0);
     orb_console_run("god on");
-    CHECK(g->god);
+    CHECK(self->god);
     orb_console_run("god");
     CHECK(strcmp(last(), "god = true") == 0);
     orb_console_run("god 0");
-    CHECK(!g->god);
+    CHECK(!self->god);
     orb_console_run("god maybe");
     CHECK(strcmp(last(), "bad value for god: maybe") == 0);
     orb_console_run("nothing");
@@ -132,10 +132,10 @@ static int test_run(void) {
 
     // commands get the split arguments; quotes group
     orb_console_run("teleport 5 \"7\"");
-    CHECK(orb_entity_get(g->player)->at.x == 5);
-    CHECK(orb_entity_get(g->player)->at.y == 7);
+    CHECK(orb_entity_get(self->player)->at.x == 5);
+    CHECK(orb_entity_get(self->player)->at.y == 7);
     orb_console_run("teleport \"1 2");
-    CHECK(orb_entity_get(g->player)->at.x == 5); // one argument "1 2": teleport wants two
+    CHECK(orb_entity_get(self->player)->at.x == 5); // one argument "1 2": teleport wants two
 
     // built-ins
     orb_log_clear();
@@ -153,24 +153,24 @@ static int test_run(void) {
     orb_input none = {0};
 
     orb_console_step(&none);
-    orb_console_var_int("late", &g->speed, nullptr);
+    orb_console_var_int("late", &self->speed, nullptr);
     CHECK(strcmp(last(), "console: \"late\" registered outside reload") == 0);
     orb_console_run("late");
     CHECK(strcmp(last(), "unknown: late") == 0);
 
     // a bad name and a taken name refuse inside reload
     orb_console_clear();
-    orb_console_var_int("Speed", &g->speed, nullptr);
+    orb_console_var_int("Speed", &self->speed, nullptr);
     CHECK(strcmp(last(), "console: bad or taken name \"Speed\"") == 0);
-    orb_console_var_int("speed", &g->speed, nullptr);
-    orb_console_var_int("speed", &g->speed, nullptr);
+    orb_console_var_int("speed", &self->speed, nullptr);
+    orb_console_var_int("speed", &self->speed, nullptr);
     CHECK(strcmp(last(), "console: bad or taken name \"speed\"") == 0);
 
     // the fixture registers again on reload, and quit ends the loop
     orb_console_clear();
-    reload(g, orb_api_table());
+    reload(self, orb_api_table());
     orb_console_run("speed 2");
-    CHECK_EQ(g->speed, 2);
+    CHECK_EQ(self->speed, 2);
     return 0;
 }
 
@@ -179,7 +179,7 @@ static void tick(void);
 static int test_entities(void) {
     if (boot()) return 1;
 
-    game_state* g = (game_state*)host_state.base;
+    game_state* self = (game_state*)host_state.base;
 
     // the fixture room spawned at boot: two crates, a marker, the player
     orb_log_clear();
@@ -241,12 +241,12 @@ static int test_entities(void) {
     orb_console_run("entities.debug on");
     CHECK(orb_entity_debug);
     orb_console_clear();
-    reload(g, orb_api_table());
+    reload(self, orb_api_table());
     orb_console_run("entities.debug");
     CHECK(strcmp(last(), "entities.debug = true") == 0);
     orb_console_run("entities.debug off");
     CHECK(!orb_entity_debug);
-    (void)g;
+    (void)self;
     return 0;
 }
 
@@ -265,8 +265,8 @@ static void press(int key) {
     tick();
 }
 
-static void type(const char* s) {
-    snprintf(keys.text, sizeof keys.text, "%s", s);
+static void type(const char* text) {
+    snprintf(keys.text, sizeof keys.text, "%s", text);
     tick();
 }
 
@@ -279,16 +279,16 @@ static void clear_line(void) {
 static int test_editor(void) {
     if (boot()) return 1;
 
-    game_state* g = (game_state*)host_state.base;
+    game_state* self = (game_state*)host_state.base;
 
     memset(&keys, 0, sizeof keys);
     keys.keys[ORB_KEY_GRAVE] = true;
     keys.keys[ORB_KEY_RIGHT] = true;
     snprintf(keys.text, sizeof keys.text, "`");
-    float x = orb_entity_get(g->player)->at.x;
+    float x = orb_entity_get(self->player)->at.x;
     tick(); // opens; the game sees nothing this tick
     CHECK(orb_console_open());
-    CHECK(orb_entity_get(g->player)->at.x == x);
+    CHECK(orb_entity_get(self->player)->at.x == x);
     CHECK(!orb_key_down(ORB_KEY_GRAVE));
     CHECK(!orb_key_down(ORB_KEY_RIGHT));
     snprintf(keys.text, sizeof keys.text, "`");
@@ -303,7 +303,7 @@ static int test_editor(void) {
     type("speed 4");
     CHECK_EQ(console_len, 7);
     press(ORB_KEY_RETURN);
-    CHECK_EQ(g->speed, 4);
+    CHECK_EQ(self->speed, 4);
     CHECK_EQ(console_len, 0);
 
     // cursor movement and deletion
@@ -447,7 +447,7 @@ static int test_editor(void) {
 static int test_binds(void) {
     if (boot()) return 1;
 
-    game_state* g = (game_state*)host_state.base;
+    game_state* self = (game_state*)host_state.base;
 
     memset(&keys, 0, sizeof keys);
     orb_log_clear();
@@ -456,30 +456,30 @@ static int test_binds(void) {
     orb_console_run("binds");
     CHECK(strcmp(orb_log_line(1), "bind f5 \"speed 7\"") == 0);
     CHECK(strcmp(orb_log_line(0), "bind f6 \"teleport 3 4\"") == 0);
-    g->speed = 0;
+    self->speed = 0;
     press(ORB_KEY_F5);
-    CHECK_EQ(g->speed, 7);
+    CHECK_EQ(self->speed, 7);
     CHECK(!orb_key_down(ORB_KEY_F5)); // hidden from the game
     press(ORB_KEY_F6);
-    CHECK(orb_entity_get(g->player)->at.x == 3);
+    CHECK(orb_entity_get(self->player)->at.x == 3);
 
     // opening the console hides a bound key from the game and skips the bind
     press(ORB_KEY_GRAVE);
     CHECK(orb_console_open());
-    g->speed = 0;
+    self->speed = 0;
     keys.keys[ORB_KEY_F5] = keys.keys[ORB_KEY_ESCAPE] = true;
     tick();
     CHECK(!orb_console_open());
     CHECK(!orb_key_down(ORB_KEY_F5));
-    CHECK_EQ(g->speed, 0);
+    CHECK_EQ(self->speed, 0);
     keys.keys[ORB_KEY_F5] = false;
     keys.keys[ORB_KEY_ESCAPE] = false;
     tick();
 
     orb_console_run("unbind f5");
-    g->speed = 0;
+    self->speed = 0;
     press(ORB_KEY_F5);
-    CHECK_EQ(g->speed, 0);
+    CHECK_EQ(self->speed, 0);
     orb_console_run("bind nosuchkey speed 1");
     CHECK(strcmp(last(), "no key \"nosuchkey\"") == 0);
     orb_console_run("bind ` dump");
@@ -500,7 +500,7 @@ static int test_binds(void) {
     orb_console_run("bind delete dump");
     CHECK(strcmp(last(), "binds are full") == 0);
     orb_console_clear(); // binds survive
-    reload(g, orb_api_table());
+    reload(self, orb_api_table());
     orb_console_run("binds");
     CHECK(orb_log_line_count() > 10);
     return 0;
@@ -575,20 +575,20 @@ static int test_draw(void) {
     return 0;
 }
 
-// Renders s through ORB_CONSOLE_FONT and compares its 3 by 5 body to the frame's row.
-static bool row_text_matches(int row, const char* s) {
+// Renders text through ORB_CONSOLE_FONT and compares its 3 by 5 body to the frame's row.
+static bool row_text_matches(int row, const char* text) {
     uint32_t dark, bright;
 
     orb_pal_extremes(orb_api_pal_base(), &dark, &bright);
 
-    for (int i = 0; s[i]; i++) {
-        const uint8_t* g = ORB_CONSOLE_FONT[(unsigned char)s[i] - 32];
+    for (int i = 0; text[i]; i++) {
+        const uint8_t* glyph = ORB_CONSOLE_FONT[(unsigned char)text[i] - 32];
 
-        for (int r = 0; r < 5; r++)
+        for (int j = 0; j < 5; j++)
             for (int col = 0; col < 3; col++) {
-                uint32_t want = g[r] & 0x80 >> col ? bright : dark;
+                uint32_t want = glyph[j] & 0x80 >> col ? bright : dark;
 
-                if (frame_pixel(i * 4 + col, row * 6 + r) != want) return false;
+                if (frame_pixel(i * 4 + col, row * 6 + j) != want) return false;
             }
     }
 
@@ -643,30 +643,30 @@ static int test_scroll(void) {
 static int test_clock(void) {
     if (boot()) return 1;
 
-    game_state* g = (game_state*)host_state.base;
+    game_state* self = (game_state*)host_state.base;
 
     memset(&keys, 0, sizeof keys);
     orb_os_headless_set_input(&keys);
     orb_clock_get()->paused = true;
 
-    int ticks = g->ticks;
+    int ticks = self->ticks;
 
     for (int i = 0; i < 3; i++)
         CHECK(orb_frame());
 
-    CHECK_EQ(g->ticks, ticks);
+    CHECK_EQ(self->ticks, ticks);
     orb_clock_get()->step = true;
     CHECK(orb_frame());
-    CHECK_EQ(g->ticks, ticks + 1);
+    CHECK_EQ(self->ticks, ticks + 1);
     CHECK(orb_frame());
-    CHECK_EQ(g->ticks, ticks + 1);
+    CHECK_EQ(self->ticks, ticks + 1);
 
     // a paused frame still pumps input, so the console opens and can unpause
     keys.keys[ORB_KEY_GRAVE] = true;
     orb_os_headless_set_input(&keys);
     CHECK(orb_frame());
     CHECK(orb_console_open());
-    CHECK_EQ(g->ticks, ticks + 1);
+    CHECK_EQ(self->ticks, ticks + 1);
     keys.keys[ORB_KEY_GRAVE] = false;
     snprintf(keys.text, sizeof keys.text, "pause 0");
     orb_os_headless_set_input(&keys);
@@ -684,23 +684,23 @@ static int test_clock(void) {
     keys.keys[ORB_KEY_ESCAPE] = false;
     orb_os_headless_set_input(&keys);
     CHECK(orb_frame());
-    ticks = g->ticks;
+    ticks = self->ticks;
     orb_clock_get()->timescale = 0;
     CHECK(orb_frame());
-    CHECK_EQ(g->ticks, ticks); // no time passes at timescale 0
+    CHECK_EQ(self->ticks, ticks); // no time passes at timescale 0
     orb_clock_get()->timescale = 1;
 
-    orb_stats s = orb_stats_get();
+    orb_stats stats = orb_stats_get();
 
-    CHECK(s.state > 0 && s.pool > 0);
-    CHECK(s.assets > 0 && s.cast_peak > 0);
-    CHECK(s.release > s.state + s.pool);
+    CHECK(stats.state > 0 && stats.pool > 0);
+    CHECK(stats.assets > 0 && stats.cast_peak > 0);
+    CHECK(stats.release > stats.state + stats.pool);
 
     orb_console_run("stats");
     CHECK(strncmp(orb_log_line(0), "state ", 6) == 0);
     CHECK(strstr(orb_log_line(0), " sealed; frame ") != nullptr);
     CHECK(strstr(orb_log_line(0), " B,") || strstr(orb_log_line(0), " KB,"));
-    CHECK_EQ(s.frame_ticks, 0);
+    CHECK_EQ(stats.frame_ticks, 0);
 
     orb_clock_get()->step = true; // outside a pause a step is dropped, not saved up
     CHECK(orb_frame());

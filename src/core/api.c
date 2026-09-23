@@ -29,12 +29,12 @@ static void api_pal_reset(void) {
     orb_pal_reset(&api_pal);
 }
 
-static void api_pal_set(int i, uint8_t r, uint8_t g, uint8_t b) {
-    orb_pal_set(&api_pal, i, r, g, b);
+static void api_pal_set(int index, uint8_t r, uint8_t g, uint8_t b) {
+    orb_pal_set(&api_pal, index, r, g, b);
 }
 
-static uint32_t api_pal_get(int i) {
-    return orb_pal_get(&api_pal, i);
+static uint32_t api_pal_get(int index) {
+    return orb_pal_get(&api_pal, index);
 }
 
 static void api_clear(uint8_t index) {
@@ -53,27 +53,27 @@ static orb_camera api_camera_update(orb_camera camera) {
 }
 
 static orb_sprite api_sprite_find(const char* stem, int frame) {
-    uint32_t v = orb_asset_find(&api_assets, ORB_ASSET_SPRITE, orb_sprite_id(stem, frame));
+    uint32_t index = orb_asset_find(&api_assets, ORB_ASSET_SPRITE, orb_sprite_id(stem, frame));
 
-    if (v == ORB_NO_INDEX) orb_log("no frame %d in %s", frame, stem);
+    if (index == ORB_NO_INDEX) orb_log("no frame %d in %s", frame, stem);
 
-    return ORB_SPRITE(v);
+    return ORB_SPRITE(index);
 }
 
-static void api_sprite_draw(orb_sprite s, orb_vec2 at, uint32_t flags, const uint8_t* remap) {
-    orb_sprite_draw(&api_fb, &api_assets.assets, api_camera, s, at, flags, remap);
+static void api_sprite_draw(orb_sprite sprite, orb_vec2 at, uint32_t flags, const uint8_t* remap) {
+    orb_sprite_draw(&api_fb, &api_assets.assets, api_camera, sprite, at, flags, remap);
 }
 
 static orb_anim api_anim_find(const char* stem, const char* tag) {
-    uint32_t v = orb_asset_find(&api_assets, ORB_ASSET_ANIM, orb_asset_id(stem, tag));
+    uint32_t index = orb_asset_find(&api_assets, ORB_ASSET_ANIM, orb_asset_id(stem, tag));
 
-    if (v == ORB_NO_INDEX) orb_log("no animation \"%s\" in %s", tag, stem);
+    if (index == ORB_NO_INDEX) orb_log("no animation \"%s\" in %s", tag, stem);
 
-    return ORB_ANIM(v);
+    return ORB_ANIM(index);
 }
 
-static orb_sprite api_anim_step(orb_anim_state* st) {
-    return orb_anim_step(&api_assets.assets, st);
+static orb_sprite api_anim_step(orb_anim_state* state) {
+    return orb_anim_step(&api_assets.assets, state);
 }
 
 static int api_layer_find(orb_level level, const char* name) {
@@ -94,11 +94,11 @@ static void api_layer_draw(orb_level level, int layer) {
 }
 
 static orb_level api_level_find(const char* stem) {
-    uint32_t v = orb_asset_find(&api_assets, ORB_ASSET_LEVEL, orb_asset_id(stem, ""));
+    uint32_t index = orb_asset_find(&api_assets, ORB_ASSET_LEVEL, orb_asset_id(stem, ""));
 
-    if (v == ORB_NO_INDEX) orb_log("no level \"%s\"", stem);
+    if (index == ORB_NO_INDEX) orb_log("no level \"%s\"", stem);
 
-    return ORB_LEVEL(v);
+    return ORB_LEVEL(index);
 }
 
 static orb_rect api_level_bounds(orb_level level) {
@@ -114,11 +114,11 @@ static int api_cell_get(orb_level level, int layer, orb_vec2 at) {
 }
 
 static orb_type api_type_find(const char* stem) {
-    uint32_t v = orb_asset_find(&api_assets, ORB_ASSET_TYPE, orb_asset_id(stem, ""));
+    uint32_t index = orb_asset_find(&api_assets, ORB_ASSET_TYPE, orb_asset_id(stem, ""));
 
-    if (v == ORB_NO_INDEX) orb_log("no entity type \"%s\"", stem);
+    if (index == ORB_NO_INDEX) orb_log("no entity type \"%s\"", stem);
 
-    return ORB_TYPE(v);
+    return ORB_TYPE(index);
 }
 
 static void api_world_draw(int layer) {
@@ -126,51 +126,51 @@ static void api_world_draw(int layer) {
 }
 
 static orb_font api_font_find(const char* stem) {
-    uint32_t v = orb_asset_find(&api_assets, ORB_ASSET_FONT, orb_asset_id(stem, "font"));
+    uint32_t index = orb_asset_find(&api_assets, ORB_ASSET_FONT, orb_asset_id(stem, "font"));
 
-    if (v == ORB_NO_INDEX) orb_log("no font \"%s\"", stem);
+    if (index == ORB_NO_INDEX) orb_log("no font \"%s\"", stem);
 
-    return ORB_FONT(v);
+    return ORB_FONT(index);
 }
 
-static orb_size api_text_measure(orb_font f, const char* s) {
-    return orb_text_measure(&api_assets.assets, f, s);
+static orb_size api_text_measure(orb_font font, const char* text) {
+    return orb_text_measure(&api_assets.assets, font, text);
 }
 
-static void api_text_draw(orb_font f, const char* s, orb_vec2 at, const uint8_t* remap) {
-    orb_text_draw(&api_fb, &api_assets.assets, f, s, at, remap);
+static void api_text_draw(orb_font font, const char* text, orb_vec2 at, const uint8_t* remap) {
+    orb_text_draw(&api_fb, &api_assets.assets, font, text, at, remap);
 }
 
 static orb_sample api_sample_find(const char* stem) {
-    uint32_t v = orb_asset_find(&api_assets, ORB_ASSET_SAMPLE, orb_asset_id(stem, ""));
+    uint32_t index = orb_asset_find(&api_assets, ORB_ASSET_SAMPLE, orb_asset_id(stem, ""));
 
-    if (v == ORB_NO_INDEX) orb_log("no sound \"%s\"", stem);
+    if (index == ORB_NO_INDEX) orb_log("no sound \"%s\"", stem);
 
-    return ORB_SAMPLE(v);
+    return ORB_SAMPLE(index);
 }
 
-static orb_voice api_sound_play(orb_sample s, orb_sound_params p, int priority) {
-    return orb_mixer_sound_play(&api_mixer, s, p, priority);
+static orb_voice api_sound_play(orb_sample sample, orb_sound_params params, int priority) {
+    return orb_mixer_sound_play(&api_mixer, sample, params, priority);
 }
 
-static void api_sound_set(orb_voice v, orb_sound_params p) {
-    orb_mixer_sound_set(&api_mixer, v, p);
+static void api_sound_set(orb_voice voice, orb_sound_params params) {
+    orb_mixer_sound_set(&api_mixer, voice, params);
 }
 
-static void api_sound_stop(orb_voice v) {
-    orb_mixer_sound_stop(&api_mixer, v);
+static void api_sound_stop(orb_voice voice) {
+    orb_mixer_sound_stop(&api_mixer, voice);
 }
 
 static orb_song api_song_find(const char* stem) {
-    uint32_t v = orb_asset_find(&api_assets, ORB_ASSET_SONG, orb_asset_id(stem, ""));
+    uint32_t index = orb_asset_find(&api_assets, ORB_ASSET_SONG, orb_asset_id(stem, ""));
 
-    if (v == ORB_NO_INDEX) orb_log("no song \"%s\"", stem);
+    if (index == ORB_NO_INDEX) orb_log("no song \"%s\"", stem);
 
-    return ORB_SONG(v);
+    return ORB_SONG(index);
 }
 
-static void api_song_play(orb_song s, bool loop) {
-    orb_mixer_song_play(&api_mixer, s, loop);
+static void api_song_play(orb_song song, bool loop) {
+    orb_mixer_song_play(&api_mixer, song, loop);
 }
 
 static orb_song_position api_song_position(void) {
@@ -189,8 +189,8 @@ static void api_song_stop(int fade_ms) {
     orb_mixer_song_stop(&api_mixer, fade_ms);
 }
 
-static void api_volume_set(orb_volumes v) {
-    orb_mixer_volume_set(&api_mixer, v);
+static void api_volume_set(orb_volumes volumes) {
+    orb_mixer_volume_set(&api_mixer, volumes);
 }
 
 static const orb_api api_table = {
@@ -312,8 +312,8 @@ static void api_publish(void) {
 
 // The mixer needs no step here: it is a static built from ORB_MIXER_INIT, and the
 // audio thread it serves is the OS layer's.
-void orb_api_boot(orb_arena* a, orb_size size, const orb_assets* assets) {
-    orb_fb_init(&api_fb, a, size);
+void orb_api_boot(orb_arena* arena, orb_size size, const orb_assets* assets) {
+    orb_fb_init(&api_fb, arena, size);
     orb_api_set_assets(assets);
 }
 

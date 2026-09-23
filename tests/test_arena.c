@@ -4,20 +4,20 @@
 
 int main(void) {
     static uint8_t mem[1024];
-    orb_arena a;
-    orb_arena_init(&a, "test", mem, sizeof mem);
-    uint8_t* p = orb_arena_push(&a, 3, 1);
+    orb_arena arena;
+    orb_arena_init(&arena, "test", mem, sizeof mem);
+    uint8_t* bytes = orb_arena_push(&arena, 3, 1);
 
-    CHECK(p == mem);
-    CHECK_EQ(a.used, 3);
+    CHECK(bytes == mem);
+    CHECK_EQ(arena.used, 3);
 
-    uint32_t* q = orb_arena_push(&a, 4, 4);
+    uint32_t* aligned = orb_arena_push(&arena, 4, 4);
 
-    CHECK(((uintptr_t)q & 3) == 0);
-    CHECK_EQ(a.used, 8);
-    CHECK_EQ(*q, 0);
+    CHECK(((uintptr_t)aligned & 3) == 0);
+    CHECK_EQ(arena.used, 8);
+    CHECK_EQ(*aligned, 0);
 
-    orb_arena sub = orb_arena_carve(&a, "sub", 64);
+    orb_arena sub = orb_arena_carve(&arena, "sub", 64);
 
     CHECK_EQ(sub.size, 64);
     CHECK(sub.base >= mem && sub.base + 64 <= mem + sizeof mem);
@@ -27,42 +27,42 @@ int main(void) {
 
     // restoring used hands the same bytes out again, zeroed; peak keeps the
     // high-water mark
-    size_t mark = a.used;
-    uint8_t* r = orb_arena_push(&a, 8, 1);
+    size_t mark = arena.used;
+    uint8_t* block = orb_arena_push(&arena, 8, 1);
 
-    r[0] = 7;
-    a.used = mark;
-    CHECK(orb_arena_push(&a, 8, 1) == r);
-    CHECK_EQ(r[0], 0);
-    CHECK_EQ(a.peak, mark + 8);
+    block[0] = 7;
+    arena.used = mark;
+    CHECK(orb_arena_push(&arena, 8, 1) == block);
+    CHECK_EQ(block[0], 0);
+    CHECK_EQ(arena.peak, mark + 8);
 
-    orb_arena_reset(&a);
-    CHECK_EQ(a.used, 0);
+    orb_arena_reset(&arena);
+    CHECK_EQ(arena.used, 0);
 
     // a push whose start + size wraps past SIZE_MAX fails the same way an
     // over-full arena does
     jmp_buf recover;
 
-    orb_arena_push(&a, 1, 1);
-    a.recover = &recover;
+    orb_arena_push(&arena, 1, 1);
+    arena.recover = &recover;
 
     if (setjmp(recover) == 0) {
-        orb_arena_push(&a, SIZE_MAX, 1);
+        orb_arena_push(&arena, SIZE_MAX, 1);
         CHECK(false);
     } else {
-        CHECK_EQ(a.overflow, SIZE_MAX);
+        CHECK_EQ(arena.overflow, SIZE_MAX);
     }
 
     // a count * element size overflow in orb_arena_push_array fails the same way
     if (setjmp(recover) == 0) {
-        orb_arena_push_array(&a, uint16_t, SIZE_MAX);
+        orb_arena_push_array(&arena, uint16_t, SIZE_MAX);
         CHECK(false);
     } else {
-        CHECK_EQ(a.overflow, SIZE_MAX);
+        CHECK_EQ(arena.overflow, SIZE_MAX);
     }
 
-    a.recover = nullptr;
-    CHECK(!a.refused); // a fixed arena is never refused a commit
+    arena.recover = nullptr;
+    CHECK(!arena.refused); // a fixed arena is never refused a commit
 
     // a reserved arena commits in steps as it grows and keeps them across a reset
     static orb_arena grow;

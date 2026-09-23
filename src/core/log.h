@@ -21,7 +21,7 @@ int orb_log_line_count(void);
 const char* orb_log_line(int back); // 0 the newest; "" past the count
 
 // Returns false, so a check reads "if (bad) return orb_error_set(err, ...)".
-bool orb_error_set(orb_error* e, const char* fmt, ...);
+bool orb_error_set(orb_error* err, const char* fmt, ...);
 [[noreturn]] void orb_fatal(const char* fmt, ...);
 
 // The largest 1024-based unit reached, one decimal: "512 B", "1.2 KB", "3.0 GB".

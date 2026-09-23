@@ -60,11 +60,11 @@ const char* orb_log_line(int back) {
     return log_ring[(log_total - 1 - back) % ORB_LOG_LINES];
 }
 
-bool orb_error_set(orb_error* e, const char* fmt, ...) {
+bool orb_error_set(orb_error* err, const char* fmt, ...) {
     va_list ap;
 
     va_start(ap, fmt);
-    vsnprintf(e->text, sizeof e->text, fmt, ap);
+    vsnprintf(err->text, sizeof err->text, fmt, ap);
     va_end(ap);
     return false;
 }

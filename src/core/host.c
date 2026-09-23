@@ -22,10 +22,10 @@ static uint64_t host_previous, host_accumulator;
 static bool host_quitting;
 
 // The config with its defaults filled, so a reload compares like against like.
-static orb_config host_normalize(orb_config c) {
-    if (c.max_entities == 0) c.max_entities = 256;
+static orb_config host_normalize(orb_config config) {
+    if (config.max_entities == 0) config.max_entities = 256;
 
-    return c;
+    return config;
 }
 
 static size_t host_round16(size_t n) {
@@ -33,10 +33,10 @@ static size_t host_round16(size_t n) {
 }
 
 // Each carve and push starts on a 16-byte boundary.
-size_t orb_host_release_size(const orb_config* c, orb_size size) {
+size_t orb_host_release_size(const orb_config* config, orb_size size) {
     size_t pixels = (size_t)size.width * size.height;
 
-    return host_round16(c->state_size) + host_round16(orb_entity_region_size(c)) +
+    return host_round16(config->state_size) + host_round16(orb_entity_region_size(config)) +
            host_round16(pixels) + pixels * 4;
 }
 
@@ -86,13 +86,14 @@ static bool host_cast(int half, orb_assets* out, orb_error* err) {
     orb_arena_reset(&host_assets[half]);
     orb_arena_reset(&host_scratch);
 
-    orb_manifest m;
+    orb_manifest manifest;
     orb_cast_result result;
 
-    if (!orb_cast_game(&host_scratch, &host_assets[half], host_dir, &m, &result, err)) return false;
+    if (!orb_cast_game(&host_scratch, &host_assets[half], host_dir, &manifest, &result, err))
+        return false;
 
     // The window and the framebuffers were sized at boot from the first manifest.
-    if (m.size.width != host_info.width || m.size.height != host_info.height)
+    if (manifest.size.width != host_info.width || manifest.size.height != host_info.height)
         return orb_error_set(err, "orb.json: size changed; restart orb to apply it");
 
     if (!host_load(result.file, out, err)) return false;
@@ -104,13 +105,14 @@ static bool host_cast(int half, orb_assets* out, orb_error* err) {
 
 // Read the screen size from the manifest, then cast into half A.
 static bool host_cast_first(const char* game_dir, orb_assets* out, orb_error* err) {
-    orb_manifest m;
+    orb_manifest manifest;
 
-    if (!orb_manifest_load(&host_arena, game_dir, &m, err)) return false;
+    if (!orb_manifest_load(&host_arena, game_dir, &manifest, err)) return false;
 
     host_dir = game_dir;
-    host_info =
-        (orb_info_desc) {.width = (uint16_t)m.size.width, .height = (uint16_t)m.size.height};
+    host_info = (orb_info_desc) {
+        .width = (uint16_t)manifest.size.width, .height = (uint16_t)manifest.size.height
+    };
     return host_cast(0, out, err);
 }
 
@@ -167,9 +169,9 @@ bool orb_boot(
     orb_console_boot(host_state.base, orb_api_table());
     host_rgb = orb_arena_push_array(&host_arena, uint32_t, (size_t)size.width* size.height);
 
-    orb_os_config cfg = {.title = host_info.name, .size = size};
+    orb_os_config os_config = {.title = host_info.name, .size = size};
 
-    if (!orb_os_open(&cfg)) return orb_error_set(err, "cannot open a window");
+    if (!orb_os_open(&os_config)) return orb_error_set(err, "cannot open a window");
 
     orb_input_resolve(orb_api_assets());
     host_game->init(host_state.base, orb_api_table());
@@ -184,19 +186,19 @@ bool orb_boot(
 }
 
 // The console sees every snapshot; the game sees only the ones a tick hands on.
-static bool host_poll(orb_input* in) {
-    if (!orb_os_pump(in)) return false;
+static bool host_poll(orb_input* input) {
+    if (!orb_os_pump(input)) return false;
 
-    orb_console_step(in);
+    orb_console_step(input);
     return true;
 }
 
 static bool host_tick(void) {
-    orb_input in;
+    orb_input input;
 
-    if (!host_poll(&in)) return false;
+    if (!host_poll(&input)) return false;
 
-    orb_input_step(&in);
+    orb_input_step(&input);
     host_game->update(host_state.base, orb_api_table());
     orb_api_poll();
     return true;
@@ -257,9 +259,9 @@ bool orb_frame(void) {
 
     // A frame without a tick still polls, so the console and the window close work while paused.
     if (ticks == 0) {
-        orb_input in;
+        orb_input input;
 
-        if (!host_poll(&in)) return false;
+        if (!host_poll(&input)) return false;
     }
 
     host_render();

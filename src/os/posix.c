@@ -17,14 +17,15 @@ void orb_os_args(int*, char***) {
 }
 
 bool orb_os_stat(const char* path, orb_os_info* out) {
-    struct stat st;
+    struct stat stat_buf;
 
-    if (stat(path, &st) != 0) return false;
+    if (stat(path, &stat_buf) != 0) return false;
 
     *out = (orb_os_info) {
-        .size = (uint64_t)st.st_size,
-        .mtime = (uint64_t)st.st_mtim.tv_sec * ORB_NS_PER_SECOND + (uint64_t)st.st_mtim.tv_nsec,
-        .dir = S_ISDIR(st.st_mode)
+        .size = (uint64_t)stat_buf.st_size,
+        .mtime = (uint64_t)stat_buf.st_mtim.tv_sec * ORB_NS_PER_SECOND +
+                 (uint64_t)stat_buf.st_mtim.tv_nsec,
+        .dir = S_ISDIR(stat_buf.st_mode)
     };
     return true;
 }
@@ -67,27 +68,27 @@ bool orb_os_make_dir(const char* path) {
 
 // Strict POSIX hides d_type, so each entry is stat'd; one that fails is skipped.
 int orb_os_read_dir(const char* dir, orb_os_entry* out, int max) {
-    DIR* d = opendir(dir);
+    DIR* dir_handle = opendir(dir);
 
-    if (!d) return 0;
+    if (!dir_handle) return 0;
 
     int count = 0;
 
-    for (struct dirent* e; (e = readdir(d)) && count < max;) {
+    for (struct dirent* entry; (entry = readdir(dir_handle)) && count < max;) {
         orb_path path;
         orb_os_info info;
 
-        if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0) continue;
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
 
-        orb_path_join(path, dir, e->d_name);
+        orb_path_join(path, dir, entry->d_name);
 
         if (!orb_os_stat(path, &info)) continue;
 
-        snprintf(out[count].name, ORB_PATH_MAX, "%s", e->d_name);
+        snprintf(out[count].name, ORB_PATH_MAX, "%s", entry->d_name);
         out[count++].dir = info.dir;
     }
 
-    closedir(d);
+    closedir(dir_handle);
     return count;
 }
 
@@ -103,20 +104,21 @@ void* orb_os_dlsym(orb_os_library* lib, const char* name) {
     return dlsym(lib, name);
 }
 
-void orb_os_sleep(uint64_t ns) {
-    struct timespec ts = {
-        .tv_sec = (time_t)(ns / ORB_NS_PER_SECOND), .tv_nsec = (long)(ns % ORB_NS_PER_SECOND)
+void orb_os_sleep(uint64_t duration_ns) {
+    struct timespec spec = {
+        .tv_sec = (time_t)(duration_ns / ORB_NS_PER_SECOND),
+        .tv_nsec = (long)(duration_ns % ORB_NS_PER_SECOND)
     };
 
-    nanosleep(&ts, nullptr);
+    nanosleep(&spec, nullptr);
 }
 
 uint64_t orb_os_ticks(void) {
-    struct timespec ts;
+    struct timespec spec;
 
-    clock_gettime(CLOCK_MONOTONIC, &ts);
+    clock_gettime(CLOCK_MONOTONIC, &spec);
 
-    return (uint64_t)ts.tv_sec * ORB_NS_PER_SECOND + (uint64_t)ts.tv_nsec;
+    return (uint64_t)spec.tv_sec * ORB_NS_PER_SECOND + (uint64_t)spec.tv_nsec;
 }
 
 uint32_t orb_os_pid(void) {
@@ -124,9 +126,9 @@ uint32_t orb_os_pid(void) {
 }
 
 void* orb_os_reserve(size_t size) {
-    void* p = mmap(nullptr, size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+    void* mem = mmap(nullptr, size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
 
-    return p == MAP_FAILED ? nullptr : p;
+    return mem == MAP_FAILED ? nullptr : mem;
 }
 
 bool orb_os_commit(void* at, size_t size) {
@@ -164,18 +166,18 @@ int orb_os_run(const char* dir, const char* const* argv, void (*line)(const char
 
     close(fds[1]);
 
-    FILE* p = fdopen(fds[0], "r");
+    FILE* stream = fdopen(fds[0], "r");
     char text[1024];
 
-    if (!p) {
+    if (!stream) {
         close(fds[0]);
     } else {
-        while (fgets(text, sizeof text, p)) {
+        while (fgets(text, sizeof text, stream)) {
             text[strcspn(text, "\n")] = 0;
             line(text);
         }
 
-        fclose(p);
+        fclose(stream);
     }
 
     int status;
@@ -185,7 +187,7 @@ int orb_os_run(const char* dir, const char* const* argv, void (*line)(const char
         waited = waitpid(pid, &status, 0);
     while (waited < 0 && errno == EINTR);
 
-    return p && waited == pid && WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+    return stream && waited == pid && WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
 
 #include "stdio.c"

@@ -4,39 +4,39 @@
 // The LDtk project and its external level files, parsed but not yet cast. A
 // missing project is an empty world; its directory (or "." when the path names
 // no directory) is watched so creating the file recasts.
-static bool world_parse(cast* c, orb_ldtk* world) {
-    const char* rel = c->m->world;
-    const char* path = cast_path(c->scratch, c->game_dir, rel);
+static bool world_parse(cast* context, orb_ldtk* world) {
+    const char* rel = context->manifest->world;
+    const char* path = cast_path(context->scratch, context->game_dir, rel);
     orb_os_info info;
 
     memset(world, 0, sizeof *world);
 
     if (!orb_os_stat(path, &info)) {
-        const char* dir = cast_dir_of(c->scratch, rel);
-        return cast_note(c, *dir ? dir : ".");
+        const char* dir = cast_dir_of(context->scratch, rel);
+        return cast_note(context, *dir ? dir : ".");
     }
 
     orb_span text;
 
-    if (!cast_read(c, rel, &text)) return false;
+    if (!cast_read(context, rel, &text)) return false;
 
     orb_error inner;
 
-    if (!orb_ldtk_parse(c->scratch, text, rel, world, &inner))
-        return orb_error_set(c->err, "%s", inner.text);
+    if (!orb_ldtk_parse(context->scratch, text, rel, world, &inner))
+        return orb_error_set(context->err, "%s", inner.text);
 
-    const char* dir = cast_dir_of(c->scratch, rel);
+    const char* dir = cast_dir_of(context->scratch, rel);
 
     for (int i = 0; i < world->level_count; i++) {
         orb_ldtk_level* level = &world->levels[i];
 
         if (!level->external_path) continue;
 
-        const char* level_rel = cast_path(c->scratch, dir, level->external_path);
+        const char* level_rel = cast_path(context->scratch, dir, level->external_path);
 
-        if (!cast_read(c, level_rel, &text)) return false;
-        if (!orb_ldtk_parse_level(c->scratch, text, level_rel, world, level, &inner))
-            return orb_error_set(c->err, "%s", inner.text);
+        if (!cast_read(context, level_rel, &text)) return false;
+        if (!orb_ldtk_parse_level(context->scratch, text, level_rel, world, level, &inner))
+            return orb_error_set(context->err, "%s", inner.text);
     }
 
     return true;
@@ -46,12 +46,12 @@ static bool world_parse(cast* c, orb_ldtk* world) {
 // a per-cell counter pushed and popped from scratch. A cell over ORB_MAX_SUBLAYERS
 // is an error naming the level, the layer, and the cell.
 static bool world_sublayers(
-    cast* c,
+    cast* context,
     const orb_ldtk_level* level,
     const orb_ldtk_layer* layer,
     uint32_t* out
 ) {
-    orb_arena* scratch = c->scratch;
+    orb_arena* scratch = context->scratch;
     uint32_t area = (uint32_t)layer->columns * layer->rows;
     size_t mark = scratch->used;
     uint8_t* counts = orb_arena_push_array(scratch, uint8_t, area);
@@ -67,7 +67,8 @@ static bool world_sublayers(
         if (depth > ORB_MAX_SUBLAYERS) {
             scratch->used = mark;
             return orb_error_set(
-                c->err, "level %s: layer %s: cell (%d, %d) stacks more than %u tiles (sub-layers)",
+                context->err,
+                "level %s: layer %s: cell (%d, %d) stacks more than %u tiles (sub-layers)",
                 level->name, layer->name, tile->cell_x, tile->cell_y, ORB_MAX_SUBLAYERS
             );
         }
@@ -84,13 +85,13 @@ static uint32_t world_field_bytes(const orb_ldtk_field* fields, int count) {
     uint32_t total = 0;
 
     for (int i = 0; i < count; i++) {
-        const orb_ldtk_field* f = &fields[i];
+        const orb_ldtk_field* field = &fields[i];
 
-        total += (uint32_t)f->count * orb_field_width(f->kind);
+        total += (uint32_t)field->count * orb_field_width(field->kind);
 
-        if (f->kind == ORB_FIELD_STRING)
-            for (int k = 0; k < f->count; k++)
-                total += (uint32_t)strlen(f->values[k].s) + 1;
+        if (field->kind == ORB_FIELD_STRING)
+            for (int k = 0; k < field->count; k++)
+                total += (uint32_t)strlen(field->values[k].string) + 1;
 
         total = (total + 3) & ~3u;
     }
@@ -132,7 +133,7 @@ static int world_placement_of(const world_iid* iids, uint32_t count, const char*
 
 // Field rows and their data for one type or placement, refs resolved to placement indices.
 static bool world_write_fields(
-    cast* c,
+    cast* context,
     const world_iid* iids,
     uint32_t iid_count,
     const char* level_name,
@@ -152,60 +153,61 @@ static bool world_write_fields(
         snprintf(prefix, sizeof prefix, "entity %s", entity_name);
 
     for (int i = 0; i < count; i++) {
-        const orb_ldtk_field* f = &src[i];
-        uint32_t width = orb_field_width(f->kind);
-        uint8_t* p = data + *data_offset;
-        uint32_t string_at = *data_offset + (((uint32_t)f->count * width + 3) & ~3u);
+        const orb_ldtk_field* field = &src[i];
+        uint32_t width = orb_field_width(field->kind);
+        uint8_t* dest = data + *data_offset;
+        uint32_t string_at = *data_offset + (((uint32_t)field->count * width + 3) & ~3u);
 
-        if (f->count > 65535)
+        if (field->count > 65535)
             return orb_error_set(
-                c->err, "%s: field %s: %d elements is more than 65535", prefix, f->name, f->count
+                context->err, "%s: field %s: %d elements is more than 65535", prefix, field->name,
+                field->count
             );
 
         fields[(*field_offset)++] = (orb_field_desc) {
-            .name = orb_asset_id(f->name, ""),
+            .name = orb_asset_id(field->name, ""),
             .data = *data_offset,
-            .count = (uint16_t)f->count,
-            .kind = (uint8_t)f->kind
+            .count = (uint16_t)field->count,
+            .kind = (uint8_t)field->kind
         };
 
-        for (int k = 0; k < f->count; k++) {
-            const orb_ldtk_value* v = &f->values[k];
+        for (int k = 0; k < field->count; k++) {
+            const orb_ldtk_value* value = &field->values[k];
 
-            switch (f->kind) {
+            switch (field->kind) {
             case ORB_FIELD_INT:
-                memcpy(p + k * 4, &v->i, 4);
+                memcpy(dest + k * 4, &value->integer, 4);
                 break;
             case ORB_FIELD_FLOAT:
-                memcpy(p + k * 4, &v->f, 4);
+                memcpy(dest + k * 4, &value->number, 4);
                 break;
             case ORB_FIELD_BOOL:
-                p[k] = v->b;
+                dest[k] = value->boolean;
                 break;
             case ORB_FIELD_STRING: {
-                size_t n = strlen(v->s) + 1;
+                size_t n = strlen(value->string) + 1;
 
-                memcpy(p + k * 4, &string_at, 4);
-                memcpy(data + string_at, v->s, n);
+                memcpy(dest + k * 4, &string_at, 4);
+                memcpy(data + string_at, value->string, n);
                 string_at += (uint32_t)n;
                 break;
             }
             case ORB_FIELD_POINT:
-                memcpy(p + k * 8, &v->point.x, 4);
-                memcpy(p + k * 8 + 4, &v->point.y, 4);
+                memcpy(dest + k * 8, &value->point.x, 4);
+                memcpy(dest + k * 8 + 4, &value->point.y, 4);
                 break;
             case ORB_FIELD_REF: {
-                int target = world_placement_of(iids, iid_count, v->s);
+                int target = world_placement_of(iids, iid_count, value->string);
 
                 if (target < 0)
                     return orb_error_set(
-                        c->err, "%s: field %s: ref %s is not an entity in this project", prefix,
-                        f->name, v->s
+                        context->err, "%s: field %s: ref %s is not an entity in this project",
+                        prefix, field->name, value->string
                     );
 
                 uint32_t index = (uint32_t)target;
 
-                memcpy(p + k * 4, &index, 4);
+                memcpy(dest + k * 4, &index, 4);
                 break;
             }
             }
@@ -220,15 +222,17 @@ static bool world_write_fields(
 // The type, placement, field, and field data sections, and each level's placement run.
 // Sized by one counting pass, then filled.
 static bool world_cast_entities(
-    cast* c,
+    cast* context,
     const orb_ldtk* world,
     orb_level_desc* levels,
-    orb_assets* as
+    orb_assets* assets
 ) {
-    orb_arena* scratch = c->scratch;
+    orb_arena* scratch = context->scratch;
 
     if ((uint32_t)world->entity_def_count > ORB_MAX_TYPES)
-        return orb_error_set(c->err, "%s: more than %u entity types", c->m->world, ORB_MAX_TYPES);
+        return orb_error_set(
+            context->err, "%s: more than %u entity types", context->manifest->world, ORB_MAX_TYPES
+        );
 
     uint32_t placement_total = 0, field_total = 0, data_total = 0;
 
@@ -253,9 +257,13 @@ static bool world_cast_entities(
     }
 
     if (placement_total > ORB_MAX_PLACEMENTS)
-        return orb_error_set(c->err, "%s: more than %u entities", c->m->world, ORB_MAX_PLACEMENTS);
+        return orb_error_set(
+            context->err, "%s: more than %u entities", context->manifest->world, ORB_MAX_PLACEMENTS
+        );
     if (field_total > ORB_MAX_FIELDS)
-        return orb_error_set(c->err, "%s: more than %u field values", c->m->world, ORB_MAX_FIELDS);
+        return orb_error_set(
+            context->err, "%s: more than %u field values", context->manifest->world, ORB_MAX_FIELDS
+        );
 
     orb_type_desc* types = orb_arena_push_array(scratch, orb_type_desc, world->entity_def_count);
     uint64_t* type_ids = orb_arena_push_array(scratch, uint64_t, world->entity_def_count);
@@ -275,14 +283,14 @@ static bool world_cast_entities(
 
         if (dup >= 0)
             return orb_error_set(
-                c->err, "entity types %s and %s share a name", world->entity_defs[dup].name,
+                context->err, "entity types %s and %s share a name", world->entity_defs[dup].name,
                 def->name
             );
 
         if (def->width > 65535 || def->height > 65535 || def->width < 0 || def->height < 0)
             return orb_error_set(
-                c->err, "entity %s: %dx%d pixels does not fit in 16 bits", def->name, def->width,
-                def->height
+                context->err, "entity %s: %dx%d pixels does not fit in 16 bits", def->name,
+                def->width, def->height
             );
 
         types[i] = (orb_type_desc) {
@@ -293,8 +301,8 @@ static bool world_cast_entities(
         };
 
         if (!world_write_fields(
-                c, iids, placement_total, nullptr, def->name, def->fields, def->field_count, fields,
-                data, &field_offset, &data_offset
+                context, iids, placement_total, nullptr, def->name, def->fields, def->field_count,
+                fields, data, &field_offset, &data_offset
             ))
             return false;
     }
@@ -311,7 +319,7 @@ static bool world_cast_entities(
 
             if (inst->width > 65535 || inst->height > 65535 || inst->width < 0 || inst->height < 0)
                 return orb_error_set(
-                    c->err, "level %s: entity %s: %dx%d pixels does not fit in 16 bits",
+                    context->err, "level %s: entity %s: %dx%d pixels does not fit in 16 bits",
                     level->name, name, inst->width, inst->height
                 );
 
@@ -328,22 +336,22 @@ static bool world_cast_entities(
             };
 
             if (!world_write_fields(
-                    c, iids, placement_total, level->name, name, inst->fields, inst->field_count,
-                    fields, data, &field_offset, &data_offset
+                    context, iids, placement_total, level->name, name, inst->fields,
+                    inst->field_count, fields, data, &field_offset, &data_offset
                 ))
                 return false;
         }
     }
 
-    as->types = types;
-    as->type_count = (uint32_t)world->entity_def_count;
-    as->type_ids = type_ids;
-    as->placements = placements;
-    as->placement_count = placement_total;
-    as->fields = fields;
-    as->field_count = field_total;
-    as->field_data = data;
-    as->field_data_count = data_total;
+    assets->types = types;
+    assets->type_count = (uint32_t)world->entity_def_count;
+    assets->type_ids = type_ids;
+    assets->placements = placements;
+    assets->placement_count = placement_total;
+    assets->fields = fields;
+    assets->field_count = field_total;
+    assets->field_data = data;
+    assets->field_data_count = data_total;
     return true;
 }
 
@@ -354,9 +362,11 @@ typedef struct world_sizes {
 
 // Level and layer counts against their limits, and each layer's sublayer depth
 // (from world_sublayers), which sizes the tiles section.
-static bool world_size(cast* c, const orb_ldtk* world, world_sizes* out) {
+static bool world_size(cast* context, const orb_ldtk* world, world_sizes* out) {
     if ((uint32_t)world->level_count > ORB_MAX_LEVELS)
-        return orb_error_set(c->err, "%s: more than %u levels", c->m->world, ORB_MAX_LEVELS);
+        return orb_error_set(
+            context->err, "%s: more than %u levels", context->manifest->world, ORB_MAX_LEVELS
+        );
 
     uint32_t layer_total = 0;
 
@@ -364,9 +374,11 @@ static bool world_size(cast* c, const orb_ldtk* world, world_sizes* out) {
         layer_total += (uint32_t)world->levels[i].layer_count;
 
     if (layer_total > ORB_MAX_LAYERS)
-        return orb_error_set(c->err, "%s: more than %u layers", c->m->world, ORB_MAX_LAYERS);
+        return orb_error_set(
+            context->err, "%s: more than %u layers", context->manifest->world, ORB_MAX_LAYERS
+        );
 
-    uint8_t* sublayers = orb_arena_push_array(c->scratch, uint8_t, layer_total);
+    uint8_t* sublayers = orb_arena_push_array(context->scratch, uint8_t, layer_total);
     uint32_t neighbor_total = 0, tile_total = 0, cell_total = 0, k = 0;
 
     for (int i = 0; i < world->level_count; i++) {
@@ -374,7 +386,7 @@ static bool world_size(cast* c, const orb_ldtk* world, world_sizes* out) {
 
         if (level->width > 65535 || level->height > 65535)
             return orb_error_set(
-                c->err, "level %s: %dx%d pixels is larger than 65535x65535", level->name,
+                context->err, "level %s: %dx%d pixels is larger than 65535x65535", level->name,
                 level->width, level->height
             );
 
@@ -386,14 +398,14 @@ static bool world_size(cast* c, const orb_ldtk* world, world_sizes* out) {
             if (layer->offset_x < -32768 || layer->offset_x > 32767 || layer->offset_y < -32768 ||
                 layer->offset_y > 32767)
                 return orb_error_set(
-                    c->err, "level %s: layer %s: offset (%d, %d) does not fit in 16 bits",
+                    context->err, "level %s: layer %s: offset (%d, %d) does not fit in 16 bits",
                     level->name, layer->name, layer->offset_x, layer->offset_y
                 );
 
             uint32_t area = (uint32_t)layer->columns * layer->rows;
             uint32_t depth;
 
-            if (!world_sublayers(c, level, layer, &depth)) return false;
+            if (!world_sublayers(context, level, layer, &depth)) return false;
 
             sublayers[k] = (uint8_t)depth;
             tile_total += area * depth; // 0 for a layer with no tiles
@@ -402,7 +414,9 @@ static bool world_size(cast* c, const orb_ldtk* world, world_sizes* out) {
     }
 
     if (neighbor_total > 65535)
-        return orb_error_set(c->err, "%s: more than 65535 neighbors", c->m->world);
+        return orb_error_set(
+            context->err, "%s: more than 65535 neighbors", context->manifest->world
+        );
 
     *out = (world_sizes) {
         .sublayers = sublayers,
@@ -416,26 +430,27 @@ static bool world_size(cast* c, const orb_ldtk* world, world_sizes* out) {
 
 // The tileset table: sheet index, grid metrics, and the tile-id bound each layer checks against.
 static bool world_tilesets(
-    cast* c,
+    cast* context,
     const orb_ldtk* world,
     uint32_t first_tileset_sheet,
     orb_tileset_desc* tilesets
 ) {
     for (int i = 0; i < world->tileset_count; i++) {
-        const orb_ldtk_tileset* t = &world->tilesets[i];
-        uint32_t slots = (uint32_t)t->columns * t->rows;
+        const orb_ldtk_tileset* tileset = &world->tilesets[i];
+        uint32_t slots = (uint32_t)tileset->columns * tileset->rows;
 
         if (slots > ORB_MAX_TILE_ID + 1)
             return orb_error_set(
-                c->err, "tileset %s: %u tiles is more than %u", t->path, slots, ORB_MAX_TILE_ID + 1
+                context->err, "tileset %s: %u tiles is more than %u", tileset->path, slots,
+                ORB_MAX_TILE_ID + 1
             );
 
         tilesets[i] = (orb_tileset_desc) {
             .sheet = (uint16_t)(first_tileset_sheet + i),
-            .grid = (uint16_t)t->grid,
-            .spacing = (uint16_t)t->spacing,
-            .padding = (uint16_t)t->padding,
-            .columns = (uint16_t)t->columns,
+            .grid = (uint16_t)tileset->grid,
+            .spacing = (uint16_t)tileset->spacing,
+            .padding = (uint16_t)tileset->padding,
+            .columns = (uint16_t)tileset->columns,
             .count = (uint16_t)slots
         };
     }
@@ -445,30 +460,30 @@ static bool world_tilesets(
 
 // One level's neighbors, each resolved from its iid to a level index.
 static bool world_neighbors(
-    cast* c,
+    cast* context,
     const orb_ldtk* world,
     const orb_ldtk_level* level,
     uint32_t neighbor_offset,
     orb_neighbor_desc* neighbors
 ) {
     for (int n = 0; n < level->neighbor_count; n++) {
-        const orb_ldtk_neighbor* nb = &level->neighbors[n];
+        const orb_ldtk_neighbor* neighbor = &level->neighbors[n];
         int target = -1;
 
-        for (int q = 0; q < world->level_count; q++) {
-            if (strcmp(world->levels[q].iid, nb->level_iid) != 0) continue;
+        for (int level_index = 0; level_index < world->level_count; level_index++) {
+            if (strcmp(world->levels[level_index].iid, neighbor->level_iid) != 0) continue;
 
-            target = q;
+            target = level_index;
             break;
         }
 
         if (target < 0)
             return orb_error_set(
-                c->err, "neighbour %s is not a level in this project", nb->level_iid
+                context->err, "neighbour %s is not a level in this project", neighbor->level_iid
             );
 
         neighbors[neighbor_offset + (uint32_t)n] =
-            (orb_neighbor_desc) {.level = (uint16_t)target, .dir = (uint8_t)nb->dir};
+            (orb_neighbor_desc) {.level = (uint16_t)target, .dir = (uint8_t)neighbor->dir};
     }
 
     return true;
@@ -477,15 +492,15 @@ static bool world_neighbors(
 // The level sections: tilesets, levels, layers, neighbors, tiles, and cells.
 // Sized by one counting pass, then filled by a second.
 static bool world_cast(
-    cast* c,
+    cast* context,
     const orb_ldtk* world,
     uint32_t first_tileset_sheet,
-    orb_assets* as
+    orb_assets* assets
 ) {
-    orb_arena* scratch = c->scratch;
+    orb_arena* scratch = context->scratch;
     world_sizes sizes;
 
-    if (!world_size(c, world, &sizes)) return false;
+    if (!world_size(context, world, &sizes)) return false;
 
     orb_tileset_desc* tilesets =
         orb_arena_push_array(scratch, orb_tileset_desc, world->tileset_count);
@@ -499,7 +514,7 @@ static bool world_cast(
     uint64_t* level_ids = orb_arena_push_array(scratch, uint64_t, world->level_count);
     uint64_t* layer_ids = orb_arena_push_array(scratch, uint64_t, sizes.layer_total);
 
-    if (!world_tilesets(c, world, first_tileset_sheet, tilesets)) return false;
+    if (!world_tilesets(context, world, first_tileset_sheet, tilesets)) return false;
 
     uint32_t layer_offset = 0, neighbor_offset = 0, tile_offset = 0, cell_offset = 0;
 
@@ -512,7 +527,7 @@ static bool world_cast(
 
         if (dup >= 0)
             return orb_error_set(
-                c->err, "levels %s and %s share a name", world->levels[dup].name, level->name
+                context->err, "levels %s and %s share a name", world->levels[dup].name, level->name
             );
 
         levels[i] = (orb_level_desc) {
@@ -552,8 +567,8 @@ static bool world_cast(
                 size_t mark = scratch->used;
                 uint8_t* plane_of = orb_arena_push_array(scratch, uint8_t, area); // zeroed
 
-                for (int t = 0; t < layer->tile_count; t++) {
-                    const orb_ldtk_tile* tile = &layer->tiles[t];
+                for (int tile_index = 0; tile_index < layer->tile_count; tile_index++) {
+                    const orb_ldtk_tile* tile = &layer->tiles[tile_index];
                     uint32_t cell =
                         (uint32_t)tile->cell_y * (uint32_t)layer->columns + tile->cell_x;
                     uint32_t plane = plane_of[cell]++;
@@ -574,26 +589,26 @@ static bool world_cast(
 
         layer_offset += (uint32_t)level->layer_count;
 
-        if (!world_neighbors(c, world, level, neighbor_offset, neighbors)) return false;
+        if (!world_neighbors(context, world, level, neighbor_offset, neighbors)) return false;
 
         neighbor_offset += (uint32_t)level->neighbor_count;
     }
 
-    if (!world_cast_entities(c, world, levels, as)) return false;
+    if (!world_cast_entities(context, world, levels, assets)) return false;
 
-    as->tilesets = tilesets;
-    as->tileset_count = (uint32_t)world->tileset_count;
-    as->levels = levels;
-    as->level_count = (uint32_t)world->level_count;
-    as->layers = layers;
-    as->layer_count = sizes.layer_total;
-    as->neighbors = neighbors;
-    as->neighbor_count = sizes.neighbor_total;
-    as->tiles = tiles;
-    as->tile_count = sizes.tile_total;
-    as->cells = cells;
-    as->cell_count = sizes.cell_total;
-    as->level_ids = level_ids;
-    as->layer_ids = layer_ids;
+    assets->tilesets = tilesets;
+    assets->tileset_count = (uint32_t)world->tileset_count;
+    assets->levels = levels;
+    assets->level_count = (uint32_t)world->level_count;
+    assets->layers = layers;
+    assets->layer_count = sizes.layer_total;
+    assets->neighbors = neighbors;
+    assets->neighbor_count = sizes.neighbor_total;
+    assets->tiles = tiles;
+    assets->tile_count = sizes.tile_total;
+    assets->cells = cells;
+    assets->cell_count = sizes.cell_total;
+    assets->level_ids = level_ids;
+    assets->layer_ids = layer_ids;
     return true;
 }

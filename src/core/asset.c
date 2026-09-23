@@ -32,36 +32,36 @@ static const asset_kind asset_kinds[ORB_ASSET_KIND_COUNT] = {
 
 // FNV-1a over STEM_SUFFIX with every non-alphanumeric folded to '_' and letters
 // uppercased, so "player" + "walk" and "Player" + "WALK" are one id.
-static uint64_t asset_hash(uint64_t h, const char* s) {
-    for (const unsigned char* c = (const unsigned char*)s; *c; c++) {
-        unsigned char x = isalnum(*c) ? (unsigned char)toupper(*c) : (unsigned char)'_';
+static uint64_t asset_hash(uint64_t hash, const char* text) {
+    for (const unsigned char* c = (const unsigned char*)text; *c; c++) {
+        unsigned char folded = isalnum(*c) ? (unsigned char)toupper(*c) : (unsigned char)'_';
 
-        h = (h ^ x) * 0x100000001b3u;
+        hash = (hash ^ folded) * 0x100000001b3u;
     }
 
-    return h;
+    return hash;
 }
 
-static uint32_t asset_count_of(const orb_assets* as, const asset_kind* k) {
-    return *(const uint32_t*)((const char*)as + k->count);
+static uint32_t asset_count_of(const orb_assets* assets, const asset_kind* layout) {
+    return *(const uint32_t*)((const char*)assets + layout->count);
 }
 
-static const uint64_t* asset_ids_of(const orb_assets* as, const asset_kind* k) {
-    return *(const uint64_t* const*)((const char*)as + k->ids);
+static const uint64_t* asset_ids_of(const orb_assets* assets, const asset_kind* layout) {
+    return *(const uint64_t* const*)((const char*)assets + layout->ids);
 }
 
 uint64_t orb_asset_id(const char* stem, const char* suffix) {
-    uint64_t h = asset_hash(0xcbf29ce484222325u, stem);
+    uint64_t hash = asset_hash(0xcbf29ce484222325u, stem);
 
-    h = (h ^ (unsigned char)'_') * 0x100000001b3u;
-    return asset_hash(h, suffix);
+    hash = (hash ^ (unsigned char)'_') * 0x100000001b3u;
+    return asset_hash(hash, suffix);
 }
 
-uint32_t orb_asset_find(const orb_asset_table* t, orb_asset_kind kind, uint64_t id) {
-    const asset_kind* k = &asset_kinds[kind];
-    const uint64_t* ids = asset_ids_of(&t->assets, k);
-    const uint8_t* gens = t->gens + k->first;
-    uint32_t count = asset_count_of(&t->assets, k);
+uint32_t orb_asset_find(const orb_asset_table* table, orb_asset_kind kind, uint64_t id) {
+    const asset_kind* layout = &asset_kinds[kind];
+    const uint64_t* ids = asset_ids_of(&table->assets, layout);
+    const uint8_t* gens = table->gens + layout->first;
+    uint32_t count = asset_count_of(&table->assets, layout);
 
     for (uint32_t i = 0; i < count; i++)
         if (ids[i] == id) return i | (uint32_t)gens[i] << 24;
@@ -71,19 +71,21 @@ uint32_t orb_asset_find(const orb_asset_table* t, orb_asset_kind kind, uint64_t 
 
 // A recast that lands a different source at an index bumps that index, so a
 // handle found before it fails closed until reload finds the name again.
-void orb_asset_set(orb_asset_table* t, const orb_assets* assets) {
+void orb_asset_set(orb_asset_table* table, const orb_assets* assets) {
     for (int kind = 0; kind < ORB_ASSET_KIND_COUNT; kind++) {
-        const asset_kind* k = &asset_kinds[kind];
-        const uint64_t *old = asset_ids_of(&t->assets, k), *new = asset_ids_of(assets, k);
-        uint32_t n = orb_min(asset_count_of(&t->assets, k), asset_count_of(assets, k));
+        const asset_kind* layout = &asset_kinds[kind];
+        const uint64_t *old = asset_ids_of(&table->assets, layout),
+                       *new = asset_ids_of(assets, layout);
+        uint32_t n =
+            orb_min(asset_count_of(&table->assets, layout), asset_count_of(assets, layout));
 
         for (uint32_t i = 0; old && new && i < n; i++)
-            if (old[i] != new[i]) t->gens[k->first + i]++;
+            if (old[i] != new[i]) table->gens[layout->first + i]++;
     }
 
-    t->assets = *assets;
+    table->assets = *assets;
 
     for (int kind = 0; kind < ORB_ASSET_KIND_COUNT; kind++)
-        *(const uint8_t**)((char*)&t->assets + asset_kinds[kind].gens) =
-            t->gens + asset_kinds[kind].first;
+        *(const uint8_t**)((char*)&table->assets + asset_kinds[kind].gens) =
+            table->gens + asset_kinds[kind].first;
 }

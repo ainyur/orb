@@ -11,14 +11,14 @@ static const uint8_t pal_ase[] = {
 
 int main(void) {
     static uint8_t mem[1 << 20];
-    orb_arena a;
-    orb_arena_init(&a, "test", mem, sizeof mem);
+    orb_arena arena;
+    orb_arena_init(&arena, "test", mem, sizeof mem);
     orb_error err;
 
     orb_span file = {(uint8_t*)player_ase, sizeof player_ase};
     orb_ase ase;
 
-    CHECK(orb_ase_parse(&a, file, &ase, &err));
+    CHECK(orb_ase_parse(&arena, file, &ase, &err));
     CHECK_EQ(ase.width, 16);
     CHECK_EQ(ase.height, 16);
     CHECK_EQ(ase.frame_count, 2);
@@ -51,16 +51,16 @@ int main(void) {
     CHECK_EQ(ase.grid_height, 16);
 
     orb_span pal = {(uint8_t*)pal_ase, sizeof pal_ase};
-    orb_ase p;
+    orb_ase palette;
 
-    CHECK(orb_ase_parse(&a, pal, &p, &err));
-    CHECK_EQ(p.color_count, 8);
-    CHECK_EQ(p.rgb[1][2], 64);
-    CHECK_EQ(p.rgb[5][0], 255);
+    CHECK(orb_ase_parse(&arena, pal, &palette, &err));
+    CHECK_EQ(palette.color_count, 8);
+    CHECK_EQ(palette.rgb[1][2], 64);
+    CHECK_EQ(palette.rgb[5][0], 255);
 
     uint8_t junk[200] = {0};
 
-    CHECK(!orb_ase_parse(&a, (orb_span) {junk, sizeof junk}, &ase, &err));
+    CHECK(!orb_ase_parse(&arena, (orb_span) {junk, sizeof junk}, &ase, &err));
     CHECK(strstr(err.text, "aseprite") != nullptr);
 
     // A cel chunk (0x2005) with only the 6-byte generic header: the fixed cel
@@ -77,7 +77,7 @@ int main(void) {
         [148] = 0x05, [149] = 0x20, // chunk type: cel
     };
 
-    CHECK(!orb_ase_parse(&a, (orb_span) {cel_truncated, sizeof cel_truncated}, &ase, &err));
+    CHECK(!orb_ase_parse(&arena, (orb_span) {cel_truncated, sizeof cel_truncated}, &ase, &err));
     CHECK(strstr(err.text, "truncated chunk") != nullptr);
 
     // A tags chunk (0x2018) claiming one tag but ending right where its record would start.
@@ -94,7 +94,7 @@ int main(void) {
         [150] = 1,                  // tag_count
     };
 
-    CHECK(!orb_ase_parse(&a, (orb_span) {tag_truncated, sizeof tag_truncated}, &ase, &err));
+    CHECK(!orb_ase_parse(&arena, (orb_span) {tag_truncated, sizeof tag_truncated}, &ase, &err));
     CHECK(strstr(err.text, "truncated chunk") != nullptr);
 
     // A tags chunk (0x2018) with one full tag record whose "to" reaches past frame_count.
@@ -112,7 +112,9 @@ int main(void) {
         [162] = 1,                  // tag[0].to = 1, but frame_count is 1
     };
 
-    CHECK(!orb_ase_parse(&a, (orb_span) {tag_out_of_range, sizeof tag_out_of_range}, &ase, &err));
+    CHECK(
+        !orb_ase_parse(&arena, (orb_span) {tag_out_of_range, sizeof tag_out_of_range}, &ase, &err)
+    );
     CHECK(strstr(err.text, "out of bounds") != nullptr);
 
     // A header claiming more than 256 colors.
@@ -122,7 +124,7 @@ int main(void) {
         [32] = 44,  [33] = 1,   // color_count: 300
     };
 
-    CHECK(!orb_ase_parse(&a, (orb_span) {too_many_colors, sizeof too_many_colors}, &ase, &err));
+    CHECK(!orb_ase_parse(&arena, (orb_span) {too_many_colors, sizeof too_many_colors}, &ase, &err));
     CHECK(strstr(err.text, "more than 256 colors") != nullptr);
     return 0;
 }

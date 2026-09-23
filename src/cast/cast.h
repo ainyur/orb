@@ -41,13 +41,13 @@ typedef struct orb_manifest {
     orb_arena* scratch,
     orb_arena* out,
     const char* game_dir,
-    orb_manifest* m, // loaded by the cast, so the caller reads what it cast from
-    orb_cast_result* r,
+    orb_manifest* manifest, // loaded by the cast, so the caller reads what it cast from
+    orb_cast_result* result,
     orb_error* err
 );
 [[nodiscard]] bool orb_manifest_load(
-    orb_arena* a,
+    orb_arena* arena,
     const char* game_dir,
-    orb_manifest* m,
+    orb_manifest* manifest,
     orb_error* err
 );

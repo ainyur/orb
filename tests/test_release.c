@@ -16,20 +16,20 @@
 int main(void) {
     static alignas(16) uint8_t scratch_mem[4 << 20], out_mem[1 << 20];
     orb_arena scratch, out;
-    orb_manifest m;
-    orb_cast_result r;
+    orb_manifest manifest;
+    orb_cast_result result;
     orb_error err;
 
     orb_arena_init(&scratch, "scratch", scratch_mem, sizeof scratch_mem);
     orb_arena_init(&out, "out", out_mem, sizeof out_mem);
 
-    if (!orb_cast_game(&scratch, &out, "tests/fixtures", &m, &r, &err)) {
+    if (!orb_cast_game(&scratch, &out, "tests/fixtures", &manifest, &result, &err)) {
         fprintf(stderr, "cast: %s\n", err.text);
         return 1;
     }
 
     // the one block orb_host_release_size sizes holds the whole release boot
-    if (!orb_boot(orb_game_main(), nullptr, r.file, &err)) {
+    if (!orb_boot(orb_game_main(), nullptr, result.file, &err)) {
         fprintf(stderr, "boot: %s\n", err.text);
         return 1;
     }

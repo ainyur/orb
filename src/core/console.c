@@ -89,16 +89,16 @@ static console_command* console_command_find(const char* name) {
     return nullptr;
 }
 
-static void console_var_write(const console_var* v, const char* separator) {
-    switch (v->kind) {
+static void console_var_write(const console_var* var, const char* separator) {
+    switch (var->kind) {
     case CONSOLE_INT:
-        orb_log("%s%s%d", v->name, separator, *(int32_t*)v->at);
+        orb_log("%s%s%d", var->name, separator, *(int32_t*)var->at);
         break;
     case CONSOLE_FLOAT:
-        orb_log("%s%s%g", v->name, separator, (double)*(float*)v->at);
+        orb_log("%s%s%g", var->name, separator, (double)*(float*)var->at);
         break;
     case CONSOLE_BOOL:
-        orb_log("%s%s%s", v->name, separator, *(bool*)v->at ? "true" : "false");
+        orb_log("%s%s%s", var->name, separator, *(bool*)var->at ? "true" : "false");
         break;
     }
 }
@@ -128,31 +128,31 @@ static void console_bind_add(int argc, const char* const* argv) {
         return;
     }
 
-    console_bind* b = console_bind_find(key);
+    console_bind* bind = console_bind_find(key);
 
-    if (!b && console_bind_count == ORB_CONSOLE_BINDS) {
+    if (!bind && console_bind_count == ORB_CONSOLE_BINDS) {
         orb_log("binds are full");
         return;
     }
 
-    if (!b) b = &console_binds[console_bind_count++];
+    if (!bind) bind = &console_binds[console_bind_count++];
 
-    b->key = key;
-    b->line[0] = 0;
+    bind->key = key;
+    bind->line[0] = 0;
 
     for (int i = 2; i < argc; i++) {
-        size_t n = strlen(b->line);
+        size_t n = strlen(bind->line);
 
-        snprintf(b->line + n, sizeof b->line - n, "%s%s", i > 2 ? " " : "", argv[i]);
+        snprintf(bind->line + n, sizeof bind->line - n, "%s%s", i > 2 ? " " : "", argv[i]);
     }
 }
 
 static void console_bind_remove(int argc, const char* const* argv) {
-    console_bind* b = argc > 1 ? console_bind_find(orb_input_symbol_position(argv[1])) : nullptr;
+    console_bind* bind = argc > 1 ? console_bind_find(orb_input_symbol_position(argv[1])) : nullptr;
 
-    if (!b) return;
+    if (!bind) return;
 
-    *b = console_binds[--console_bind_count];
+    *bind = console_binds[--console_bind_count];
 }
 
 static void console_bind_list(int, const char* const*) {
@@ -187,8 +187,8 @@ static const console_builtin console_builtins[] = {
 };
 
 static const console_builtin* console_builtin_find(const char* name) {
-    for (const console_builtin* b = console_builtins; b->name; b++)
-        if (strcmp(b->name, name) == 0) return b;
+    for (const console_builtin* builtin = console_builtins; builtin->name; builtin++)
+        if (strcmp(builtin->name, name) == 0) return builtin;
 
     return nullptr;
 }
@@ -216,34 +216,34 @@ static bool console_may_register(const char* name, int count, int cap) {
 static void console_var_add(const char* name, console_kind kind, void* at, const char* help) {
     if (!console_may_register(name, console_var_count, ORB_CONSOLE_VARS)) return;
 
-    console_var* v = &console_vars[console_var_count++];
+    console_var* var = &console_vars[console_var_count++];
 
-    snprintf(v->name, sizeof v->name, "%s", name);
-    snprintf(v->help, sizeof v->help, "%s", help ? help : "");
-    v->kind = kind;
-    v->at = at;
+    snprintf(var->name, sizeof var->name, "%s", name);
+    snprintf(var->help, sizeof var->help, "%s", help ? help : "");
+    var->kind = kind;
+    var->at = at;
 }
 
-static bool console_var_set(console_var* v, const char* text) {
+static bool console_var_set(console_var* var, const char* text) {
     char* end;
 
-    switch (v->kind) {
+    switch (var->kind) {
     case CONSOLE_INT: {
         errno = 0;
 
-        long n = strtol(text, &end, 0);
+        long value = strtol(text, &end, 0);
 
-        if (!*text || *end || errno || n < INT32_MIN || n > INT32_MAX) return false;
+        if (!*text || *end || errno || value < INT32_MIN || value > INT32_MAX) return false;
 
-        *(int32_t*)v->at = (int32_t)n;
+        *(int32_t*)var->at = (int32_t)value;
         return true;
     }
     case CONSOLE_FLOAT: {
-        float f = strtof(text, &end);
+        float value = strtof(text, &end);
 
-        if (!*text || *end || !(f - f == 0)) return false; // NaN and infinity fail the test
+        if (!*text || *end || !(value - value == 0)) return false; // NaN and infinity fail the test
 
-        *(float*)v->at = f;
+        *(float*)var->at = value;
         return true;
     }
     case CONSOLE_BOOL: {
@@ -252,7 +252,7 @@ static bool console_var_set(console_var* v, const char* text) {
 
         if (!on && !off) return false;
 
-        *(bool*)v->at = on;
+        *(bool*)var->at = on;
         return true;
     }
     }
@@ -265,25 +265,25 @@ static bool console_var_set(console_var* v, const char* text) {
 static int console_split(char* line, const char* argv[ORB_CONSOLE_ARGS]) {
     int argc = 0;
 
-    for (char* p = line; *p && argc < ORB_CONSOLE_ARGS;) {
-        while (*p == ' ')
-            p++;
+    for (char* scan = line; *scan && argc < ORB_CONSOLE_ARGS;) {
+        while (*scan == ' ')
+            scan++;
 
-        if (!*p) break;
+        if (!*scan) break;
 
-        if (*p == '"') {
-            argv[argc++] = ++p;
+        if (*scan == '"') {
+            argv[argc++] = ++scan;
 
-            while (*p && *p != '"')
-                p++;
+            while (*scan && *scan != '"')
+                scan++;
         } else {
-            argv[argc++] = p;
+            argv[argc++] = scan;
 
-            while (*p && *p != ' ')
-                p++;
+            while (*scan && *scan != ' ')
+                scan++;
         }
 
-        if (*p) *p++ = 0;
+        if (*scan) *scan++ = 0;
     }
 
     return argc;
@@ -389,8 +389,8 @@ static void console_complete(void) {
     int n = 0;
     size_t len = (size_t)console_len;
 
-    for (const console_builtin* b = console_builtins; b->name; b++)
-        if (strncmp(b->name, console_line, len) == 0) matches[n++] = b->name;
+    for (const console_builtin* builtin = console_builtins; builtin->name; builtin++)
+        if (strncmp(builtin->name, console_line, len) == 0) matches[n++] = builtin->name;
 
     for (int i = 0; i < console_command_count; i++)
         if (strncmp(console_commands[i].name, console_line, len) == 0)
@@ -497,8 +497,9 @@ static void console_help(int argc, const char* const* argv) {
     const char* prefix = argc > 1 ? argv[1] : nullptr;
     size_t n = prefix ? strlen(prefix) : 0;
 
-    for (const console_builtin* b = console_builtins; b->name; b++)
-        if (!prefix || strncmp(b->name, prefix, n) == 0) orb_log("%s  %s", b->name, b->help);
+    for (const console_builtin* builtin = console_builtins; builtin->name; builtin++)
+        if (!prefix || strncmp(builtin->name, prefix, n) == 0)
+            orb_log("%s  %s", builtin->name, builtin->help);
 
     for (int i = 0; i < console_command_count; i++)
         if (!prefix || strncmp(console_commands[i].name, prefix, n) == 0)
@@ -522,30 +523,30 @@ void orb_console_run(const char* line) {
 
     if (!argc) return;
 
-    const console_builtin* b = console_builtin_find(argv[0]);
+    const console_builtin* builtin = console_builtin_find(argv[0]);
 
-    if (b) {
-        b->fn(argc, argv);
+    if (builtin) {
+        builtin->fn(argc, argv);
         return;
     }
 
-    console_command* c = console_command_find(argv[0]);
+    console_command* command = console_command_find(argv[0]);
 
-    if (c) {
-        c->fn(console_state, console_api, argc, argv);
+    if (command) {
+        command->fn(console_state, console_api, argc, argv);
         return;
     }
 
-    console_var* v = console_var_find(argv[0]);
+    console_var* var = console_var_find(argv[0]);
 
-    if (!v)
+    if (!var)
         orb_log("unknown: %s", argv[0]);
     else if (argc == 1)
-        console_var_write(v, " = ");
+        console_var_write(var, " = ");
     else if (argc > 2)
-        orb_log("%s takes one value", v->name);
-    else if (!console_var_set(v, argv[1]))
-        orb_log("bad value for %s: %s", v->name, argv[1]);
+        orb_log("%s takes one value", var->name);
+    else if (!console_var_set(var, argv[1]))
+        orb_log("bad value for %s: %s", var->name, argv[1]);
 }
 
 bool orb_console_open(void) {
@@ -567,11 +568,11 @@ void orb_console_var_bool(const char* name, bool* at, const char* help) {
 void orb_console_command(const char* name, orb_command_fn fn, const char* help) {
     if (!console_may_register(name, console_command_count, ORB_CONSOLE_COMMANDS)) return;
 
-    console_command* c = &console_commands[console_command_count++];
+    console_command* command = &console_commands[console_command_count++];
 
-    snprintf(c->name, sizeof c->name, "%s", name);
-    snprintf(c->help, sizeof c->help, "%s", help ? help : "");
-    c->fn = fn;
+    snprintf(command->name, sizeof command->name, "%s", name);
+    snprintf(command->help, sizeof command->help, "%s", help ? help : "");
+    command->fn = fn;
 }
 
 void orb_console_boot(void* state, const orb_api* api) {
@@ -587,8 +588,8 @@ void orb_console_boot(void* state, const orb_api* api) {
     console_registering = false;
 }
 
-void orb_console_step(orb_input* in) {
-    orb_input raw = *in;
+void orb_console_step(orb_input* input) {
+    orb_input raw = *input;
 
     console_registering = false;
 
@@ -600,10 +601,10 @@ void orb_console_step(orb_input* in) {
     // The grave key's text is dropped while it is held, since autorepeat keeps sending it.
     if (raw.keys[ORB_KEY_GRAVE]) {
         raw.text[0] = 0;
-        in->text[0] = 0;
+        input->text[0] = 0;
     }
 
-    in->keys[ORB_KEY_GRAVE] = false;
+    input->keys[ORB_KEY_GRAVE] = false;
 
     // A press while the console is closed runs the bind; a bind may rebind, so the keys
     // are hidden from the game in a second pass over the table as it stands after.
@@ -612,31 +613,46 @@ void orb_console_step(orb_input* in) {
             if (console_pressed(&raw, console_binds[i].key)) orb_console_run(console_binds[i].line);
 
     for (int i = 0; i < console_bind_count; i++)
-        in->keys[console_binds[i].key] = false;
+        input->keys[console_binds[i].key] = false;
 
     if (console_is_open) {
         console_edit(&raw);
 
         if (console_is_open)
-            *in = (orb_input) {};
+            *input = (orb_input) {};
         else
-            in->keys[ORB_KEY_ESCAPE] = false;
+            input->keys[ORB_KEY_ESCAPE] = false;
     }
 
     console_before = raw;
 }
 
-static void console_glyph(uint32_t* rgb, int width, int x, int y, unsigned char c, uint32_t color) {
-    const uint8_t* g = ORB_CONSOLE_FONT[c < 32 || c > 126 ? '?' - 32 : c - 32];
+static void console_glyph(
+    uint32_t* rgb,
+    int width,
+    int x,
+    int y,
+    unsigned char character,
+    uint32_t color
+) {
+    const uint8_t* glyph =
+        ORB_CONSOLE_FONT[character < 32 || character > 126 ? '?' - 32 : character - 32];
 
     for (int row = 0; row < 6 && y + row < console_height; row++)
         for (int col = 0; col < 3; col++)
-            if (g[row] & 0x80 >> col) rgb[(y + row) * width + x + col] = color;
+            if (glyph[row] & 0x80 >> col) rgb[(y + row) * width + x + col] = color;
 }
 
-static void console_text(uint32_t* rgb, int width, int row, const char* s, int n, uint32_t color) {
-    for (int i = 0; i < n && s[i]; i++)
-        console_glyph(rgb, width, i * 4, row * 6, (unsigned char)s[i], color);
+static void console_text(
+    uint32_t* rgb,
+    int width,
+    int row,
+    const char* text,
+    int n,
+    uint32_t color
+) {
+    for (int i = 0; i < n && text[i]; i++)
+        console_glyph(rgb, width, i * 4, row * 6, (unsigned char)text[i], color);
 }
 
 // The prompt, the part of the line around the cursor that fits after it, and a filled
@@ -680,13 +696,15 @@ void orb_console_draw(uint32_t* rgb, orb_size size) {
         int len = (int)strlen(line),
             pieces = orb_max(1, (len + console_columns - 1) / console_columns);
 
-        for (int p = pieces - 1; p >= 0 && row >= 0; p--) {
+        for (int piece = pieces - 1; piece >= 0 && row >= 0; piece--) {
             if (skip > 0) {
                 skip--;
                 continue;
             }
 
-            console_text(rgb, size.width, row, line + p * console_columns, console_columns, bright);
+            console_text(
+                rgb, size.width, row, line + piece * console_columns, console_columns, bright
+            );
             row--;
         }
     }

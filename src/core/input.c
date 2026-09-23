@@ -87,7 +87,6 @@ static bool input_button_ok(orb_button button) {
     return button >= 0 && button < ORB_BTN_COUNT;
 }
 
-// Bytes consumed by one well-formed codepoint at s, 0 for none or a bad sequence.
 // A symbol is a named key's name, else one codepoint above space; returns the name's
 // position, 0 for a lone codepoint (with it in *codepoint), or -1 for neither.
 static int input_symbol_parse(const char* symbol, uint32_t* codepoint) {

@@ -10,17 +10,17 @@ typedef struct orb_fb {
 } orb_fb;
 
 // Clamps to fit an int before flooring, since a camera offset can be arbitrarily large.
-static inline int orb_floor(float v) {
+static inline int orb_floor(float value) {
     constexpr float bound = (float)(1 << 30);
 
-    v = orb_clamp(v, -bound, bound);
+    value = orb_clamp(value, -bound, bound);
 
-    int whole = (int)v; // toward zero
+    int whole = (int)value; // toward zero
 
-    return whole - (v < (float)whole);
+    return whole - (value < (float)whole);
 }
 
-void orb_fb_init(orb_fb* fb, orb_arena* a, orb_size size);
+void orb_fb_init(orb_fb* fb, orb_arena* arena, orb_size size);
 void orb_fb_clear(orb_fb* fb, uint8_t index);
 void orb_fb_blit(
     orb_fb* fb,

@@ -52,9 +52,9 @@ int main(void) {
     orb_arena world_arena;
     orb_arena_init(&world_arena, "world manifest", world_mem, sizeof world_mem);
 
-    orb_manifest wm;
-    CHECK(orb_manifest_load(&world_arena, DIR, &wm, &err));
-    CHECK(strcmp(wm.world, "levels/world.ldtk") == 0);
+    orb_manifest manifest;
+    CHECK(orb_manifest_load(&world_arena, DIR, &manifest, &err));
+    CHECK(strcmp(manifest.world, "levels/world.ldtk") == 0);
 
     const char* world_override =
         "{\"id\": \"m\", \"name\": \"m\", \"size\": [64, 32],\n"
@@ -64,8 +64,8 @@ int main(void) {
         DIR "/orb.json", (orb_span) {(uint8_t*)world_override, strlen(world_override)}
     ));
     orb_arena_reset(&world_arena);
-    CHECK(orb_manifest_load(&world_arena, DIR, &wm, &err));
-    CHECK(strcmp(wm.world, "maps/w.ldtk") == 0);
+    CHECK(orb_manifest_load(&world_arena, DIR, &manifest, &err));
+    CHECK(strcmp(manifest.world, "maps/w.ldtk") == 0);
 
     CHECK(write_manifest("[64, 32]")); // restore for orb_boot below
 
@@ -84,10 +84,10 @@ int main(void) {
     CHECK(copy_player(DIR "/zed.aseprite"));
     CHECK(orb_recast(&err));
 
-    orb_assets as;
+    orb_assets assets;
 
-    CHECK(orb_file_load(orb_last_cast()->file, &as, &err));
-    CHECK_EQ(as.sprite_count, 4); // two frames from each of two files
+    CHECK(orb_file_load(orb_last_cast()->file, &assets, &err));
+    CHECK_EQ(assets.sprite_count, 4); // two frames from each of two files
     api->clear(0);
     api->sprite_draw(ORB_SPRITE(2), (orb_vec2) {0, 0}, 0, nullptr);
     CHECK_EQ(orb_api_fb()->px[4 * 64 + 4], 2);

@@ -27,5 +27,10 @@ typedef struct orb_json {
     struct orb_json* next;
 } orb_json;
 
-[[nodiscard]] orb_json* orb_json_parse(orb_arena* a, const char* text, size_t len, orb_error* err);
+[[nodiscard]] orb_json* orb_json_parse(
+    orb_arena* arena,
+    const char* text,
+    size_t len,
+    orb_error* err
+);
 const orb_json* orb_json_get(const orb_json* object, const char* key);

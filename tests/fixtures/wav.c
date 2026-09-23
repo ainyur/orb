@@ -12,66 +12,66 @@
 #define SLOT_FRAMES 12000
 #define BAR_FRAMES (SLOT_FRAMES * 8)
 
-static void put16(FILE* f, uint16_t v) {
-    fputc(v & 0xff, f);
-    fputc(v >> 8, f);
+static void put16(FILE* file, uint16_t value) {
+    fputc(value & 0xff, file);
+    fputc(value >> 8, file);
 }
 
-static void put32(FILE* f, uint32_t v) {
-    put16(f, (uint16_t)(v & 0xffff));
-    put16(f, (uint16_t)(v >> 16));
+static void put32(FILE* file, uint32_t value) {
+    put16(file, (uint16_t)(value & 0xffff));
+    put16(file, (uint16_t)(value >> 16));
 }
 
-static void put_tag(FILE* f, const char* tag) {
-    fwrite(tag, 1, 4, f);
+static void put_tag(FILE* file, const char* tag) {
+    fwrite(tag, 1, 4, file);
 }
 
 // RIFF, fmt, an optional smpl loop from loop_start to the last frame, then the
 // data chunk header.
-static void header(FILE* f, uint16_t channels, uint32_t frames, bool loop, uint32_t loop_start) {
+static void header(FILE* file, uint16_t channels, uint32_t frames, bool loop, uint32_t loop_start) {
     uint32_t data = frames * channels * 2;
 
-    put_tag(f, "RIFF");
-    put32(f, 4 + 24 + (loop ? 68 : 0) + 8 + data);
-    put_tag(f, "WAVE");
-    put_tag(f, "fmt ");
-    put32(f, 16);
-    put16(f, 1);
-    put16(f, channels);
-    put32(f, RATE);
-    put32(f, RATE * channels * 2);
-    put16(f, (uint16_t)(channels * 2));
-    put16(f, 16);
+    put_tag(file, "RIFF");
+    put32(file, 4 + 24 + (loop ? 68 : 0) + 8 + data);
+    put_tag(file, "WAVE");
+    put_tag(file, "fmt ");
+    put32(file, 16);
+    put16(file, 1);
+    put16(file, channels);
+    put32(file, RATE);
+    put32(file, RATE * channels * 2);
+    put16(file, (uint16_t)(channels * 2));
+    put16(file, 16);
 
     if (loop) {
-        put_tag(f, "smpl");
-        put32(f, 60);
+        put_tag(file, "smpl");
+        put32(file, 60);
 
         for (int i = 0; i < 7; i++)
-            put32(f, 0); // manufacturer .. smpte offset
+            put32(file, 0); // manufacturer .. smpte offset
 
-        put32(f, 1); // one loop
-        put32(f, 0); // sampler data
-        put32(f, 0); // cue id
-        put32(f, 0); // forward
-        put32(f, loop_start);
-        put32(f, frames - 1);
-        put32(f, 0); // fraction
-        put32(f, 0); // play count
+        put32(file, 1); // one loop
+        put32(file, 0); // sampler data
+        put32(file, 0); // cue id
+        put32(file, 0); // forward
+        put32(file, loop_start);
+        put32(file, frames - 1);
+        put32(file, 0); // fraction
+        put32(file, 0); // play count
     }
 
-    put_tag(f, "data");
-    put32(f, data);
+    put_tag(file, "data");
+    put32(file, data);
 }
 
 // A 440 Hz square wave (half period 55 frames) decaying to silence.
-static void beep(FILE* f) {
-    header(f, 1, BEEP_FRAMES, false, 0);
+static void beep(FILE* file) {
+    header(file, 1, BEEP_FRAMES, false, 0);
 
     for (int i = 0; i < BEEP_FRAMES; i++) {
         int amp = 12000 * (BEEP_FRAMES - i) / BEEP_FRAMES;
 
-        put16(f, (uint16_t)(int16_t)((i / 55) & 1 ? amp : -amp));
+        put16(file, (uint16_t)(int16_t)((i / 55) & 1 ? amp : -amp));
     }
 }
 
@@ -92,10 +92,10 @@ static int triangle(int phase, int period, int amp) {
 
 // Eight notes, C4 E4 G4 C5 G4 E4 C4 E4 as periods in frames, the right channel
 // an octave down, every note faded at both ends so the loop seam is silent.
-static void loop(FILE* f) {
+static void loop(FILE* file) {
     static const int periods[8] = {183, 146, 122, 92, 122, 146, 183, 146};
 
-    header(f, 2, LOOP_FRAMES, true, 0);
+    header(file, 2, LOOP_FRAMES, true, 0);
 
     for (int i = 0; i < LOOP_FRAMES; i++) {
         int note = i / NOTE_FRAMES, at = i % NOTE_FRAMES, period = periods[note];
@@ -103,8 +103,8 @@ static void loop(FILE* f) {
         int left = triangle(at % period, period, 6000) * env / FADE_FRAMES;
         int right = triangle(at % (period * 2), period * 2, 6000) * env / FADE_FRAMES;
 
-        put16(f, (uint16_t)(int16_t)left);
-        put16(f, (uint16_t)(int16_t)right);
+        put16(file, (uint16_t)(int16_t)left);
+        put16(file, (uint16_t)(int16_t)right);
     }
 }
 
@@ -255,10 +255,10 @@ static const int song_bass[SONG_BARS * 2] = {
     367, 245, 436, 291, 275, 183, 245, 327, // C3 G3 A2 E3 F3 C4 G3 D3
 };
 
-static void song(FILE* f) {
+static void song(FILE* file) {
     int frames = SONG_BARS * BAR_FRAMES;
 
-    header(f, 2, (uint32_t)frames, true, SONG_LOOP_BAR * BAR_FRAMES);
+    header(file, 2, (uint32_t)frames, true, SONG_LOOP_BAR * BAR_FRAMES);
 
     int note_start = 0, note_length = 0, period = 0;
 
@@ -270,7 +270,7 @@ static void song(FILE* f) {
             note_length = SLOT_FRAMES;
             period = song_melody[slot];
 
-            for (int s = slot + 1; s < SONG_BARS * 8 && song_melody[s] == HOLD; s++)
+            for (int j = slot + 1; j < SONG_BARS * 8 && song_melody[j] == HOLD; j++)
                 note_length += SLOT_FRAMES;
         }
 
@@ -284,8 +284,8 @@ static void song(FILE* f) {
                        : square(half_at % low, low, 1800) * envelope(half_at, BAR_FRAMES / 2) /
                              FADE_FRAMES;
 
-        put16(f, (uint16_t)(int16_t)(lead + root / 2));
-        put16(f, (uint16_t)(int16_t)(lead / 2 + root));
+        put16(file, (uint16_t)(int16_t)(lead + root / 2));
+        put16(file, (uint16_t)(int16_t)(lead / 2 + root));
     }
 }
 
@@ -298,19 +298,19 @@ int main(int argc, char** argv) {
         return 2;
     }
 
-    FILE* f = fopen(argv[2], "wb");
+    FILE* file = fopen(argv[2], "wb");
 
-    if (!f) {
+    if (!file) {
         fprintf(stderr, "cannot write %s\n", argv[2]);
         return 1;
     }
 
     if (strcmp(argv[1], "beep") == 0)
-        beep(f);
+        beep(file);
     else if (strcmp(argv[1], "loop") == 0)
-        loop(f);
+        loop(file);
     else
-        song(f);
+        song(file);
 
-    return fclose(f) == 0 ? 0 : 1;
+    return fclose(file) == 0 ? 0 : 1;
 }

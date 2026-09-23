@@ -15,4 +15,4 @@ typedef struct orb_wav {
 } orb_wav;
 
 [[nodiscard]] bool orb_wav_parse(orb_span file, orb_wav* out, orb_error* err);
-void orb_wav_decode(const orb_wav* w, int16_t* out); // count * channels values, widened to int16
+void orb_wav_decode(const orb_wav* wav, int16_t* out); // count * channels values, widened to int16
