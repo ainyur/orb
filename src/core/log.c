@@ -69,6 +69,28 @@ bool orb_error_set(orb_error* e, const char* fmt, ...) {
     return false;
 }
 
+orb_bytes orb_bytes_format(size_t bytes) {
+    static const char* units[] = {"KB", "MB", "GB", "TB"};
+    orb_bytes out;
+
+    if (bytes < 1024) {
+        snprintf(out.text, sizeof out.text, "%zu B", bytes);
+        return out;
+    }
+
+    double value = (double)bytes / 1024;
+    int unit = 0;
+
+    // 1023.95 and up would print as "1024.0", so it moves to the next unit.
+    while (value >= 1023.95 && unit < 3) {
+        value /= 1024;
+        unit++;
+    }
+
+    snprintf(out.text, sizeof out.text, "%.1f %s", value, units[unit]);
+    return out;
+}
+
 [[noreturn]] void orb_fatal(const char* fmt, ...) {
     va_list ap;
 

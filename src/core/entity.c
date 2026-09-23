@@ -668,8 +668,8 @@ static void entity_console_register(void) {
     orb_console_var_bool("entities.debug", &orb_entity_debug, "outline every body");
 }
 
-size_t orb_entity_region_size(const orb_config* c, int scale) {
-    size_t slots = (size_t)c->max_entities * (size_t)scale, total = 0;
+size_t orb_entity_region_size(const orb_config* c) {
+    size_t slots = c->max_entities, total = 0;
 
     total += slots * sizeof(orb_entity) + 16;
     total += slots + 16;
@@ -679,7 +679,7 @@ size_t orb_entity_region_size(const orb_config* c, int scale) {
     total += slots * (sizeof(orb_sprite_component) + sizeof(orb_body) + sizeof(orb_tag)) + 3 * 16;
 
     for (int i = 0; i < ORB_MAX_COMPONENTS - ORB_COMPONENT_GAME && c->components[i]; i++)
-        total += slots * (size_t)c->components[i] * (size_t)scale + 16;
+        total += slots * c->components[i] + 16;
 
     return total;
 }
@@ -688,7 +688,7 @@ bool orb_entity_reset(const orb_config* c) {
     if (c->max_entities == 0 || c->max_entities > ORB_MAX_ENTITIES)
         orb_fatal("max_entities %u is not 1 to %u", c->max_entities, ORB_MAX_ENTITIES);
 
-    if (orb_entity_region_size(c, 1) > entity_region->size) return false;
+    if (orb_entity_region_size(c) > entity_region->size) return false;
 
     orb_arena_reset(entity_region);
 

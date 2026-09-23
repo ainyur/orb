@@ -5,10 +5,14 @@
 static size_t test_state_size = 64;
 static int test_init_count, test_reload_count;
 static uint16_t test_component_size = 8;
+static uint32_t test_max_entities;
 
 static orb_config test_config(void) {
     return (orb_config) {
-        .state_size = test_state_size, .state_version = 1, .components = {test_component_size}
+        .state_size = test_state_size,
+        .state_version = 1,
+        .max_entities = test_max_entities,
+        .components = {test_component_size}
     };
 }
 
@@ -66,7 +70,29 @@ int main(void) {
     CHECK_EQ(orb_entity_pool()->sizes[ORB_COMPONENT_GAME], 12);
     CHECK_EQ(orb_entity_pool()->max, 256); // 0 in the config means 256
 
+    // the state and the pool grow far past their boot size without a restart; the
+    // state pointer stays put and the game sees zeroed bytes
+    uint8_t* before = host_state.base;
+
+    before[0] = 7;
+    test_state_size = 1 << 20;
+    orb_set_game(&test_game);
+    CHECK_EQ(test_init_count, 5);
+    CHECK(host_state.base == before);
+    CHECK_EQ(host_state.used, 1 << 20);
+    CHECK_EQ(before[0], 0);
+    CHECK_EQ(before[(1 << 20) - 1], 0);
+
+    test_max_entities = ORB_MAX_ENTITIES;
+    orb_set_game(&test_game);
+    CHECK_EQ(test_init_count, 6);
+    CHECK_EQ(orb_entity_pool()->max, ORB_MAX_ENTITIES);
+
     orb_quit();
+
+    // quit gives every region back, so a second boot starts clean
+    CHECK(host_state.base == nullptr && host_pool.base == nullptr);
+    CHECK(host_scratch.base == nullptr && host_assets[0].base == nullptr);
 
     return 0;
 }

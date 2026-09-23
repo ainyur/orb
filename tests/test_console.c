@@ -692,8 +692,14 @@ static int test_clock(void) {
 
     orb_stats s = orb_stats_get();
 
-    CHECK(s.arena_used > 0 && s.arena_peak >= s.arena_used);
-    CHECK(s.cast_headroom > 0 && s.cast_peak <= s.cast_headroom);
+    CHECK(s.state > 0 && s.pool > 0);
+    CHECK(s.assets > 0 && s.cast_peak > 0);
+    CHECK(s.release > s.state + s.pool);
+
+    orb_console_run("stats");
+    CHECK(strncmp(orb_log_line(0), "state ", 6) == 0);
+    CHECK(strstr(orb_log_line(0), " sealed; frame ") != nullptr);
+    CHECK(strstr(orb_log_line(0), " B,") || strstr(orb_log_line(0), " KB,"));
     CHECK_EQ(s.frame_ticks, 0);
 
     orb_clock_get()->step = true; // outside a pause a step is dropped, not saved up

@@ -62,5 +62,51 @@ int main(void) {
     }
 
     a.recover = nullptr;
+    CHECK(!a.refused); // a fixed arena is never refused a commit
+
+    // a reserved arena commits in steps as it grows and keeps them across a reset
+    static orb_arena grow;
+
+    CHECK(orb_arena_reserve(&grow, "grow", 3 * ORB_COMMIT_STEP + 1));
+    CHECK_EQ(grow.size, 4 * ORB_COMMIT_STEP); // rounded up to whole steps
+    CHECK_EQ(grow.committed, 0);
+
+    uint8_t* first = orb_arena_push(&grow, 16, 16);
+
+    CHECK_EQ(grow.committed, ORB_COMMIT_STEP);
+    first[15] = 1;
+
+    // a push ending exactly on a step commits nothing more
+    orb_arena_push(&grow, ORB_COMMIT_STEP - 16, 1);
+    CHECK_EQ(grow.committed, ORB_COMMIT_STEP);
+
+    // one push spanning two steps commits both, zeroed and writable
+    uint8_t* big = orb_arena_push(&grow, 2 * ORB_COMMIT_STEP, 1);
+
+    CHECK_EQ(grow.committed, 3 * ORB_COMMIT_STEP);
+    CHECK_EQ(big[0] + big[2 * ORB_COMMIT_STEP - 1], 0);
+    big[2 * ORB_COMMIT_STEP - 1] = 9;
+
+    orb_arena_reset(&grow);
+    CHECK_EQ(grow.used, 0);
+    CHECK_EQ(grow.committed, 3 * ORB_COMMIT_STEP);
+    CHECK_EQ(grow.peak, 3 * ORB_COMMIT_STEP);
+
+    // the whole reserve is usable; one byte past it is exhaustion, not a second reserve
+    grow.recover = &recover;
+
+    if (setjmp(recover) == 0) {
+        orb_arena_push(&grow, 4 * ORB_COMMIT_STEP, 1);
+        orb_arena_push(&grow, 1, 1);
+        CHECK(false);
+    } else {
+        CHECK_EQ(grow.overflow, 1);
+        CHECK(!grow.refused);
+        CHECK_EQ(grow.committed, 4 * ORB_COMMIT_STEP);
+    }
+
+    orb_arena_release(&grow);
+    CHECK(grow.base == nullptr);
+    orb_arena_release(&grow); // releasing a released arena is a no-op
     return 0;
 }

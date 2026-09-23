@@ -170,5 +170,19 @@ int main(int argc, char** argv) {
     orb_path_join(joined, "game", "/abs/x.h");
     CHECK(strcmp(joined, "/abs/x.h") == 0);
 
+    // reserved address space: commit part of it in two pieces, write both, give it back
+    size_t reserve = (size_t)64 << 20, step = (size_t)1 << 20;
+    uint8_t* space = orb_os_reserve(reserve);
+
+    CHECK(space != nullptr);
+    CHECK(orb_os_commit(space, step));
+    space[0] = 1;
+    space[step - 1] = 2;
+    CHECK(orb_os_commit(space + step, step));
+    space[2 * step - 1] = 3;
+    CHECK_EQ(space[0] + space[step - 1] + space[2 * step - 1], 6);
+    orb_os_release(space, reserve);
+    CHECK(orb_os_reserve(SIZE_MAX) == nullptr);
+
     return 0;
 }

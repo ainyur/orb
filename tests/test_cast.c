@@ -35,7 +35,7 @@ int main(void) {
     // that keeps the conventional layout names none of them
     const char* manifest =
         "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
-        " \"asset_headroom\": 1048576, \"palette\": \"" ART "art/palette.aseprite\",\n"
+        " \"palette\": \"" ART "art/palette.aseprite\",\n"
         " \"art\": \"" ART "art\", \"sfx\": \"" ART "sfx\", \"music\": \"" ART "music\",\n"
         " \"fonts\": \"" ART "fonts\",\n"
         " \"world\": \"" ART "levels/world.ldtk\",\n"
@@ -50,7 +50,6 @@ int main(void) {
     CHECK(strcmp(m.id, "fixture") == 0);
     CHECK_EQ(m.size.width, 64);
     CHECK_EQ(m.size.height, 32);
-    CHECK_EQ(m.asset_headroom, 1048576);
     CHECK_EQ(m.song_count, 1);
     CHECK(strcmp(m.buttons[ORB_BTN_SELECT], "m") == 0);
     CHECK(strcmp(m.buttons[ORB_BTN_A], "space") == 0);
@@ -256,7 +255,7 @@ int main(void) {
 
     // no project: no levels, and the directory is watched so its creation recasts
     const char* no_project =
-        "{\"id\": \"bare\", \"name\": \"Bare\", \"size\": [64, 32], \"asset_headroom\": 1048576,\n"
+        "{\"id\": \"bare\", \"name\": \"Bare\", \"size\": [64, 32],\n"
         " \"palette\": \"" ART "art/palette.aseprite\", \"art\": \"" ART "art\",\n"
         " \"sfx\": \"" ART "sfx\", \"music\": \"" ART "music\", \"songs\": {\"loop\": 120}}\n";
     CHECK(
@@ -277,7 +276,7 @@ int main(void) {
     // is ""), so "." is watched instead, and the game directory's own creation
     // of the file still recasts
     const char* bare_world =
-        "{\"id\": \"bare\", \"name\": \"Bare\", \"size\": [64, 32], \"asset_headroom\": 1048576,\n"
+        "{\"id\": \"bare\", \"name\": \"Bare\", \"size\": [64, 32],\n"
         " \"palette\": \"" ART "art/palette.aseprite\", \"world\": \"w.ldtk\"}\n";
     CHECK(
         orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)bare_world, strlen(bare_world)})
@@ -340,7 +339,7 @@ int main(void) {
 
     const char* stack_manifest =
         "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
-        " \"asset_headroom\": 1048576, \"palette\": \"" ART "art/palette.aseprite\"}\n";
+        " \"palette\": \"" ART "art/palette.aseprite\"}\n";
     CHECK(orb_os_write_file(
         DIR "/orb.json", (orb_span) {(uint8_t*)stack_manifest, strlen(stack_manifest)}
     ));
@@ -418,8 +417,7 @@ int main(void) {
         orb_arena_init(&bo, "out", big_out, sizeof big_out);
         // the tileset file doubles as the palette, so every color matches
         const char* sample_manifest =
-            "{\"id\": \"sample\", \"name\": \"Sample\", \"size\": [320, 180], \"asset_headroom\": "
-            "50331648,\n"
+            "{\"id\": \"sample\", \"name\": \"Sample\", \"size\": [320, 180],\n"
             " \"palette\": "
             "\"/usr/share/ldtk/extraFiles/samples/atlas/NuclearBlaze_by_deepnight.aseprite\",\n"
             " \"art\": \"none\", \"sfx\": \"none\", \"music\": \"none\",\n"
@@ -449,9 +447,8 @@ int main(void) {
     CHECK(orb_os_write_file(DIR "/art/sub/hero.aseprite", player));
     remove(DIR "/art/hero.aseprite");
 
-    const char* nested =
-        "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
-        " \"asset_headroom\": 1048576, \"palette\": \"" ART "art/palette.aseprite\"}\n";
+    const char* nested = "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
+                         " \"palette\": \"" ART "art/palette.aseprite\"}\n";
     CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)nested, strlen(nested)}));
     CHECK(orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
     CHECK(orb_file_load(r.file, &as, &err));
@@ -476,63 +473,62 @@ int main(void) {
     CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)plain, strlen(plain)}));
     CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err)); // no art/palette.aseprite here
     CHECK(strstr(err.text, "art/palette.aseprite") != nullptr);
-    CHECK_EQ(m.asset_headroom, 16 << 20);
+
+    // a leftover asset_headroom is ignored like any key the manifest does not know
+    const char* leftover =
+        "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32], \"asset_headroom\": 1}\n";
+    CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)leftover, strlen(leftover)}));
+    CHECK(orb_manifest_load(&scratch, DIR, &m, &err));
     CHECK(strcmp(m.art, "art") == 0);
     CHECK(strcmp(m.sfx, "sfx") == 0);
     CHECK(strcmp(m.music, "music") == 0);
 
     // a song names its tempo in orb.json, since a rendered file carries none; a
     // song without one and a tempo without a song are both refused
-    const char* silent =
-        "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
-        " \"asset_headroom\": 1048576, \"palette\": \"" ART "art/palette.aseprite\",\n"
-        " \"music\": \"" ART "music\"}\n";
+    const char* silent = "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
+                         " \"palette\": \"" ART "art/palette.aseprite\",\n"
+                         " \"music\": \"" ART "music\"}\n";
     CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)silent, strlen(silent)}));
     CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
     CHECK(strstr(err.text, "loop.wav") != nullptr);
     CHECK(strstr(err.text, "bpm") != nullptr);
 
-    const char* phantom =
-        "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
-        " \"asset_headroom\": 1048576, \"palette\": \"" ART "art/palette.aseprite\",\n"
-        " \"songs\": {\"title\": 120}}\n";
+    const char* phantom = "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
+                          " \"palette\": \"" ART "art/palette.aseprite\",\n"
+                          " \"songs\": {\"title\": 120}}\n";
     CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)phantom, strlen(phantom)}));
     CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
     CHECK(strstr(err.text, "title") != nullptr);
     CHECK(strstr(err.text, "music") != nullptr);
 
     // songs is an object of stem to bpm within 0..1000
-    const char* bare =
-        "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
-        " \"asset_headroom\": 1048576, \"palette\": \"" ART "art/palette.aseprite\",\n"
-        " \"songs\": [\"loop\"]}\n";
+    const char* bare = "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
+                       " \"palette\": \"" ART "art/palette.aseprite\",\n"
+                       " \"songs\": [\"loop\"]}\n";
     CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)bare, strlen(bare)}));
     CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
     CHECK(strstr(err.text, "songs") != nullptr);
     CHECK(strstr(err.text, "bpm") != nullptr);
 
-    const char* slow =
-        "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
-        " \"asset_headroom\": 1048576, \"palette\": \"" ART "art/palette.aseprite\",\n"
-        " \"songs\": {\"loop\": 0}}\n";
+    const char* slow = "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
+                       " \"palette\": \"" ART "art/palette.aseprite\",\n"
+                       " \"songs\": {\"loop\": 0}}\n";
     CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)slow, strlen(slow)}));
     CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
     CHECK(strstr(err.text, "loop") != nullptr);
     CHECK(strstr(err.text, "bpm") != nullptr);
 
-    const char* fast =
-        "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
-        " \"asset_headroom\": 1048576, \"palette\": \"" ART "art/palette.aseprite\",\n"
-        " \"songs\": {\"loop\": 1e999}}\n";
+    const char* fast = "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
+                       " \"palette\": \"" ART "art/palette.aseprite\",\n"
+                       " \"songs\": {\"loop\": 1e999}}\n";
     CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)fast, strlen(fast)}));
     CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
     CHECK(strstr(err.text, "bpm") != nullptr);
 
     // a sound must be mono, since pan positions it; only a song may be stereo
-    const char* stereo =
-        "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
-        " \"asset_headroom\": 1048576, \"palette\": \"" ART "art/palette.aseprite\",\n"
-        " \"sfx\": \"" ART "music\"}\n";
+    const char* stereo = "{\"id\": \"fixture\", \"name\": \"Fixture\", \"size\": [64, 32],\n"
+                         " \"palette\": \"" ART "art/palette.aseprite\",\n"
+                         " \"sfx\": \"" ART "music\"}\n";
     CHECK(orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)stereo, strlen(stereo)}));
     CHECK(!orb_cast_game(&scratch, &out, DIR, &m, &r, &err));
     CHECK(strstr(err.text, "loop.wav") != nullptr);
@@ -573,7 +569,8 @@ int main(void) {
     orb_arena_init(&tiny, "cast scratch", tiny_mem, sizeof tiny_mem);
     CHECK(!orb_cast_game(&tiny, &out, DIR, &m, &r, &err));
     CHECK(strstr(err.text, "cast scratch") != nullptr);
-    CHECK(strstr(err.text, "asset_headroom") != nullptr);
+    CHECK(strstr(err.text, "exhausted:") != nullptr);
+    CHECK(strstr(err.text, "over its 4.0 KB size") != nullptr);
 
     orb_arena_init(&tiny, "asset half B", tiny_mem, 512);
 
@@ -583,7 +580,7 @@ int main(void) {
     // an unresolved ref is a cast error naming the level, the entity, and the field
     const char* badref_manifest =
         "{\"id\": \"badref\", \"name\": \"b\", \"size\": [8, 8],\n"
-        " \"asset_headroom\": 1048576, \"palette\": \"" ART "art/palette.aseprite\",\n"
+        " \"palette\": \"" ART "art/palette.aseprite\",\n"
         " \"art\": \"" ART "art\", \"sfx\": \"" ART "sfx\", \"music\": \"" ART "music\",\n"
         " \"fonts\": \"" ART "fonts\", \"world\": \"world.ldtk\"}\n";
     const char* badref_world =
@@ -652,7 +649,7 @@ int main(void) {
 
     const char* badloop_manifest =
         "{\"id\": \"badloop\", \"name\": \"b\", \"size\": [8, 8],\n"
-        " \"asset_headroom\": 1048576, \"palette\": \"" ART "art/palette.aseprite\",\n"
+        " \"palette\": \"" ART "art/palette.aseprite\",\n"
         " \"art\": \"" ART "art\", \"sfx\": \"sfx\",\n"
         " \"fonts\": \"" ART "fonts\", \"world\": \"" ART "levels/world.ldtk\"}\n";
     CHECK(orb_os_write_file(

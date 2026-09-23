@@ -30,8 +30,8 @@ typedef struct orb_pool {
 extern bool orb_entity_debug;    // the entities.debug variable
 extern bool orb_entity_updating; // inside world_update, so a spawn gets ORB_ENTITY_NEW
 
-// Bytes the pool needs for the config; scale 2 is the boot reserve, 1 the exact need.
-size_t orb_entity_region_size(const orb_config* config, int scale);
+// Bytes the pool needs for the config.
+size_t orb_entity_region_size(const orb_config* config);
 void orb_entity_boot(
     orb_arena* region,
     const orb_config* config,

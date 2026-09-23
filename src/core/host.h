@@ -8,6 +8,9 @@ bool orb_frame(void);
 void orb_quit(void);
 void orb_quit_request(void);
 
+// The one block a release build allocates at boot for this config and screen size.
+size_t orb_host_release_size(const orb_config* config, orb_size size);
+
 #ifndef ORB_RELEASE
 typedef struct orb_clock {
     float timescale;
@@ -15,7 +18,10 @@ typedef struct orb_clock {
 } orb_clock;
 
 typedef struct orb_stats {
-    size_t arena_used, arena_peak, cast_peak, cast_headroom;
+    size_t state, pool; // bytes in use
+    size_t assets;      // the last cast's sealed file, what a release build embeds
+    size_t cast_peak;
+    size_t release; // orb_host_release_size for the running config
     int frame_ticks;
     uint32_t frame_us;
 } orb_stats;

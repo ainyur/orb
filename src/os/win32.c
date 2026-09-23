@@ -184,6 +184,18 @@ uint32_t orb_os_pid(void) {
     return GetCurrentProcessId();
 }
 
+void* orb_os_reserve(size_t size) {
+    return VirtualAlloc(nullptr, size, MEM_RESERVE, PAGE_NOACCESS);
+}
+
+bool orb_os_commit(void* at, size_t size) {
+    return VirtualAlloc(at, size, MEM_COMMIT, PAGE_READWRITE) != nullptr;
+}
+
+void orb_os_release(void* base, size_t) {
+    VirtualFree(base, 0, MEM_RELEASE);
+}
+
 int orb_os_run(const char* dir, const char* const* argv, void (*line)(const char* text)) {
     SECURITY_ATTRIBUTES inherit = {.nLength = sizeof inherit, .bInheritHandle = TRUE};
     HANDLE read_end, write_end;

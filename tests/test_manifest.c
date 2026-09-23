@@ -19,7 +19,7 @@ static bool write_manifest(const char* size) {
     char text[512];
     int n = snprintf(
         text, sizeof text,
-        "{\"id\": \"m\", \"name\": \"m\", \"size\": %s, \"asset_headroom\": 1048576,\n"
+        "{\"id\": \"m\", \"name\": \"m\", \"size\": %s,\n"
         " \"palette\": " ART "art/palette.aseprite\", \"art\": \".\"}\n",
         size
     );
@@ -57,7 +57,7 @@ int main(void) {
     CHECK(strcmp(wm.world, "levels/world.ldtk") == 0);
 
     const char* world_override =
-        "{\"id\": \"m\", \"name\": \"m\", \"size\": [64, 32], \"asset_headroom\": 1048576,\n"
+        "{\"id\": \"m\", \"name\": \"m\", \"size\": [64, 32],\n"
         " \"palette\": " ART
         "art/palette.aseprite\", \"art\": \".\", \"world\": \"maps/w.ldtk\"}\n";
     CHECK(orb_os_write_file(

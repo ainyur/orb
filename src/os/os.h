@@ -97,6 +97,12 @@ uint64_t orb_os_ticks(void);
 
 uint32_t orb_os_pid(void);
 
+// Address space with no memory behind it, then memory for part of it. at and size
+// in commit are page-aligned; reserve returns nullptr when refused.
+void* orb_os_reserve(size_t size);
+bool orb_os_commit(void* at, size_t size);
+void orb_os_release(void* base, size_t size);
+
 // Runs argv (null-terminated, argv[0] the program) with dir as its working
 // directory, one output line at a time to line, and returns its exit status.
 // On Windows the elements are joined with spaces behind cmd.exe /c, so none may need quoting.

@@ -80,7 +80,7 @@ int main(void) {
     orb_console_run("watch");
     CHECK(strstr(orb_log_line(0), "sources") != nullptr);
     orb_console_run("stats");
-    CHECK(strstr(orb_log_line(0), "arena") != nullptr);
+    CHECK(strstr(orb_log_line(0), "state") != nullptr);
     orb_console_run("pause 1");
     CHECK(orb_clock_get()->paused);
     orb_console_run("pause 0");

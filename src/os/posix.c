@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <time.h>
@@ -120,6 +121,20 @@ uint64_t orb_os_ticks(void) {
 
 uint32_t orb_os_pid(void) {
     return (uint32_t)getpid();
+}
+
+void* orb_os_reserve(size_t size) {
+    void* p = mmap(nullptr, size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+
+    return p == MAP_FAILED ? nullptr : p;
+}
+
+bool orb_os_commit(void* at, size_t size) {
+    return mprotect(at, size, PROT_READ | PROT_WRITE) == 0;
+}
+
+void orb_os_release(void* base, size_t size) {
+    munmap(base, size);
 }
 
 int orb_os_run(const char* dir, const char* const* argv, void (*line)(const char* text)) {

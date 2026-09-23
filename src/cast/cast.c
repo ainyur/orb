@@ -650,14 +650,8 @@ bool orb_cast_game(
         r->reads = orb_arena_push_array(scratch, const char*, ORB_CAST_MAX_READS);
         r->reads[r->read_count++] = "orb.json";
         ok = orb_manifest_load(scratch, game_dir, m, err) && cast_body(&c);
-    } else {
-        const orb_arena* full = scratch->overflow ? scratch : out;
-
-        ok = orb_error_set(
-            err, "%s exhausted by %zu bytes: raise asset_headroom in orb.json", full->name,
-            full->overflow
-        );
-    }
+    } else
+        ok = orb_arena_error(scratch->overflow ? scratch : out, err);
 
     scratch->recover = out->recover = nullptr;
     return ok;
@@ -756,13 +750,6 @@ bool orb_manifest_load(orb_arena* a, const char* game_dir, orb_manifest* m, orb_
 
     if (m->size.width < 1 || m->size.width > 4096 || m->size.height < 1 || m->size.height > 4096)
         return orb_error_set(err, "orb.json: \"size\" must be within 1..4096");
-
-    const orb_json* headroom = orb_json_get(root, "asset_headroom");
-
-    if (headroom && headroom->kind != ORB_JSON_NUMBER)
-        return orb_error_set(err, "orb.json: \"asset_headroom\" must be a number of bytes");
-
-    m->asset_headroom = headroom ? (size_t)headroom->num : 16 << 20;
 
     return cast_string(root, "id", nullptr, &m->id, err) &&
            cast_string(root, "name", nullptr, &m->name, err) &&

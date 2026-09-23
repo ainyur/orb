@@ -278,8 +278,11 @@ static void debug_command_stats(void*, const orb_api*, int, const char* const*) 
     orb_stats st = orb_stats_get();
 
     orb_log(
-        "arena %zu used, %zu peak; cast %zu of %zu; frame %d ticks, %u us", st.arena_used,
-        st.arena_peak, st.cast_peak, st.cast_headroom, st.frame_ticks, st.frame_us
+        "state %s, pool %s, assets %s, cast peak %s; release %s + %s sealed; frame %d ticks, %u us",
+        orb_bytes_format(st.state).text, orb_bytes_format(st.pool).text,
+        orb_bytes_format(st.assets).text, orb_bytes_format(st.cast_peak).text,
+        orb_bytes_format(st.release).text, orb_bytes_format(st.assets).text, st.frame_ticks,
+        st.frame_us
     );
 }
 
@@ -299,7 +302,7 @@ static void debug_console_register(void) {
     orb_console_command("step", debug_command_step, "one tick while paused");
     orb_console_command("recast", debug_command_recast, "cast the art now");
     orb_console_command("watch", debug_command_watch, "the watched file counts");
-    orb_console_command("stats", debug_command_stats, "arena, cast, and frame numbers");
+    orb_console_command("stats", debug_command_stats, "memory and frame numbers");
 }
 
 static int debug_boot(const char* game_dir) {
@@ -342,8 +345,11 @@ int orb_debug_cast(const char* dir, bool seal, const char* out_path) {
 
     orb_arena scratch, out;
 
-    orb_arena_init(&scratch, "cast scratch", malloc(m.asset_headroom), m.asset_headroom);
-    orb_arena_init(&out, "asset", malloc(m.asset_headroom), m.asset_headroom);
+    if (!orb_arena_reserve(&scratch, "cast scratch", ORB_REGION_RESERVE) ||
+        !orb_arena_reserve(&out, "asset", ORB_REGION_RESERVE)) {
+        orb_log("orb: cannot reserve address space for the cast");
+        return 1;
+    }
 
     orb_cast_result result;
     orb_assets as;
@@ -376,11 +382,11 @@ int orb_debug_cast(const char* dir, bool seal, const char* out_path) {
 
     printf(
         "%s %u sprites, %u animations, %u levels, %u layers, %u types, %u entities, %u samples, "
-        "%u songs, %u fonts, %u glyphs (%zu bytes; scratch peaked at %zu of the %zu "
-        "asset_headroom)\n",
+        "%u songs, %u fonts, %u glyphs (%s sealed; cast peak %s)\n",
         out_path ? "sealed" : "cast", as.sprite_count, as.anim_count, as.level_count,
         as.layer_count, as.type_count, as.placement_count, as.sample_count, as.song_count,
-        as.font_count, as.glyph_count, result.file.len, scratch.peak, scratch.size
+        as.font_count, as.glyph_count, orb_bytes_format(result.file.len).text,
+        orb_bytes_format(scratch.peak).text
     );
 
     return 0;

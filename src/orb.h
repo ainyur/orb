@@ -601,7 +601,6 @@ static inline orb_tag* orb_tag_of(const orb_api* orb, orb_entity_id id) {
 // nothing until reload finds it again. A find that misses logs the name and
 // returns ORB_NO_SPRITE, ORB_NO_ANIM, ORB_NO_SAMPLE, or ORB_NO_SONG.
 typedef struct orb_config {
-    size_t arena_size; // 0 defaults to 64 MB
     size_t state_size;
     uint32_t state_version;
     uint32_t save_version;
