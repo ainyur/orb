@@ -122,23 +122,55 @@ uint32_t orb_os_pid(void) {
     return (uint32_t)getpid();
 }
 
-int orb_os_run(const char* command, void (*line)(const char* text)) {
-    char piped[1024];
-    snprintf(piped, sizeof piped, "%s 2>&1", command);
-    FILE* p = popen(piped, "r");
+int orb_os_run(const char* dir, const char* const* argv, void (*line)(const char* text)) {
+    int fds[2];
 
-    if (!p) return -1;
+    if (pipe(fds) != 0) return -1;
 
-    char text[1024];
+    pid_t pid = fork();
 
-    while (fgets(text, sizeof text, p)) {
-        text[strcspn(text, "\n")] = 0;
-        line(text);
+    if (pid < 0) {
+        close(fds[0]);
+        close(fds[1]);
+        return -1;
     }
 
-    int status = pclose(p);
+    if (pid == 0) {
+        close(fds[0]);
+        dup2(fds[1], STDOUT_FILENO);
+        dup2(fds[1], STDERR_FILENO);
+        close(fds[1]);
 
-    return status == -1 ? -1 : WEXITSTATUS(status);
+        if (dir && *dir && chdir(dir) != 0) _exit(127);
+
+        execvp(argv[0], (char* const*)argv);
+        _exit(127);
+    }
+
+    close(fds[1]);
+
+    FILE* p = fdopen(fds[0], "r");
+    char text[1024];
+
+    if (!p) {
+        close(fds[0]);
+    } else {
+        while (fgets(text, sizeof text, p)) {
+            text[strcspn(text, "\n")] = 0;
+            line(text);
+        }
+
+        fclose(p);
+    }
+
+    int status;
+    pid_t waited;
+
+    do
+        waited = waitpid(pid, &status, 0);
+    while (waited < 0 && errno == EINTR);
+
+    return p && waited == pid && WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
 
 #include "stdio.c"

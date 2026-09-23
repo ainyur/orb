@@ -184,7 +184,7 @@ uint32_t orb_os_pid(void) {
     return GetCurrentProcessId();
 }
 
-int orb_os_run(const char* command, void (*line)(const char* text)) {
+int orb_os_run(const char* dir, const char* const* argv, void (*line)(const char* text)) {
     SECURITY_ATTRIBUTES inherit = {.nLength = sizeof inherit, .bInheritHandle = TRUE};
     HANDLE read_end, write_end;
 
@@ -194,8 +194,18 @@ int orb_os_run(const char* command, void (*line)(const char* text)) {
 
     char utf8[1100];
     wchar_t cmdline[1100];
+    win32_wpath dirw;
+    int at = snprintf(utf8, sizeof utf8, "cmd.exe /c");
 
-    snprintf(utf8, sizeof utf8, "cmd.exe /c %s", command);
+    for (int i = 0; argv[i] && at < (int)sizeof utf8; i++)
+        at += snprintf(utf8 + at, sizeof utf8 - (size_t)at, " %s", argv[i]);
+
+    if (at >= (int)sizeof utf8) {
+        CloseHandle(read_end);
+        CloseHandle(write_end);
+        return -1;
+    }
+
     win32_wide(utf8, cmdline, 1100);
 
     STARTUPINFO start = {
@@ -206,7 +216,8 @@ int orb_os_run(const char* command, void (*line)(const char* text)) {
     };
     PROCESS_INFORMATION proc;
     BOOL started = CreateProcess(
-        nullptr, cmdline, nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &start, &proc
+        nullptr, cmdline, nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr,
+        dir && *dir ? win32_wide(dir, dirw, ORB_PATH_MAX) : nullptr, &start, &proc
     );
 
     CloseHandle(write_end);

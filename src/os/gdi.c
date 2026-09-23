@@ -91,6 +91,9 @@ static LRESULT CALLBACK gdi_proc(HWND window, UINT msg, WPARAM w, LPARAM l) {
 
         return 0;
     }
+    case WM_KILLFOCUS:
+        memset(gdi_down, 0, sizeof gdi_down);
+        return 0;
     case WM_SYSCOMMAND:
         // A lone Alt or F10 would otherwise put a window with no menu into the menu loop.
         if ((w & 0xfff0) == SC_KEYMENU) return 0;

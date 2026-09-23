@@ -405,7 +405,8 @@ constexpr int ORB_AUDIO_RATE = 48000;
 // Levels. level_find("cave") is the LDtk level Cave; layer_find(level, "floor") is a layer
 // index within it, ORB_NO_INDEX when missing. layer_draw draws one layer in world space under
 // the camera; cell_get reads an IntGrid value at a world pixel, 0 outside. camera_update moves
-// an orb_camera toward its target, clamps it to its bounds, and calls camera_set with the result.
+// an orb_camera toward its target, clamps it to its bounds, draws under at plus shake, and
+// returns the moved camera: g->camera = orb->camera_update(g->camera).
 //
 // Text. font_find("body") is body.aseprite from the manifest's fonts. text_draw puts a
 // string on the framebuffer in screen space, ignoring the camera; bytes outside 32 to 126
@@ -460,7 +461,7 @@ typedef struct orb_api {
 
     void (*clear)(uint8_t index);
     void (*camera_set)(orb_vec2f at);
-    void (*camera_update)(orb_camera* camera);
+    orb_camera (*camera_update)(orb_camera camera);
 
     orb_sprite (*sprite_find)(const char* stem, int frame);
     void (*sprite_draw)(orb_sprite s, orb_vec2 at, uint32_t flags, const uint8_t* remap);
@@ -560,7 +561,7 @@ typedef struct orb_api {
     int (*key_pressed_any)(void);
     const char* (*key_name)(int key);
 
-    void (*log)(const char* fmt, ...);
+    [[gnu::format(gnu_printf, 1, 2)]] void (*log)(const char* fmt, ...);
 
     void (*var_int)(const char* name, int32_t* at, const char* help);
     void (*var_float)(const char* name, float* at, const char* help);
@@ -568,6 +569,20 @@ typedef struct orb_api {
     void (*command)(const char* name, orb_command_fn fn, const char* help);
     bool (*console_open)(void);
 } orb_api;
+
+// Typed wrappers over entity_component for the three built-in kinds; a game's own
+// kinds follow the same pattern in their own code.
+static inline orb_sprite_component* orb_sprite_component_of(const orb_api* orb, orb_entity_id id) {
+    return orb->entity_component(id, ORB_COMPONENT_SPRITE);
+}
+
+static inline orb_body* orb_body_of(const orb_api* orb, orb_entity_id id) {
+    return orb->entity_component(id, ORB_COMPONENT_BODY);
+}
+
+static inline orb_tag* orb_tag_of(const orb_api* orb, orb_entity_id id) {
+    return orb->entity_component(id, ORB_COMPONENT_TAG);
+}
 
 // Reload rules. orb reloads game code and recasts art while the game runs, and
 // three rules keep that safe:
@@ -586,11 +601,11 @@ typedef struct orb_api {
 // nothing until reload finds it again. A find that misses logs the name and
 // returns ORB_NO_SPRITE, ORB_NO_ANIM, ORB_NO_SAMPLE, or ORB_NO_SONG.
 typedef struct orb_config {
-    size_t arena_size;
+    size_t arena_size; // 0 defaults to 64 MB
     size_t state_size;
     uint32_t state_version;
     uint32_t save_version;
-    uint32_t max_entities;
+    uint32_t max_entities;                                        // 0 defaults to 256
     uint16_t components[ORB_MAX_COMPONENTS - ORB_COMPONENT_GAME]; // byte sizes of the game's kinds;
                                                                   // 0 ends the list
 } orb_config;

@@ -5,12 +5,15 @@
 #include <stdlib.h>
 #include <string.h>
 
+constexpr int JSON_MAX_DEPTH = 256;
+
 typedef struct {
     orb_arena* a;
     const char* p;
     const char* end;
     orb_error* err;
     int line;
+    int depth; // open arrays and objects
 } json_parser;
 
 static void json_skip(json_parser* j) {
@@ -137,6 +140,10 @@ static bool json_value(json_parser* j, orb_json** out) {
     char c = *j->p;
 
     if (c == '{' || c == '[') {
+        if (j->depth >= JSON_MAX_DEPTH) return json_fail(j, "nested too deeply");
+
+        j->depth++;
+
         bool object = c == '{';
         char close = object ? '}' : ']';
         orb_json* n = json_node(j, object ? ORB_JSON_OBJECT : ORB_JSON_ARRAY);
@@ -147,6 +154,7 @@ static bool json_value(json_parser* j, orb_json** out) {
 
         if (j->p < j->end && *j->p == close) {
             j->p++;
+            j->depth--;
             *out = n;
             return true;
         }
@@ -185,6 +193,7 @@ static bool json_value(json_parser* j, orb_json** out) {
 
             if (*j->p == close) {
                 j->p++;
+                j->depth--;
                 *out = n;
                 return true;
             }

@@ -21,4 +21,4 @@ typedef struct orb_ase {
     orb_ase_tag* tags;
 } orb_ase;
 
-bool orb_ase_parse(orb_arena* a, orb_span file, orb_ase* out, orb_error* err);
+[[nodiscard]] bool orb_ase_parse(orb_arena* a, orb_span file, orb_ase* out, orb_error* err);

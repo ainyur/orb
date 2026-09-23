@@ -23,6 +23,8 @@ typedef struct orb_pool {
     uint32_t sizes[ORB_MAX_COMPONENTS];
     int kinds;            // registered kinds, the built-ins included
     orb_sort_entry* sort; // max entries, for the draw
+    uint32_t* solids;     // max entries; live ORB_BODY_SOLID slots, gathered once per update
+    uint32_t solid_count;
 } orb_pool;
 
 extern bool orb_entity_debug;    // the entities.debug variable
@@ -39,7 +41,8 @@ void orb_entity_boot(
 );
 bool orb_entity_reset(const orb_config* config); // re-carves the region; false when it does not fit
 void orb_entity_types_clear(void);
-void orb_entity_revalidate(void); // after a recast: placements re-found by iid
+// After a recast: placements re-found by iid, previous the assets from before it.
+void orb_entity_revalidate(const orb_assets* previous);
 void orb_entity_free_despawning(void);
 
 orb_pool* orb_entity_pool(void);

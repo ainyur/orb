@@ -202,11 +202,11 @@ static int world_first_blocker(
 
     orb_pool* pool = orb_entity_pool();
 
-    for (uint32_t s = 0; s < pool->max; s++) {
+    for (uint32_t i = 0; i < pool->solid_count; i++) {
         orb_body* ob;
-        const orb_entity* o = world_bodied(s, &ob);
+        const orb_entity* o = world_bodied(pool->solids[i], &ob);
 
-        if (!o || o == self || !(ob->flags & ORB_BODY_SOLID)) continue;
+        if (!o || o == self) continue;
 
         uint16_t oneways = world_oneways(ob);
 
@@ -335,11 +335,11 @@ static orb_entity_id world_support(const orb_entity* e, const orb_body* b) {
     world_box box = world_body_box(e, b);
     orb_pool* pool = orb_entity_pool();
 
-    for (uint32_t s = 0; s < pool->max; s++) {
+    for (uint32_t i = 0; i < pool->solid_count; i++) {
         orb_body* ob;
-        const orb_entity* o = world_bodied(s, &ob);
+        const orb_entity* o = world_bodied(pool->solids[i], &ob);
 
-        if (!o || o == e || !(ob->flags & ORB_BODY_SOLID)) continue;
+        if (!o || o == e) continue;
 
         world_box other = world_body_box(o, ob);
 
@@ -370,9 +370,9 @@ static bool world_crushed(const orb_entity* e, const orb_body* b) {
 
     orb_pool* pool = orb_entity_pool();
 
-    for (uint32_t s = 0; s < pool->max; s++) {
+    for (uint32_t i = 0; i < pool->solid_count; i++) {
         orb_body* ob;
-        const orb_entity* o = world_bodied(s, &ob);
+        const orb_entity* o = world_bodied(pool->solids[i], &ob);
 
         if (o && o != e && world_full_solid(ob) && world_overlaps(box, world_body_box(o, ob)))
             return true;
@@ -404,6 +404,18 @@ void orb_world_gravity(orb_vec2f gravity) {
     world_gravity_value = gravity;
 }
 
+// Live solid slots, gathered after the type updates, the last code this tick that can change them.
+static void world_gather_solids(orb_pool* pool) {
+    pool->solid_count = 0;
+
+    for (uint32_t s = 0; s < pool->max; s++) {
+        orb_body* b;
+
+        if (world_bodied(s, &b) && (b->flags & ORB_BODY_SOLID))
+            pool->solids[pool->solid_count++] = s;
+    }
+}
+
 void orb_world_update(void) {
     orb_pool* pool = orb_entity_pool();
     const orb_assets* as = orb_entity_assets();
@@ -424,8 +436,10 @@ void orb_world_update(void) {
         if (fns->update) fns->update(state, api, e->self);
     }
 
-    for (uint32_t s = 0; s < pool->max; s++) {
-        if (!(e = world_bodied(s, &b)) || !(b->flags & ORB_BODY_SOLID)) continue;
+    world_gather_solids(pool);
+
+    for (uint32_t i = 0; i < pool->solid_count; i++) {
+        if (!(e = world_bodied(pool->solids[i], &b))) continue;
         if (world_moves(e)) world_move_solid(e, b);
 
         orb_vec2f at = orb_entity_world_at(e->self);
@@ -567,9 +581,15 @@ int orb_query_point(orb_vec2 at, uint32_t mask, orb_entity_id except, orb_entity
     return orb_query_rect((orb_rect) {at, {1, 1}}, mask, except, out, max);
 }
 
-// Where the segment from + t * d enters the box, t in [0, 1], and through which axis. False
-// when it misses or starts inside.
-static bool world_slab(orb_vec2 from, orb_vec2 d, world_box box, float* t_out, int* axis_out) {
+typedef struct world_slab_hit {
+    bool hit;
+    float t;
+    int axis;
+} world_slab_hit;
+
+// Where the segment from + t * d enters the box, t in [0, 1], and through which axis. No
+// hit when it misses or starts inside.
+static world_slab_hit world_slab(orb_vec2 from, orb_vec2 d, world_box box) {
     float t0 = 0, t1 = 1;
     int axis = -1;
 
@@ -578,7 +598,7 @@ static bool world_slab(orb_vec2 from, orb_vec2 d, world_box box, float* t_out, i
         int lo = a ? box.top : box.left, hi = a ? box.bottom : box.right;
 
         if (v == 0) {
-            if (o < lo || o >= hi) return false;
+            if (o < lo || o >= hi) return (world_slab_hit) {};
 
             continue;
         }
@@ -598,14 +618,12 @@ static bool world_slab(orb_vec2 from, orb_vec2 d, world_box box, float* t_out, i
         }
 
         if (tb < t1) t1 = tb;
-        if (t0 > t1) return false;
+        if (t0 > t1) return (world_slab_hit) {};
     }
 
-    if (axis < 0) return false;
+    if (axis < 0) return (world_slab_hit) {};
 
-    *t_out = t0;
-    *axis_out = axis;
-    return true;
+    return (world_slab_hit) {.hit = true, .t = t0, .axis = axis};
 }
 
 bool orb_query_ray(
@@ -637,25 +655,25 @@ bool orb_query_ray(
         if (from.x >= box.left && from.x < box.right && from.y >= box.top && from.y < box.bottom)
             continue;
 
-        float t;
-        int axis;
+        world_slab_hit slab = world_slab(from, d, box);
 
-        if (!world_slab(from, d, box, &t, &axis)) continue;
+        if (!slab.hit) continue;
 
-        int dir = (axis ? d.y : d.x) > 0 ? 1 : -1;
+        int dir = (slab.axis ? d.y : d.x) > 0 ? 1 : -1;
         uint16_t oneways = world_oneways(b);
 
         if (oneways && (b->flags & ORB_BODY_SOLID) &&
-            (!(flags & ORB_RAY_ONEWAY) || !(oneways & world_oneway_flag(axis, dir))))
+            (!(flags & ORB_RAY_ONEWAY) || !(oneways & world_oneway_flag(slab.axis, dir))))
             continue;
 
-        if (t >= best.fraction) continue;
+        if (slab.t >= best.fraction) continue;
 
         best = (orb_hit) {
             .entity = e->self,
-            .at = {from.x + orb_floor(t * (float)d.x), from.y + orb_floor(t * (float)d.y)},
-            .normal = axis ? (orb_vec2) {0, -dir} : (orb_vec2) {-dir, 0},
-            .fraction = t
+            .at =
+                {from.x + orb_floor(slab.t * (float)d.x), from.y + orb_floor(slab.t * (float)d.y)},
+            .normal = slab.axis ? (orb_vec2) {0, -dir} : (orb_vec2) {-dir, 0},
+            .fraction = slab.t
         };
     }
 

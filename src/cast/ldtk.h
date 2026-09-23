@@ -53,7 +53,7 @@ typedef struct orb_ldtk_instance {
 typedef struct orb_ldtk_level {
     const char *name, *iid,
         *external_path; // external_path relative to the project file, or nullptr
-    int world_x, world_y, depth, width, height;
+    int world_x, world_y, width, height;
     orb_ldtk_layer* layers; // bottom to top
     int layer_count;
     orb_ldtk_neighbor* neighbors;
@@ -103,8 +103,14 @@ typedef struct orb_ldtk {
     int level_count;
 } orb_ldtk;
 
-bool orb_ldtk_parse(orb_arena* a, orb_span text, const char* name, orb_ldtk* out, orb_error* err);
-bool orb_ldtk_parse_level(
+[[nodiscard]] bool orb_ldtk_parse(
+    orb_arena* a,
+    orb_span text,
+    const char* name,
+    orb_ldtk* out,
+    orb_error* err
+);
+[[nodiscard]] bool orb_ldtk_parse_level(
     orb_arena* a,
     orb_span text,
     const char* name,

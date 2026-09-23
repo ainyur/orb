@@ -22,12 +22,10 @@ static float camera_axis(
     return at;
 }
 
-orb_vec2f orb_camera_update(orb_camera* c, orb_size fb) {
-    c->at.x =
-        camera_axis(c->at.x, c->target.x, c->lerp, c->bounds.at.x, c->bounds.size.width, fb.width);
-    c->at.y = camera_axis(
-        c->at.y, c->target.y, c->lerp, c->bounds.at.y, c->bounds.size.height, fb.height
-    );
+orb_camera orb_camera_update(orb_camera c, orb_size fb) {
+    c.at.x = camera_axis(c.at.x, c.target.x, c.lerp, c.bounds.at.x, c.bounds.size.width, fb.width);
+    c.at.y =
+        camera_axis(c.at.y, c.target.y, c.lerp, c.bounds.at.y, c.bounds.size.height, fb.height);
 
-    return (orb_vec2f) {c->at.x + c->shake.x, c->at.y + c->shake.y};
+    return c;
 }

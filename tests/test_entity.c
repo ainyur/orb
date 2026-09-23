@@ -304,22 +304,23 @@ int main(void) {
     orb_entity* placed =
         orb_entity_get(orb_entity_of_type(crate, list, 8) ? list[0] : ORB_NO_ENTITY);
     CHECK(placed && placed->placement == 0);
-    orb_entity_revalidate();
+    orb_entity_revalidate(&table.assets);
     CHECK_EQ(placed->placement, 0);
     orb_placement_desc swapped = placements[0];
     placements[0] = placements[1];
     placements[1] = swapped;
-    orb_entity_revalidate();
+    orb_entity_revalidate(&table.assets);
     CHECK_EQ(placed->placement, 1);
     CHECK_EQ(orb_entity_field_int(placed->self, "hp", 0), 3);
     placements[1].iid = 0xdead;
-    orb_entity_revalidate();
+    orb_entity_revalidate(&table.assets);
     CHECK_EQ(placed->placement, ORB_NO_INDEX);
     CHECK_EQ(orb_entity_field_int(placed->self, "hp", 0), 10);
 
     // F1: a recast that swaps two type definitions bumps both their generations; a crate
     // still linked to its placement picks up its placement's new type index and
-    // generation, an override field unaffected
+    // generation, an override field unaffected; a spawned entity has no placement to
+    // re-find by, so its old type index is mapped through the id it shared with the type
     orb_entity_id live[8];
     int live_n = orb_entity_all(live, 8);
 
@@ -333,6 +334,14 @@ int main(void) {
     orb_entity_id others[8];
     CHECK_EQ(orb_entity_of_type(crate, others, 8), 2);
     orb_entity* other = orb_entity_get(others[1]);
+    orb_entity_id spawned = orb_entity_spawn(marker, (orb_vec2f) {2, 2});
+    orb_entity* spawned_e = orb_entity_get(spawned);
+    CHECK(spawned_e->placement == ORB_NO_INDEX && spawned_e->iid == 0);
+
+    uint64_t previous_type_ids[2] = {type_ids[0], type_ids[1]};
+    orb_assets previous = as;
+    previous.type_ids = previous_type_ids;
+
     orb_type_desc swapped_type = types[0];
     types[0] = types[1];
     types[1] = swapped_type;
@@ -343,13 +352,35 @@ int main(void) {
     placements[1].type = 1;
     placements[2].type = 0;
     orb_asset_set(&table, &as);
-    orb_entity_revalidate();
+    orb_entity_revalidate(&previous);
     CHECK_EQ(ORB_HANDLE_INDEX(other->type), 1);
     CHECK_EQ(orb_entity_field_int(other->self, "hp", 0), 3);
     CHECK_EQ(
         orb_entity_of_type(ORB_TYPE(1 | (uint32_t)table.assets.type_gens[1] << 24), list, 8), 2
     );
     CHECK(list[1].v == other->self.v);
+    CHECK_EQ(ORB_HANDLE_INDEX(spawned_e->type), 0);
+    CHECK_EQ(ORB_HANDLE_GEN(spawned_e->type), table.assets.type_gens[0]);
+
+    // a placed entity whose placement disappears in the same recast that reorders types
+    // keeps its type, mapped through the previous asset set's type ids
+    uint32_t other_type_before = ORB_HANDLE_INDEX(other->type);
+    uint64_t previous2_type_ids[2] = {type_ids[0], type_ids[1]};
+    orb_assets previous2 = as;
+    previous2.type_ids = previous2_type_ids;
+
+    placements[1].iid = 0xf00d; // other's placement (iid 0xdead) is gone
+
+    orb_type_desc swapped_type2 = types[0];
+    types[0] = types[1];
+    types[1] = swapped_type2;
+    uint64_t swapped_id2 = type_ids[0];
+    type_ids[0] = type_ids[1];
+    type_ids[1] = swapped_id2;
+    orb_asset_set(&table, &as);
+    orb_entity_revalidate(&previous2);
+    CHECK_EQ(other->placement, ORB_NO_INDEX);
+    CHECK_EQ(ORB_HANDLE_INDEX(other->type), 1 - other_type_before);
 
     // a reset with a different component list empties the pool; one past the region fails
     c.components[1] = 8;

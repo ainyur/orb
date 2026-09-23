@@ -219,15 +219,12 @@ static void debug_build_line(const char* line) {
 }
 
 // Run the game's own build. orb contains no compiler; scry only invokes make.
-// Double quotes: the one quoting both sh and cmd.exe understand.
 static bool debug_build(void) {
-    char command[ORB_PATH_MAX + 64];
+    const char* argv[] = {
+        "make", "--no-print-directory", "-s", "build/game" ORB_OS_LIB_SUFFIX, nullptr
+    };
 
-    snprintf(
-        command, sizeof command,
-        "make --no-print-directory -s -C \"%s\" build/game" ORB_OS_LIB_SUFFIX, debug_dir
-    );
-    return orb_os_run(command, debug_build_line) == 0;
+    return orb_os_run(debug_dir, argv, debug_build_line) == 0;
 }
 
 static void debug_recast(void) {

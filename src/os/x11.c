@@ -46,7 +46,10 @@ bool orb_os_open(const orb_os_config* cfg) {
         (unsigned)x11_win.height, 0, 0, BlackPixel(x11_display, screen)
     );
     XStoreName(x11_display, x11_window, cfg->title);
-    XSelectInput(x11_display, x11_window, KeyPressMask | KeyReleaseMask | StructureNotifyMask);
+    XSelectInput(
+        x11_display, x11_window,
+        KeyPressMask | KeyReleaseMask | StructureNotifyMask | FocusChangeMask
+    );
     x11_wm_delete = XInternAtom(x11_display, "WM_DELETE_WINDOW", False);
     XSetWMProtocols(x11_display, x11_window, &x11_wm_delete, 1);
     XkbSetDetectableAutoRepeat(x11_display, True, nullptr);
@@ -99,6 +102,8 @@ bool orb_os_pump(orb_input* out) {
         } else if (ev.type == ConfigureNotify) {
             x11_win = (orb_size) {ev.xconfigure.width, ev.xconfigure.height};
             x11_resized = true;
+        } else if (ev.type == FocusOut) {
+            memset(x11_down, 0, sizeof x11_down);
         } else if (ev.type == ClientMessage && (Atom)ev.xclient.data.l[0] == x11_wm_delete) {
             return false;
         }

@@ -33,16 +33,9 @@ typedef struct cast_files {
     uint16_t* grid_height;
 } cast_files;
 
-// dir/rel, unless rel is absolute (the rule orb_path_join uses) or dir is
-// empty, in which case rel is returned unchanged.
+// dir/rel, unless rel is absolute or dir is empty, in which case rel is returned unchanged.
 static const char* cast_path(orb_arena* a, const char* dir, const char* rel) {
-#ifdef _WIN32
-    bool absolute = rel[0] == '/' || rel[0] == '\\' || (rel[0] && rel[1] == ':');
-#else
-    bool absolute = rel[0] == '/';
-#endif
-
-    if (absolute || !*dir) {
+    if (orb_path_absolute(rel) || !*dir) {
         size_t n = strlen(rel) + 1;
         return memcpy(orb_arena_push(a, n, 1), rel, n);
     }
@@ -171,6 +164,14 @@ static bool cast_walk(
     return cast_walk_into(c, rel, suffix, skip, files);
 }
 
+// The index below i whose id matches ids[i], or -1.
+static int cast_dup_id(const uint64_t* ids, int i) {
+    for (int p = 0; p < i; p++)
+        if (ids[p] == ids[i]) return p;
+
+    return -1;
+}
+
 // Two files of one kind with one stem would be one name to find; refuse the pair.
 static bool cast_unique(cast* c, const cast_files* files) {
     uint64_t* ids = orb_arena_push_array(c->scratch, uint64_t, files->count);
@@ -178,14 +179,13 @@ static bool cast_unique(cast* c, const cast_files* files) {
     for (int i = 0; i < files->count; i++) {
         ids[i] = orb_asset_id(files->stems[i], "");
 
-        for (int j = 0; j < i; j++) {
-            if (ids[j] != ids[i]) continue;
+        int dup = cast_dup_id(ids, i);
 
+        if (dup >= 0)
             return orb_error_set(
-                c->err, "%s and %s share a stem, so one name would find both", files->paths[j],
+                c->err, "%s and %s share a stem, so one name would find both", files->paths[dup],
                 files->paths[i]
             );
-        }
     }
 
     return true;
@@ -218,6 +218,39 @@ static bool cast_pal(cast* c, orb_ase* master, orb_assets* as) {
     }
 
     as->pal = pal;
+    return true;
+}
+
+// Remaps one file's palette indices onto the master palette, in place.
+static bool cast_art_remap(cast* c, const orb_ase* master, orb_ase* ase, const char* path) {
+    uint8_t remap[256] = {0};
+
+    for (int k = 0; k < ase->color_count; k++) {
+        if (k == ase->transparent) continue;
+
+        int master_index = 0;
+
+        for (int j = 1; j < master->color_count; j++) {
+            if (memcmp(master->rgb[j], ase->rgb[k], 3) == 0) {
+                master_index = j;
+                break;
+            }
+        }
+
+        if (!master_index)
+            return orb_error_set(
+                c->err, "%s: color %d (%d,%d,%d) is not in the master palette", path, k,
+                ase->rgb[k][0], ase->rgb[k][1], ase->rgb[k][2]
+            );
+
+        remap[k] = (uint8_t)master_index;
+    }
+
+    size_t pixel_count = (size_t)ase->width * ase->height * ase->frame_count;
+
+    for (size_t p = 0; p < pixel_count; p++)
+        ase->frames[p] = remap[ase->frames[p]];
+
     return true;
 }
 
@@ -285,33 +318,7 @@ static bool cast_art(
     for (int i = 0; i < file_count; i++) {
         orb_ase* ase = &files[i];
 
-        uint8_t remap[256] = {0};
-
-        for (int k = 0; k < ase->color_count; k++) {
-            if (k == ase->transparent) continue;
-
-            int master_index = 0;
-
-            for (int j = 1; j < master->color_count; j++) {
-                if (memcmp(master->rgb[j], ase->rgb[k], 3) == 0) {
-                    master_index = j;
-                    break;
-                }
-            }
-
-            if (!master_index)
-                return orb_error_set(
-                    c->err, "%s: color %d (%d,%d,%d) is not in the master palette", paths[i], k,
-                    ase->rgb[k][0], ase->rgb[k][1], ase->rgb[k][2]
-                );
-
-            remap[k] = (uint8_t)master_index;
-        }
-
-        size_t pixel_count = (size_t)ase->width * ase->height * ase->frame_count;
-
-        for (size_t p = 0; p < pixel_count; p++)
-            ase->frames[p] = remap[ase->frames[p]];
+        if (!cast_art_remap(c, master, ase, paths[i])) return false;
 
         if (i >= art_count && i < art_count + font_count) {
             if (ase->frame_count != 1)
@@ -431,9 +438,8 @@ static bool cast_art(
     return true;
 }
 
-// A WAV's descriptor: an empty loop is no loop.
 static orb_sample_desc cast_sample_desc(const orb_wav* w, uint32_t first) {
-    bool loop = w->has_loop && w->loop_end > w->loop_start;
+    bool loop = w->has_loop;
 
     return (orb_sample_desc) {
         .first = first,
@@ -453,6 +459,16 @@ static bool cast_load_wav(cast* c, const char* rel, orb_wav* wav) {
     orb_error inner;
 
     if (!orb_wav_parse(file, wav, &inner)) return orb_error_set(c->err, "%s: %s", rel, inner.text);
+
+    if (wav->has_loop && wav->loop_end <= wav->loop_start) {
+        orb_log(
+            "%s: loop start %u is not before its end %u; dropped", rel, wav->loop_start,
+            wav->loop_end
+        );
+        wav->has_loop = false;
+        wav->loop_start = 0;
+        wav->loop_end = 0;
+    }
 
     return true;
 }
@@ -537,10 +553,6 @@ static bool cast_audio(cast* c, orb_assets* as) {
             );
 
         samples[i] = cast_sample_desc(&w, pcm_total);
-
-        if (w.has_loop && !samples[i].loop_end)
-            orb_log("%s: loop points ignored, the loop is empty", rel);
-
         sample_ids[i] = orb_asset_id(wavs.stems[i], song ? "song" : "");
         pcm_total += w.count * w.channels;
     }

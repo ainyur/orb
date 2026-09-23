@@ -2,4 +2,4 @@
 
 #include "../orb.h"
 
-orb_vec2f orb_camera_update(orb_camera* camera, orb_size fb);
+orb_camera orb_camera_update(orb_camera camera, orb_size fb);

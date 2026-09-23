@@ -337,7 +337,6 @@ int main(void) {
     orb_level_desc levels[2] = {
         {.world_x = 0,
          .world_y = 0,
-         .depth = 0,
          .width = 4,
          .height = 4,
          .first_layer = 0,
@@ -346,7 +345,6 @@ int main(void) {
          .neighbor_count = 1},
         {.world_x = 4,
          .world_y = -8,
-         .depth = 1,
          .width = 2,
          .height = 2,
          .first_layer = 2,
@@ -376,7 +374,6 @@ int main(void) {
     CHECK(orb_file_load(file, &out, &err));
     CHECK_EQ(out.level_count, 2);
     CHECK_EQ(out.levels[1].world_y, -8);
-    CHECK_EQ(out.levels[1].depth, 1);
     CHECK_EQ(out.layer_count, 3);
     CHECK_EQ(out.layers[2].offset_y, -1);
     CHECK(out.layers[2].parallax_x == 0.5f);

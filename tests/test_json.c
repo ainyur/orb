@@ -50,5 +50,11 @@ int main(void) {
     CHECK(orb_json_parse(&a, "\"\\u12\"", 6, &err) == nullptr);
     CHECK(orb_json_parse(&a, "\"\\ud83d\"", 8, &err) == nullptr);
 
+    // nesting past the depth limit fails instead of exhausting the stack
+    char deep[300];
+    memset(deep, '[', sizeof deep);
+    CHECK(orb_json_parse(&a, deep, sizeof deep, &err) == nullptr);
+    CHECK(strstr(err.text, "nested too deeply") != nullptr);
+
     return 0;
 }

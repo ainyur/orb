@@ -130,16 +130,40 @@ int main(int argc, char** argv) {
     CHECK(orb_os_make_dir("build/scratch/made"));
     CHECK(orb_os_write_file("build/scratch/made/x", (orb_span) {(uint8_t*)"x", 1}));
 
-    // run a command and receive its combined output one line at a time, plus its status
+    // run a command in a directory and receive its combined output one line at a
+    // time, plus its status
     run_line_count = 0;
 #ifdef _WIN32
-    CHECK_EQ(orb_os_run("echo a&echo make: *** boom&echo b&exit 3", run_line), 3);
+    const char* run_argv[] = {"echo a&echo make: *** boom&echo b&exit 3", nullptr};
 #else
-    CHECK_EQ(orb_os_run("printf 'a\nmake: *** boom\nb\n'; exit 3", run_line), 3);
+    const char* run_argv[] = {"sh", "-c", "printf 'a\nmake: *** boom\nb\n'; exit 3", nullptr};
 #endif
+    CHECK_EQ(orb_os_run(".", run_argv, run_line), 3);
     CHECK_EQ(run_line_count, 3);
     CHECK(strcmp(run_lines[1], "make: *** boom") == 0);
     CHECK(strcmp(run_lines[2], "b") == 0);
+
+    // the child actually runs in dir, not wherever the test process started
+    run_line_count = 0;
+#ifdef _WIN32
+    const char* pwd_argv[] = {"cd", nullptr};
+#else
+    const char* pwd_argv[] = {"sh", "-c", "pwd", nullptr};
+#endif
+    CHECK_EQ(orb_os_run("build/scratch/made", pwd_argv, run_line), 0);
+    CHECK_EQ(run_line_count, 1);
+#ifdef _WIN32
+    CHECK(orb_has_suffix(run_lines[0], "scratch\\made"));
+#else
+    CHECK(orb_has_suffix(run_lines[0], "scratch/made"));
+#endif
+    CHECK(!orb_path_absolute("art/x.aseprite"));
+    CHECK(orb_path_absolute("/abs/x.h"));
+#ifdef _WIN32
+    CHECK(orb_path_absolute("C:\\abs\\x.h"));
+    CHECK(orb_path_absolute("\\abs\\x.h"));
+#endif
+
     orb_path joined;
     orb_path_join(joined, "game", "art/x.aseprite");
     CHECK(strcmp(joined, "game/art/x.aseprite") == 0);

@@ -184,6 +184,25 @@ int main(void) {
     CHECK(orb_wav_parse(finish(&b), &w, &err));
     CHECK_EQ(w.loop_end, 10);
 
+    // a loop whose start is not before its end, after clamping, still parses: the cast
+    // is what drops it
+    put_header(&b);
+    put_fmt(&b, 1, 1, 48000, 16, false);
+    put_smpl(&b, 5, 4); // end_inclusive 4 -> loop_end 5, so start == end
+    put_data16(&b, ten, 10);
+    CHECK(orb_wav_parse(finish(&b), &w, &err));
+    CHECK(w.has_loop);
+    CHECK_EQ(w.loop_start, 5);
+    CHECK_EQ(w.loop_end, 5);
+
+    // the raw inclusive end 0xFFFFFFFF (loop to the last frame) must not wrap to 0
+    put_header(&b);
+    put_fmt(&b, 1, 1, 48000, 16, false);
+    put_smpl(&b, 0, 0xFFFFFFFF);
+    put_data16(&b, ten, 10);
+    CHECK(orb_wav_parse(finish(&b), &w, &err));
+    CHECK_EQ(w.loop_end, 10);
+
     // an unknown chunk of odd size is padded and skipped
     put_header(&b);
     put_fmt(&b, 1, 1, 48000, 16, false);

@@ -262,11 +262,12 @@ void orb_quit_request(void) {
 #ifndef ORB_RELEASE
 bool orb_recast(orb_error* err) {
     orb_assets assets;
+    orb_assets previous = *orb_api_assets();
 
     if (!host_cast(1 - host_live_half, &assets, err)) return false;
 
     orb_api_set_assets(&assets);
-    orb_entity_revalidate();
+    orb_entity_revalidate(&previous);
     orb_world_revalidate();
     orb_input_resolve(orb_api_assets());
     host_reload();

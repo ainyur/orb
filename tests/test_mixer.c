@@ -237,7 +237,7 @@ int main(void) {
     static orb_assets slowed;
     slowed = assets;
     slowed.samples = slow;
-    orb_mixer_set_assets(&mixer, &slowed);
+    (void)orb_mixer_set_assets(&mixer, &slowed);
     CHECK(orb_mixer_song_position(&mixer).ms == -1);
     CHECK(orb_mixer_song_position(&mixer).millibeats == -1);
     orb_mixer_song_play(&mixer, ORB_SONG(1), true); // 90 BPM
@@ -254,7 +254,7 @@ int main(void) {
     orb_mixer_song_stop(&mixer, 0);
     render(1);
     CHECK(orb_mixer_song_position(&mixer).ms == -1);
-    orb_mixer_set_assets(&mixer, &assets);
+    (void)orb_mixer_set_assets(&mixer, &assets);
 
     // whole octaves are exact, and a fade over seconds still steps every frame
     CHECK_EQ(mixer_step(48000, 1200), (uint64_t)2 << 32);
@@ -287,7 +287,7 @@ int main(void) {
     CHECK_EQ(out[0], 2000);
 
     // a recast that shrinks the looping song's sample under the playhead wraps, not ends
-    orb_mixer_set_assets(&mixer, &assets);
+    (void)orb_mixer_set_assets(&mixer, &assets);
     orb_mixer_song_play(&mixer, ORB_SONG(0), true);
     render(3);
     static const orb_sample_desc shrunk[3] = {
@@ -298,18 +298,18 @@ int main(void) {
     static orb_assets shorter;
     shorter = assets;
     shorter.samples = shrunk;
-    orb_mixer_set_assets(&mixer, &shorter);
+    (void)orb_mixer_set_assets(&mixer, &shorter);
     render(1);
     CHECK(song_playing());
     CHECK_EQ(out[0], 2000);                          // frame 3 wrapped to 1 of the 2-frame loop
     CHECK_EQ(orb_mixer_song_position(&mixer).ms, 0); // and then to 0 after advancing
-    orb_mixer_set_assets(&mixer, &assets);
+    (void)orb_mixer_set_assets(&mixer, &assets);
 
     static const uint64_t song_changed[3] = {11, 98, 33};
     static orb_assets swapped_song;
     swapped_song = assets;
     swapped_song.sample_ids = song_changed;
-    orb_mixer_set_assets(&mixer, &swapped_song);
+    (void)orb_mixer_set_assets(&mixer, &swapped_song);
     render(1);
     CHECK(!song_playing());
     CHECK_EQ(out[0], 0);
@@ -317,7 +317,7 @@ int main(void) {
     // handles carry generations: one from before a recast plays nothing
     static const uint8_t gens[3] = {0, 1, 0};
     assets.sample_gens = gens;
-    orb_mixer_set_assets(&mixer, &assets);
+    (void)orb_mixer_set_assets(&mixer, &assets);
     CHECK_EQ(orb_mixer_sound_play(&mixer, ORB_SAMPLE(1), full, 0).v, ORB_NO_VOICE.v);
     CHECK(orb_mixer_sound_play(&mixer, ORB_SAMPLE(1 | 1u << 24), full, 0).v != ORB_NO_VOICE.v);
 

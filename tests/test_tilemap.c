@@ -143,32 +143,34 @@ int main(void) {
 
     // camera: snap, lerp, clamp, center when the bounds are smaller than the screen, shake
     orb_camera cam = {.target = {100, 50}, .lerp = 0};
-    orb_vec2f shown = orb_camera_update(&cam, (orb_size) {W, H});
+    cam = orb_camera_update(cam, (orb_size) {W, H});
     CHECK(cam.at.x == 100 - W / 2.0f && cam.at.y == 50 - H / 2.0f);
+    orb_vec2f shown = {cam.at.x + cam.shake.x, cam.at.y + cam.shake.y};
     CHECK(shown.x == cam.at.x && shown.y == cam.at.y);
 
     cam.lerp = 0.5f;
     cam.target = (orb_vec2f) {200, 50};
-    orb_camera_update(&cam, (orb_size) {W, H});
+    cam = orb_camera_update(cam, (orb_size) {W, H});
     CHECK(cam.at.x > 100 - W / 2.0f + 49 && cam.at.x < 100 - W / 2.0f + 51); // halfway
 
     cam.lerp = 0;
     cam.bounds = (orb_rect) {{0, 0}, {20, 10}};
     cam.target = (orb_vec2f) {-50, -50};
-    orb_camera_update(&cam, (orb_size) {W, H});
+    cam = orb_camera_update(cam, (orb_size) {W, H});
     CHECK(cam.at.x == 0 && cam.at.y == 0);
     cam.target = (orb_vec2f) {500, 500};
-    orb_camera_update(&cam, (orb_size) {W, H});
+    cam = orb_camera_update(cam, (orb_size) {W, H});
     CHECK(cam.at.x == 20 - W && cam.at.y == 10 - H);
 
     cam.bounds = (orb_rect) {{4, 2}, {4, 2}}; // smaller than the 8x6 screen: centered
-    orb_camera_update(&cam, (orb_size) {W, H});
+    cam = orb_camera_update(cam, (orb_size) {W, H});
     CHECK(cam.at.x == 4 + 2 - W / 2.0f && cam.at.y == 2 + 1 - H / 2.0f);
 
     cam.bounds = (orb_rect) {};
     cam.shake = (orb_vec2f) {1, -2};
     cam.target = (orb_vec2f) {0, 0};
-    shown = orb_camera_update(&cam, (orb_size) {W, H});
+    cam = orb_camera_update(cam, (orb_size) {W, H});
+    shown = (orb_vec2f) {cam.at.x + cam.shake.x, cam.at.y + cam.shake.y};
     CHECK(cam.at.x == -W / 2.0f && shown.x == -W / 2.0f + 1 && shown.y == -H / 2.0f - 2);
 
     // through the API: names, bounds, neighbors, draw, cells, camera
@@ -223,12 +225,12 @@ int main(void) {
     CHECK_EQ(api->cell_get(cave, 0, (orb_vec2) {12, -4}), 7);
 
     orb_camera follow = {.target = {13, -1}, .lerp = 0, .bounds = bounds};
-    api->camera_update(&follow);
+    follow = api->camera_update(follow);
     CHECK(
         follow.at.x == 9 && follow.at.y == -5
     ); // 6x4 bounds inside an 8x6 screen: centered on them
     api->clear(0);
-    api->layer_draw(cave, 0); // camera_update handed its result to camera_set: origin at (1,1)
+    api->layer_draw(cave, 0); // camera_update set the shown origin from its result: (1,1)
     CHECK_EQ(orb_api_fb()->px[1 * W + 1], 1);
 
     return 0;

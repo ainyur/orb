@@ -1,6 +1,7 @@
 #include "arena.h"
 #include "log.h"
 
+#include <stdckdint.h>
 #include <string.h>
 
 void orb_arena_init(orb_arena* a, const char* name, void* mem, size_t size) {
@@ -22,25 +23,38 @@ orb_arena orb_arena_carve(orb_arena* parent, const char* name, size_t size) {
 
 void* orb_arena_push(orb_arena* a, size_t size, size_t align) {
     size_t start = (a->used + align - 1) & ~(align - 1);
+    size_t end;
+    bool overflowed = ckd_add(&end, start, size);
 
-    if (start + size > a->size) {
+    if (overflowed || end > a->size) {
+        size_t short_by = overflowed ? size : end - a->size;
+
         if (a->recover) {
-            a->overflow = start + size - a->size;
+            a->overflow = short_by;
             longjmp(*a->recover, 1);
         }
 
         orb_fatal(
-            "region '%s' exhausted: %zu bytes over its %zu byte size", a->name,
-            start + size - a->size, a->size
+            "region '%s' exhausted: %zu bytes over its %zu byte size", a->name, short_by, a->size
         );
     }
 
-    a->used = start + size;
+    a->used = end;
 
     if (a->used > a->peak) a->peak = a->used;
 
     memset(a->base + start, 0, size);
     return a->base + start;
+}
+
+// A count-times-size multiply that overflows fails through orb_arena_push, the
+// same as a push too large for the arena.
+void* orb_arena_push_checked(orb_arena* a, size_t elem, size_t count, size_t align) {
+    size_t size;
+
+    if (ckd_mul(&size, elem, count)) size = SIZE_MAX;
+
+    return orb_arena_push(a, size, align);
 }
 
 void orb_arena_reset(orb_arena* a) {

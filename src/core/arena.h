@@ -18,8 +18,9 @@ void orb_arena_init(orb_arena* a, const char* name, void* mem, size_t size);
 orb_arena orb_arena_carve(orb_arena* parent, const char* name, size_t size);
 
 void* orb_arena_push(orb_arena* a, size_t size, size_t align);
+void* orb_arena_push_checked(orb_arena* a, size_t elem, size_t count, size_t align);
 
 #define orb_arena_push_array(a, T, count)                                                          \
-    ((T*)orb_arena_push((a), sizeof(T) * (size_t)(count), alignof(T)))
+    ((T*)orb_arena_push_checked((a), sizeof(T), (size_t)(count), alignof(T)))
 
 void orb_arena_reset(orb_arena* a);

@@ -25,7 +25,8 @@ int main(void) {
     orb_arena_push(&sub, 64, 1);
     CHECK_EQ(sub.used, 64);
 
-    // restoring used hands the same bytes out again, zeroed; peak keeps the high-water mark
+    // restoring used hands the same bytes out again, zeroed; peak keeps the
+    // high-water mark
     size_t mark = a.used;
     uint8_t* r = orb_arena_push(&a, 8, 1);
 
@@ -37,5 +38,29 @@ int main(void) {
 
     orb_arena_reset(&a);
     CHECK_EQ(a.used, 0);
+
+    // a push whose start + size wraps past SIZE_MAX fails the same way an
+    // over-full arena does
+    jmp_buf recover;
+
+    orb_arena_push(&a, 1, 1);
+    a.recover = &recover;
+
+    if (setjmp(recover) == 0) {
+        orb_arena_push(&a, SIZE_MAX, 1);
+        CHECK(false);
+    } else {
+        CHECK_EQ(a.overflow, SIZE_MAX);
+    }
+
+    // a count * element size overflow in orb_arena_push_array fails the same way
+    if (setjmp(recover) == 0) {
+        orb_arena_push_array(&a, uint16_t, SIZE_MAX);
+        CHECK(false);
+    } else {
+        CHECK_EQ(a.overflow, SIZE_MAX);
+    }
+
+    a.recover = nullptr;
     return 0;
 }

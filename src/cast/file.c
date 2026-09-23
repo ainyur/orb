@@ -109,6 +109,45 @@ orb_span orb_file_write(orb_arena* a, const orb_assets* in) {
     return (orb_span) {base, (size_t)(a->base + a->used - base)};
 }
 
+static bool file_check_audio(const orb_assets* out, orb_error* err) {
+    for (uint32_t i = 0; i < out->sample_count; i++) {
+        const orb_sample_desc* d = &out->samples[i];
+        uint64_t end = (uint64_t)d->first + (uint64_t)d->count * d->channels;
+
+        if (d->channels != 1 && d->channels != 2)
+            return orb_error_set(
+                err, "orb file: sample %u has %u channels, expected 1 or 2", i, d->channels
+            );
+
+        if (end > out->pcm_count)
+            return orb_error_set(err, "orb file: sample %u runs past the PCM section", i);
+
+        if (d->rate < 1 || d->rate > ORB_MAX_RATE)
+            return orb_error_set(err, "orb file: sample %u has a bad rate %u", i, d->rate);
+
+        if (d->loop_end != 0 && (d->loop_end > d->count || d->loop_start >= d->loop_end))
+            return orb_error_set(
+                err, "orb file: sample %u has a bad loop start %u end %u for %u frames", i,
+                d->loop_start, d->loop_end, d->count
+            );
+    }
+
+    for (uint32_t i = 0; i < out->song_count; i++) {
+        if (out->songs[i].sample >= out->sample_count)
+            return orb_error_set(
+                err, "orb file: song %u names sample %u of %u", i, out->songs[i].sample,
+                out->sample_count
+            );
+
+        if (out->songs[i].millibpm == 0 || out->songs[i].millibpm > ORB_MAX_BPM * 1000)
+            return orb_error_set(
+                err, "orb file: song %u has a bad bpm: %u thousandths", i, out->songs[i].millibpm
+            );
+    }
+
+    return true;
+}
+
 static bool file_check_levels(const orb_assets* out, orb_error* err) {
     for (uint32_t i = 0; i < out->tileset_count; i++) {
         const orb_tileset_desc* t = &out->tilesets[i];
@@ -324,41 +363,7 @@ bool orb_file_load(orb_span file, orb_assets* out, orb_error* err) {
             );
     }
 
-    for (uint32_t i = 0; i < out->sample_count; i++) {
-        const orb_sample_desc* d = &out->samples[i];
-        uint64_t end = (uint64_t)d->first + (uint64_t)d->count * d->channels;
-
-        if (d->channels != 1 && d->channels != 2)
-            return orb_error_set(
-                err, "orb file: sample %u has %u channels, expected 1 or 2", i, d->channels
-            );
-
-        if (end > out->pcm_count)
-            return orb_error_set(err, "orb file: sample %u runs past the PCM section", i);
-
-        if (d->rate < 1 || d->rate > ORB_MAX_RATE)
-            return orb_error_set(err, "orb file: sample %u has a bad rate %u", i, d->rate);
-
-        if (d->loop_end != 0 && (d->loop_end > d->count || d->loop_start >= d->loop_end))
-            return orb_error_set(
-                err, "orb file: sample %u has a bad loop start %u end %u for %u frames", i,
-                d->loop_start, d->loop_end, d->count
-            );
-    }
-
-    for (uint32_t i = 0; i < out->song_count; i++) {
-        if (out->songs[i].sample >= out->sample_count)
-            return orb_error_set(
-                err, "orb file: song %u names sample %u of %u", i, out->songs[i].sample,
-                out->sample_count
-            );
-
-        if (out->songs[i].millibpm == 0 || out->songs[i].millibpm > ORB_MAX_BPM * 1000)
-            return orb_error_set(
-                err, "orb file: song %u has a bad bpm: %u thousandths", i, out->songs[i].millibpm
-            );
-    }
-
-    return file_check_levels(out, err) && file_check_fonts(out, err) &&
-           file_check_bindings(out, err) && file_check_entities(out, err);
+    return file_check_audio(out, err) && file_check_levels(out, err) &&
+           file_check_fonts(out, err) && file_check_bindings(out, err) &&
+           file_check_entities(out, err);
 }

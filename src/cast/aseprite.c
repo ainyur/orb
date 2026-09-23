@@ -26,7 +26,6 @@ static bool ase_fail(orb_error* err, const char* msg) {
 
 bool orb_ase_parse(orb_arena* a, orb_span file, orb_ase* out, orb_error* err) {
     const uint8_t* p = file.ptr;
-    const uint8_t* end = file.ptr + file.len;
 
     if (file.len < 128 || orb_bytes_u16(p + 4) != 0xA5E0)
         return ase_fail(err, "not an aseprite file");
@@ -45,6 +44,7 @@ bool orb_ase_parse(orb_arena* a, orb_span file, orb_ase* out, orb_error* err) {
     out->grid_height = orb_bytes_u16(p + 42);
 
     if (out->color_count == 0) out->color_count = 256;
+    if (out->color_count > 256) return ase_fail(err, "more than 256 colors");
 
     ase_layer layers[ASE_MAX_LAYERS];
     int layer_count = 0;
@@ -52,114 +52,154 @@ bool orb_ase_parse(orb_arena* a, orb_span file, orb_ase* out, orb_error* err) {
 
     out->durations = orb_arena_push_array(a, uint16_t, out->frame_count);
 
-    p += 128;
+    size_t at = 128;
 
     for (int f = 0; f < out->frame_count; f++) {
-        if (p + 16 > end) return ase_fail(err, "truncated frame");
+        orb_span head = orb_span_sub(file, at, 16);
 
-        const uint8_t* frame_end = p + orb_bytes_u32(p);
+        if (head.len < 16) return ase_fail(err, "truncated frame");
 
-        if (orb_bytes_u16(p + 4) != 0xF1FA || frame_end > end) return ase_fail(err, "bad frame");
+        orb_span frame = orb_span_sub(file, at, orb_bytes_u32(head.ptr));
 
-        uint32_t chunk_count = orb_bytes_u16(p + 6);
+        if (orb_bytes_u16(head.ptr + 4) != 0xF1FA || frame.len < 16)
+            return ase_fail(err, "bad frame");
 
-        if (chunk_count == 0xFFFF) chunk_count = orb_bytes_u32(p + 12);
+        uint32_t chunk_count = orb_bytes_u16(head.ptr + 6);
 
-        out->durations[f] = orb_bytes_u16(p + 8);
-        p += 16;
+        if (chunk_count == 0xFFFF) chunk_count = orb_bytes_u32(head.ptr + 12);
+
+        out->durations[f] = orb_bytes_u16(head.ptr + 8);
+
+        size_t chunk_at = 16;
 
         for (uint32_t c = 0; c < chunk_count; c++) {
-            if (p + 6 > frame_end) return ase_fail(err, "truncated chunk");
+            orb_span chunk_head = orb_span_sub(frame, chunk_at, 6);
 
-            uint32_t size = orb_bytes_u32(p);
-            uint16_t type = orb_bytes_u16(p + 4);
-            const uint8_t* d = p + 6;
-            const uint8_t* chunk_end = p + size;
+            if (chunk_head.len < 6) return ase_fail(err, "truncated chunk");
 
-            if (size < 6 || chunk_end > frame_end) return ase_fail(err, "bad chunk size");
+            uint32_t size = orb_bytes_u32(chunk_head.ptr);
+            uint16_t type = orb_bytes_u16(chunk_head.ptr + 4);
+            orb_span chunk = orb_span_sub(frame, chunk_at, size);
+
+            if (size < 6 || chunk.len < size) return ase_fail(err, "bad chunk size");
+
+            orb_span d = orb_span_sub(chunk, 6, chunk.len - 6);
 
             if (type == 0x0004) {
-                int packets = orb_bytes_u16(d);
-                const uint8_t* q = d + 2;
+                if (d.len < 2) return ase_fail(err, "truncated chunk");
+
+                int packets = orb_bytes_u16(d.ptr);
+                orb_span q = orb_span_sub(d, 2, d.len - 2);
                 int index = 0;
 
                 for (int k = 0; k < packets; k++) {
-                    index += q[0];
-                    int n = q[1] ? q[1] : 256;
-                    q += 2;
+                    if (q.len < 2) return ase_fail(err, "truncated chunk");
 
-                    for (int i = 0; i < n && index < 256; i++, index++, q += 3) {
-                        out->rgb[index][0] = q[0];
-                        out->rgb[index][1] = q[1];
-                        out->rgb[index][2] = q[2];
+                    index += q.ptr[0];
+                    int n = q.ptr[1] ? q.ptr[1] : 256;
+                    q = orb_span_sub(q, 2, q.len - 2);
+
+                    for (int i = 0; i < n && index < 256; i++, index++) {
+                        if (q.len < 3) return ase_fail(err, "truncated chunk");
+
+                        out->rgb[index][0] = q.ptr[0];
+                        out->rgb[index][1] = q.ptr[1];
+                        out->rgb[index][2] = q.ptr[2];
+                        q = orb_span_sub(q, 3, q.len - 3);
                     }
                 }
             } else if (type == 0x2019) { // new palette
-                uint32_t first = orb_bytes_u32(d + 4), last = orb_bytes_u32(d + 8);
-                const uint8_t* q = d + 20;
+                if (d.len < 20) return ase_fail(err, "truncated chunk");
+
+                uint32_t first = orb_bytes_u32(d.ptr + 4), last = orb_bytes_u32(d.ptr + 8);
+                orb_span q = orb_span_sub(d, 20, d.len - 20);
 
                 for (uint32_t i = first; i <= last && i < 256; i++) {
-                    uint16_t flags = orb_bytes_u16(q);
+                    if (q.len < 6) return ase_fail(err, "truncated chunk");
 
-                    out->rgb[i][0] = q[2];
-                    out->rgb[i][1] = q[3];
-                    out->rgb[i][2] = q[4];
-                    q += 6;
+                    uint16_t flags = orb_bytes_u16(q.ptr);
 
-                    if (flags & 1) q += 2 + orb_bytes_u16(q);
+                    out->rgb[i][0] = q.ptr[2];
+                    out->rgb[i][1] = q.ptr[3];
+                    out->rgb[i][2] = q.ptr[4];
+                    q = orb_span_sub(q, 6, q.len - 6);
+
+                    if (flags & 1) {
+                        if (q.len < 2) return ase_fail(err, "truncated chunk");
+
+                        size_t skip = 2 + orb_bytes_u16(q.ptr);
+
+                        if (q.len < skip) return ase_fail(err, "truncated chunk");
+
+                        q = orb_span_sub(q, skip, q.len - skip);
+                    }
                 }
             } else if (type == 0x2004) { // layer
+                if (d.len < 16) return ase_fail(err, "truncated chunk");
                 if (layer_count >= ASE_MAX_LAYERS) return ase_fail(err, "too many layers");
 
                 ase_layer* layer = &layers[layer_count++];
 
-                layer->flags = orb_bytes_u16(d);
-                layer->type = orb_bytes_u16(d + 2);
-                layer->blend = orb_bytes_u16(d + 10);
-                layer->opacity = orb_bytes_u8(d + 12);
+                layer->flags = orb_bytes_u16(d.ptr);
+                layer->type = orb_bytes_u16(d.ptr + 2);
+                layer->blend = orb_bytes_u16(d.ptr + 10);
+                layer->opacity = orb_bytes_u8(d.ptr + 12);
             } else if (type == 0x2005) { // cel
-                uint16_t layer = orb_bytes_u16(d);
-                uint16_t cel_type = orb_bytes_u16(d + 7);
+                if (d.len < 20) return ase_fail(err, "truncated chunk");
+
+                uint16_t layer = orb_bytes_u16(d.ptr);
+                uint16_t cel_type = orb_bytes_u16(d.ptr + 7);
 
                 if (layer >= ASE_MAX_LAYERS) return ase_fail(err, "cel layer out of range");
                 if (cel_type != 2) return ase_fail(err, "only compressed image cels are supported");
 
                 ase_cel* cel = &cels[f * ASE_MAX_LAYERS + layer];
 
-                cel->x = orb_bytes_i16(d + 2);
-                cel->y = orb_bytes_i16(d + 4);
-                cel->width = orb_bytes_u16(d + 16);
-                cel->height = orb_bytes_u16(d + 18);
-                cel->zdata = d + 20;
-                cel->zlen = (uint32_t)(chunk_end - cel->zdata);
+                cel->x = orb_bytes_i16(d.ptr + 2);
+                cel->y = orb_bytes_i16(d.ptr + 4);
+                cel->width = orb_bytes_u16(d.ptr + 16);
+                cel->height = orb_bytes_u16(d.ptr + 18);
+                cel->zdata = d.ptr + 20;
+                cel->zlen = (uint32_t)(d.len - 20);
                 cel->present = true;
             } else if (type == 0x2018) { // tags
-                out->tag_count = orb_bytes_u16(d);
+                if (d.len < 10) return ase_fail(err, "truncated chunk");
+
+                out->tag_count = orb_bytes_u16(d.ptr);
                 out->tags = orb_arena_push_array(a, orb_ase_tag, out->tag_count);
 
-                const uint8_t* q = d + 10;
+                orb_span q = orb_span_sub(d, 10, d.len - 10);
 
                 for (int t = 0; t < out->tag_count; t++) {
+                    if (q.len < 19) return ase_fail(err, "truncated chunk");
+
                     orb_ase_tag* tag = &out->tags[t];
 
-                    tag->from = orb_bytes_u16(q);
-                    tag->to = orb_bytes_u16(q + 2);
-                    tag->direction = orb_bytes_u8(q + 4);
+                    tag->from = orb_bytes_u16(q.ptr);
+                    tag->to = orb_bytes_u16(q.ptr + 2);
+                    tag->direction = orb_bytes_u8(q.ptr + 4);
 
-                    uint16_t name_len = orb_bytes_u16(q + 17);
-                    char* name = orb_arena_push(a, name_len + 1, 1);
+                    if (tag->from > tag->to || tag->to >= out->frame_count)
+                        return ase_fail(err, "tag frame range out of bounds");
 
-                    memcpy(name, q + 19, name_len);
+                    uint16_t name_len = orb_bytes_u16(q.ptr + 17);
+                    orb_span name_span = orb_span_sub(q, 19, name_len);
+
+                    if (name_span.len < name_len) return ase_fail(err, "truncated chunk");
+
+                    char* name = orb_arena_push(a, (size_t)name_len + 1, 1);
+
+                    memcpy(name, name_span.ptr, name_len);
 
                     tag->name = name;
-                    q += 19 + name_len;
+                    q = orb_span_sub(q, 19 + name_len, q.len - (19 + name_len));
                 }
             }
 
-            p = chunk_end;
+            chunk_at += size;
         }
 
-        p = frame_end;
+        at += frame.len;
     }
 
     size_t frame_size = (size_t)out->width * out->height;

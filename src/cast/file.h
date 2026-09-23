@@ -144,7 +144,7 @@ typedef struct orb_tileset_desc {
 static_assert(sizeof(orb_tileset_desc) == 16, "orb_tileset_desc layout");
 
 typedef struct orb_level_desc {
-    int32_t world_x, world_y, depth;
+    int32_t world_x, world_y, pad;
     uint16_t width, height; // pixels
     uint16_t first_layer, layer_count;
     uint16_t first_neighbor, neighbor_count;
@@ -241,4 +241,4 @@ static inline uint32_t orb_field_width(orb_field_kind kind) {
 }
 
 orb_span orb_file_write(orb_arena* a, const orb_assets* in);
-bool orb_file_load(orb_span file, orb_assets* out, orb_error* err);
+[[nodiscard]] bool orb_file_load(orb_span file, orb_assets* out, orb_error* err);

@@ -89,13 +89,18 @@ uint64_t orb_os_file_mtime(const char* path);
 int orb_os_list_dir(const char* dir, orb_os_entry* out, int max);
 bool orb_os_read_file(const char* path, orb_arena* into, orb_span* out);
 bool orb_os_write_file(const char* path, orb_span data);
+bool orb_path_absolute(const char* path);
 void orb_path_join(orb_path out, const char* dir, const char* rel);
 
 void orb_os_sleep(uint64_t ns);
 uint64_t orb_os_ticks(void);
 
 uint32_t orb_os_pid(void);
-int orb_os_run(const char* command, void (*line)(const char* text));
+
+// Runs argv (null-terminated, argv[0] the program) with dir as its working
+// directory, one output line at a time to line, and returns its exit status.
+// On Windows the elements are joined with spaces behind cmd.exe /c, so none may need quoting.
+int orb_os_run(const char* dir, const char* const* argv, void (*line)(const char* text));
 
 // orb implements this in core/api.c; the OS audio thread calls it for every
 // buffer it needs: frames * ORB_AUDIO_CHANNELS interleaved int16 at ORB_AUDIO_RATE.

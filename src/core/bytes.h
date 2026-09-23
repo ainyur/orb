@@ -1,7 +1,16 @@
 #pragma once
 
+#include "../orb.h"
+
 #include <stdint.h>
 #include <string.h>
+
+// Bytes [at, at + len) of s, or an empty span when they do not fit.
+static inline orb_span orb_span_sub(orb_span s, size_t at, size_t len) {
+    if (at > s.len || len > s.len - at) return (orb_span) {};
+
+    return (orb_span) {s.ptr + at, len};
+}
 
 static inline uint8_t orb_bytes_u8(const uint8_t* ptr) {
     return ptr[0];

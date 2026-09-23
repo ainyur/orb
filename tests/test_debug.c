@@ -55,7 +55,9 @@ int main(void) {
     CHECK(orb_os_write_file(path, (orb_span) {a, 1}));
     CHECK(!orb_watch_poll(&w, 3400000000));
     CHECK(orb_watch_poll(&w, 3700000000));
-    CHECK_EQ(orb_os_run("make -s -C examples/demo build/game" ORB_OS_LIB_SUFFIX, ignore_line), 0);
+    const char* build_argv[] = {"make", "-s", "build/game" ORB_OS_LIB_SUFFIX, nullptr};
+
+    CHECK_EQ(orb_os_run("examples/demo", build_argv, ignore_line), 0);
 
     // the copy is named per process, and a leftover at that name is replaced by a
     // new file rather than truncated, since another orb may have it mapped

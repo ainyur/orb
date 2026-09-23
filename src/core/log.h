@@ -9,7 +9,7 @@ typedef struct orb_error {
 
 extern thread_local bool orb_log_off_main; // the audio thread sets it: its lines skip the ring
 
-void orb_log(const char* fmt, ...);
+[[gnu::format(gnu_printf, 1, 2)]] void orb_log(const char* fmt, ...);
 void orb_log_clear(void);
 int orb_log_line_count(void);
 const char* orb_log_line(int back); // 0 the newest; "" past the count

@@ -44,12 +44,16 @@ bool orb_os_write_file(const char* path, orb_span data) {
     return fclose(f) == 0 && ok;
 }
 
-void orb_path_join(orb_path out, const char* dir, const char* rel) {
+bool orb_path_absolute(const char* path) {
 #ifdef _WIN32
-    bool absolute = rel[0] == '/' || rel[0] == '\\' || (rel[0] && rel[1] == ':');
+    return path[0] == '/' || path[0] == '\\' || (path[0] && path[1] == ':');
 #else
-    bool absolute = rel[0] == '/';
+    return path[0] == '/';
 #endif
+}
+
+void orb_path_join(orb_path out, const char* dir, const char* rel) {
+    bool absolute = orb_path_absolute(rel);
     int n = absolute ? snprintf(out, ORB_PATH_MAX, "%s", rel)
                      : snprintf(out, ORB_PATH_MAX, "%s/%s", dir, rel);
 

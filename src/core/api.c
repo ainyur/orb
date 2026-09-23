@@ -45,8 +45,11 @@ static void api_camera_set(orb_vec2f at) {
     api_camera = at;
 }
 
-static void api_camera_update(orb_camera* camera) {
-    api_camera = orb_camera_update(camera, (orb_size) {api_fb.width, api_fb.height});
+static orb_camera api_camera_update(orb_camera camera) {
+    camera = orb_camera_update(camera, (orb_size) {api_fb.width, api_fb.height});
+    api_camera = (orb_vec2f) {camera.at.x + camera.shake.x, camera.at.y + camera.shake.y};
+
+    return camera;
 }
 
 static orb_sprite api_sprite_find(const char* stem, int frame) {
@@ -340,6 +343,7 @@ void orb_api_set_assets(const orb_assets* assets) {
 void orb_api_quit(void) {
     api_assets = (orb_asset_table) {};
     api_fb = (orb_fb) {};
+    api_mixer = (orb_mixer)ORB_MIXER_INIT;
 }
 
 bool orb_audio_idle(uint64_t elapsed_ns, uint64_t* rendered) {

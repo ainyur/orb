@@ -65,9 +65,11 @@ bool orb_wav_parse(orb_span file, orb_wav* out, orb_error* err) {
             memcmp(head, "smpl", 4) == 0 && size >= 60 && orb_bytes_u32(chunk.ptr + 28) >= 1
         ) {
             // 36 bytes of header, then loops of 24: cue, type, start, end, fraction, count
+            uint64_t end_inclusive = orb_bytes_u32(chunk.ptr + 48);
+
             out->has_loop = true;
             out->loop_start = orb_bytes_u32(chunk.ptr + 44);
-            out->loop_end = orb_bytes_u32(chunk.ptr + 48) + 1; // the chunk's end is inclusive
+            out->loop_end = (uint32_t)(end_inclusive < UINT32_MAX ? end_inclusive + 1 : UINT32_MAX);
         }
 
         at += 8 + size + (size & 1);

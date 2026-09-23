@@ -180,6 +180,11 @@ int main(void) {
     CHECK_EQ(pixel(3 * 8 + 7, 2 * 8), YELLOW);
     CHECK_EQ(pixel(3 * 8 + 0, 2 * 8), WHITE);
 
+    // a boot does not inherit the mixer's song position from the boot before it
+    api->song_play(loop, true);
+    orb_audio_render(audio, 512);
+    CHECK(api->song_position().ms != -1);
+
     orb_quit();
 
     static alignas(16) uint8_t scratch_mem[4 << 20], out_mem[1 << 20];
@@ -192,6 +197,8 @@ int main(void) {
 
     CHECK(orb_cast_game(&scratch, &out, "tests/fixtures", &m, &r, &err));
     CHECK(orb_boot(orb_game_main(), nullptr, r.file, &err));
+    CHECK(api->song_position().ms == -1);
+    CHECK(api->song_position().millibeats == -1);
     CHECK(host_tick());
 
     host_render();

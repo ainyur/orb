@@ -38,7 +38,7 @@ typedef struct orb_manifest {
     size_t asset_headroom;
 } orb_manifest;
 
-bool orb_cast_game(
+[[nodiscard]] bool orb_cast_game(
     orb_arena* scratch,
     orb_arena* out,
     const char* game_dir,
@@ -46,4 +46,9 @@ bool orb_cast_game(
     orb_cast_result* r,
     orb_error* err
 );
-bool orb_manifest_load(orb_arena* a, const char* game_dir, orb_manifest* m, orb_error* err);
+[[nodiscard]] bool orb_manifest_load(
+    orb_arena* a,
+    const char* game_dir,
+    orb_manifest* m,
+    orb_error* err
+);

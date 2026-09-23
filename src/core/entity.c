@@ -389,14 +389,29 @@ void orb_level_spawn(orb_level level) {
     }
 }
 
-// A recast can bump a type's generation, reorder placements, or both. Every live entity's
-// placement is re-found by iid alone, and its type index and generation are rebuilt from
-// the found placement, or from the kept index when none matches.
-void orb_entity_revalidate(void) {
+// The new type index sharing a type id with the old index in previous, or ORB_NO_INDEX.
+static uint32_t entity_type_remap(const orb_assets* previous, uint32_t old_index) {
+    if (old_index >= previous->type_count) return ORB_NO_INDEX;
+
+    uint64_t id = previous->type_ids[old_index];
+
+    for (uint32_t i = 0; i < entity_assets->type_count; i++)
+        if (entity_assets->type_ids[i] == id) return i;
+
+    return ORB_NO_INDEX;
+}
+
+// Placements are re-found by iid; each entity's type index comes from the found placement,
+// or else is mapped through the previous asset set's type ids. Generations are rebuilt last.
+void orb_entity_revalidate(const orb_assets* previous) {
     for (uint32_t s = 0; s < entity_pool.max; s++) {
         orb_entity* e = orb_entity_at(s);
 
-        if (!e || (e->placement == ORB_NO_INDEX && e->iid == 0)) continue;
+        if (!e) continue;
+
+        e->type = ORB_TYPE(entity_type_remap(previous, ORB_HANDLE_INDEX(e->type)));
+
+        if (e->placement == ORB_NO_INDEX && e->iid == 0) continue;
 
         const orb_placement_desc* p = entity_placement(e);
 
@@ -582,6 +597,12 @@ static void entity_log_field(const orb_field_desc* f) {
     orb_log("%s", line);
 }
 
+// Fields [first, first + count), one log line each.
+static void entity_log_fields(uint32_t first, uint32_t count) {
+    for (uint32_t k = 0; k < count; k++)
+        entity_log_field(&entity_assets->fields[first + k]);
+}
+
 static void entity_command_entity(void*, const orb_api*, int argc, const char* const* argv) {
     if (argc != 2) {
         orb_log("entity <index>");
@@ -603,12 +624,12 @@ static void entity_command_entity(void*, const orb_api*, int argc, const char* c
         e->flags, ORB_HANDLE_INDEX(e->parent)
     );
 
-    for (uint32_t k = 0; p && k < p->field_count; k++)
-        entity_log_field(&entity_assets->fields[p->first_field + k]);
+    if (p) entity_log_fields(p->first_field, p->field_count);
 
-    for (uint32_t k = 0;
-         type < entity_assets->type_count && k < entity_assets->types[type].field_count; k++)
-        entity_log_field(&entity_assets->fields[entity_assets->types[type].first_field + k]);
+    if (type < entity_assets->type_count)
+        entity_log_fields(
+            entity_assets->types[type].first_field, entity_assets->types[type].field_count
+        );
 
     for (int kind = 0; kind < entity_pool.kinds; kind++) {
         if (!(e->components & 1u << kind)) continue;
@@ -654,6 +675,7 @@ size_t orb_entity_region_size(const orb_config* c, int scale) {
     total += slots + 16;
     total += slots * sizeof(uint32_t) + 16;
     total += slots * sizeof(orb_sort_entry) + 16;
+    total += slots * sizeof(uint32_t) + 16;
     total += slots * (sizeof(orb_sprite_component) + sizeof(orb_body) + sizeof(orb_tag)) + 3 * 16;
 
     for (int i = 0; i < ORB_MAX_COMPONENTS - ORB_COMPONENT_GAME && c->components[i]; i++)
@@ -677,6 +699,7 @@ bool orb_entity_reset(const orb_config* c) {
     p->gens = orb_arena_push_array(entity_region, uint8_t, p->max);
     p->free_slots = orb_arena_push_array(entity_region, uint32_t, p->max);
     p->sort = orb_arena_push_array(entity_region, orb_sort_entry, p->max);
+    p->solids = orb_arena_push_array(entity_region, uint32_t, p->max);
     p->sizes[ORB_COMPONENT_SPRITE] = sizeof(orb_sprite_component);
     p->sizes[ORB_COMPONENT_BODY] = sizeof(orb_body);
     p->sizes[ORB_COMPONENT_TAG] = sizeof(orb_tag);

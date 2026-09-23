@@ -35,13 +35,7 @@ typedef struct {
 } game_state;
 
 static orb_config config(void) {
-    return (orb_config) {
-        .arena_size = 64 << 20,
-        .state_size = sizeof(game_state),
-        .state_version = 1,
-        .save_version = 1,
-        .max_entities = 256
-    };
+    return (orb_config) {.state_size = sizeof(game_state), .state_version = 1, .save_version = 1};
 }
 
 static void init(void* state, const orb_api* orb) {
@@ -73,8 +67,8 @@ static void player_init(void* state, const orb_api* orb, orb_entity_id id) {
 // the pre-hit speed in impact, so a hard hit reverses and a soft one rests flush.
 static void player_update(void* state, const orb_api* orb, orb_entity_id id) {
     game_state* g = state;
-    orb_body* b = orb->entity_component(id, ORB_COMPONENT_BODY);
-    orb_sprite_component* sc = orb->entity_component(id, ORB_COMPONENT_SPRITE);
+    orb_body* b = orb_body_of(orb, id);
+    orb_sprite_component* sc = orb_sprite_component_of(orb, id);
     int dx = orb->button_down(ORB_BTN_RIGHT) - orb->button_down(ORB_BTN_LEFT);
     int dy = orb->button_down(ORB_BTN_DOWN) - orb->button_down(ORB_BTN_UP);
     bool wandering = g->idle >= IDLE_TICKS;
@@ -129,6 +123,7 @@ static void reload(void* state, const orb_api* orb) {
     game_state* g = state;
     uint8_t kinds[256] = {0};
     uint8_t remap[256];
+    const char* room = "room";
 
     for (int i = 0; i < 256; i++)
         remap[i] = (uint8_t)i;
@@ -137,7 +132,7 @@ static void reload(void* state, const orb_api* orb) {
     kinds[1] = ORB_CELL_SOLID;
     g->walk = orb->anim_find("player", "walk");
     g->bounce = orb->sample_find("bounce");
-    g->room = orb->level_find("room");
+    g->room = orb->level_find(room);
     g->floor = orb->layer_find(g->room, "floor");
     g->walls = orb->layer_find(g->room, "walls");
     g->shadow = orb->layer_find(g->room, "shadow");
@@ -150,7 +145,9 @@ static void reload(void* state, const orb_api* orb) {
 
     if (!orb->entity_get(g->player)) {
         orb->level_spawn(g->room);
-        orb->entity_of_type(g->player_type, &g->player, 1);
+
+        if (orb->entity_of_type(g->player_type, &g->player, 1) == 0)
+            orb->log("no player placed in %s", room);
     }
 }
 
@@ -172,7 +169,7 @@ static void update(void* state, const orb_api* orb) {
     orb_vec2f at = orb->entity_world_at(g->player);
 
     g->camera.target = (orb_vec2f) {at.x + BODY / 2, at.y + BODY / 2};
-    orb->camera_update(&g->camera);
+    g->camera = orb->camera_update(g->camera);
 }
 
 static void draw(void* state, const orb_api* orb) {

@@ -49,6 +49,7 @@ typedef struct orb_mixer_command {
         orb_mixer_volumes volumes;
     };
 } orb_mixer_command;
+static_assert(sizeof(orb_mixer_command) == 32, "orb_mixer_command layout");
 
 // A sampler voice. playing is the one field both threads touch: the main thread
 // stores the generation that claims a game voice, the audio thread clears it with
@@ -93,7 +94,7 @@ typedef struct orb_mixer {
     }
 
 // Returns the render to wait for, 0 if none.
-uint32_t orb_mixer_set_assets(orb_mixer* m, const orb_assets* assets);
+[[nodiscard]] uint32_t orb_mixer_set_assets(orb_mixer* m, const orb_assets* assets);
 orb_voice orb_mixer_sound_play(orb_mixer* m, orb_sample s, orb_sound_params p, int priority);
 void orb_mixer_sound_set(orb_mixer* m, orb_voice v, orb_sound_params p);
 void orb_mixer_sound_stop(orb_mixer* m, orb_voice v);

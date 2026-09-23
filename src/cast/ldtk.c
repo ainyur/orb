@@ -362,6 +362,10 @@ static bool ldtk_defs_tilesets(ldtk* l, const orb_json* defs, orb_ldtk* out) {
         if (!ldtk_int(l, t, "padding", &padding)) return false;
         if (!ldtk_int(l, t, "__cWid", &columns)) return false;
         if (!ldtk_int(l, t, "__cHei", &rows)) return false;
+        if (columns > 65535 || rows > 65535)
+            return ldtk_fail(
+                l, "tileset %s: __cWid/__cHei %dx%d is larger than 65535x65535", path, columns, rows
+            );
         if (!ldtk_int(l, t, "pxWid", &width)) return false;
         if (!ldtk_int(l, t, "pxHei", &height)) return false;
 
@@ -494,7 +498,7 @@ static bool ldtk_tiles(
     int columns,
     int rows,
     int tileset,
-    int tileset_slots,
+    uint64_t tileset_slots,
     orb_ldtk_tile** out,
     int* out_count
 ) {
@@ -536,7 +540,8 @@ static bool ldtk_tiles(
             if (!ldtk_int(l, t, "t", &id)) return false;
             if (id < 0 || id > (int)ORB_MAX_TILE_ID)
                 return ldtk_fail(l, "tile id %d does not fit", id);
-            if (id >= tileset_slots) return ldtk_fail(l, "tile id %d is past the tileset", id);
+            if ((uint64_t)id >= tileset_slots)
+                return ldtk_fail(l, "tile id %d is past the tileset", id);
 
             int flip;
             if (!ldtk_int(l, t, "f", &flip)) return false;
@@ -565,11 +570,14 @@ static bool ldtk_cells(ldtk* l, const orb_json* inst, int columns, int rows, con
 
     if (!ldtk_array(l, inst, "intGridCsv", &csv)) return false;
 
-    int cell_count = columns * rows;
+    uint64_t cell_count = (uint64_t)columns * rows;
     int csv_count = csv ? csv->count : 0;
 
-    if (csv_count != cell_count)
-        return ldtk_fail(l, "intGridCsv holds %d values for %d cells", csv_count, cell_count);
+    if ((uint64_t)csv_count != cell_count)
+        return ldtk_fail(
+            l, "intGridCsv holds %d values for %llu cells", csv_count,
+            (unsigned long long)cell_count
+        );
 
     uint8_t* cells = orb_arena_push_array(l->a, uint8_t, cell_count);
     int i = 0;
@@ -636,6 +644,8 @@ static bool ldtk_layer(
     if (!ldtk_int(l, inst, "__cHei", &rows)) return false;
     if (grid < 1) return ldtk_fail(l, "__gridSize %d is not positive", grid);
     if (columns < 1 || rows < 1) return ldtk_fail(l, "__cWid/__cHei %dx%d is empty", columns, rows);
+    if (columns > 65535 || rows > 65535)
+        return ldtk_fail(l, "__cWid/__cHei %dx%d is larger than 65535x65535", columns, rows);
     if (!ldtk_int(l, inst, "__pxTotalOffsetX", &offset_x)) return false;
     if (!ldtk_int(l, inst, "__pxTotalOffsetY", &offset_y)) return false;
 
@@ -646,7 +656,8 @@ static bool ldtk_layer(
     int tuid;
     if (!ldtk_optional_int(l, inst, "__tilesetDefUid", &tuid)) return false;
 
-    int tileset = -1, tileset_slots = 0;
+    int tileset = -1;
+    uint64_t tileset_slots = 0;
 
     if (tuid >= 0) {
         tileset = ldtk_tileset_by_uid(project, tuid);
@@ -660,7 +671,8 @@ static bool ldtk_layer(
             return ldtk_fail(l, "tileset uid %d has no definition", tuid);
         }
 
-        tileset_slots = project->tilesets[tileset].columns * project->tilesets[tileset].rows;
+        tileset_slots =
+            (uint64_t)project->tilesets[tileset].columns * project->tilesets[tileset].rows;
     }
 
     const uint8_t* cells = nullptr;
@@ -825,10 +837,9 @@ static bool ldtk_level_head(ldtk* l, const orb_json* lv, orb_ldtk_level* out) {
     const char* iid;
     if (!ldtk_string(l, lv, "iid", &iid)) return false;
 
-    int world_x, world_y, depth, width, height;
+    int world_x, world_y, width, height;
     if (!ldtk_int(l, lv, "worldX", &world_x)) return false;
     if (!ldtk_int(l, lv, "worldY", &world_y)) return false;
-    if (!ldtk_int(l, lv, "worldDepth", &depth)) return false;
     if (!ldtk_int(l, lv, "pxWid", &width)) return false;
     if (!ldtk_int(l, lv, "pxHei", &height)) return false;
 
@@ -860,7 +871,6 @@ static bool ldtk_level_head(ldtk* l, const orb_json* lv, orb_ldtk_level* out) {
     out->iid = iid;
     out->world_x = world_x;
     out->world_y = world_y;
-    out->depth = depth;
     out->width = width;
     out->height = height;
     out->neighbors = neighbors;

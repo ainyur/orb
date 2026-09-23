@@ -11,6 +11,7 @@ jobs:
       - run: apt-get update && apt-get install -y make libx11-dev libasound2-dev
       - run: gcc --version && make --version
       - run: make test
+      - run: make test-asan
       - run: make
       - run: make release GAME=examples/demo
 

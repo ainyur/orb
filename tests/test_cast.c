@@ -149,7 +149,6 @@ int main(void) {
     CHECK_EQ(as.levels[0].width, 64);
     CHECK_EQ(as.levels[0].layer_count, 3);
     CHECK_EQ(as.levels[1].world_x, 64);
-    CHECK_EQ(as.levels[1].depth, 1);
     CHECK_EQ(as.levels[1].first_layer, 3);
     CHECK_EQ(as.levels[1].layer_count, 3); // deco and collision are empty in Annex but still exist
     CHECK_EQ(as.layer_count, 6);
@@ -621,6 +620,57 @@ int main(void) {
     orb_arena_reset(&out);
     CHECK(!orb_cast_game(&scratch, &out, "build/scratch/badref", &m, &r, &err));
     CHECK(strstr(err.text, "level Hall: entity Door: field to: ref nowhere"));
+
+    // a WAV loop whose start is not before its end is dropped, not a cast error: the
+    // caster logs the file and zeroes both fields, rather than wav_parse refusing it
+    uint8_t bad_loop_wav[128] = {0};
+
+    memcpy(bad_loop_wav, "RIFF", 4);
+    bad_loop_wav[4] = 120; // file size - 8
+    memcpy(bad_loop_wav + 8, "WAVE", 4);
+    memcpy(bad_loop_wav + 12, "fmt ", 4);
+    bad_loop_wav[16] = 16;                                                     // fmt chunk size
+    bad_loop_wav[20] = 1;                                                      // PCM
+    bad_loop_wav[22] = 1;                                                      // mono
+    bad_loop_wav[24] = 0x80, bad_loop_wav[25] = 0xBB;                          // rate 48000
+    bad_loop_wav[28] = 0x00, bad_loop_wav[29] = 0x77, bad_loop_wav[30] = 0x01; // byte rate
+    bad_loop_wav[32] = 2;                                                      // block align
+    bad_loop_wav[34] = 16;                                                     // bits
+    memcpy(bad_loop_wav + 36, "smpl", 4);
+    bad_loop_wav[40] = 60; // smpl chunk size
+    bad_loop_wav[72] = 1;  // loop count
+    bad_loop_wav[88] = 5;  // loop start
+    bad_loop_wav[92] = 4;  // loop end_inclusive: +1 equals the start
+    memcpy(bad_loop_wav + 104, "data", 4);
+    bad_loop_wav[108] = 16; // 8 samples * 2 bytes
+
+    CHECK(orb_os_make_dir("build/scratch/badloop"));
+    CHECK(orb_os_make_dir("build/scratch/badloop/sfx"));
+    CHECK(orb_os_write_file(
+        "build/scratch/badloop/sfx/bad.wav", (orb_span) {bad_loop_wav, sizeof bad_loop_wav}
+    ));
+
+    const char* badloop_manifest =
+        "{\"id\": \"badloop\", \"name\": \"b\", \"size\": [8, 8],\n"
+        " \"asset_headroom\": 1048576, \"palette\": \"" ART "art/palette.aseprite\",\n"
+        " \"art\": \"" ART "art\", \"sfx\": \"sfx\",\n"
+        " \"fonts\": \"" ART "fonts\", \"world\": \"" ART "levels/world.ldtk\"}\n";
+    CHECK(orb_os_write_file(
+        "build/scratch/badloop/orb.json",
+        (orb_span) {(const uint8_t*)badloop_manifest, strlen(badloop_manifest)}
+    ));
+    orb_arena_reset(&scratch);
+    orb_arena_reset(&out);
+    orb_log_clear();
+    CHECK(orb_cast_game(&scratch, &out, "build/scratch/badloop", &m, &r, &err));
+    CHECK(strstr(orb_log_line(0), "bad.wav") != nullptr);
+    CHECK(strstr(orb_log_line(0), "dropped") != nullptr);
+
+    orb_assets badloop_as;
+    CHECK(orb_file_load(r.file, &badloop_as, &err));
+    CHECK_EQ(badloop_as.sample_count, 1);
+    CHECK_EQ(badloop_as.samples[0].loop_start, 0);
+    CHECK_EQ(badloop_as.samples[0].loop_end, 0);
 
     return 0;
 }

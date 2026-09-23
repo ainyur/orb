@@ -162,7 +162,6 @@ int main(void) {
     const orb_ldtk_level* room = &p.levels[0];
     CHECK(strcmp(room->name, "Room") == 0);
     CHECK_EQ(room->world_y, -8);
-    CHECK_EQ(room->depth, 1);
     CHECK_EQ(room->width, 16);
     CHECK(room->external_path == nullptr);
     CHECK_EQ(room->layer_count, 2);
@@ -458,6 +457,43 @@ int main(void) {
         "     \"autoLayerTiles\": [], \"entityInstances\": []}]}]}\n";
     CHECK(fails_with(
         &a, (orb_span) {(const uint8_t*)zero_cells_project, strlen(zero_cells_project)}, "empty"
+    ));
+
+    // __cWid/__cHei of 65536 each overflows a signed 32-bit int product; refused before the
+    // multiply
+    const char* huge_grid_project =
+        "{\"jsonVersion\": \"1.5.3\", \"worlds\": [],"
+        " \"defs\": {\"tilesets\": [],"
+        "  \"layers\": [{\"uid\": 2, \"identifier\": \"Collision\", \"__type\": \"IntGrid\","
+        "   \"parallaxFactorX\": 0, \"parallaxFactorY\": 0, \"parallaxScaling\": false,"
+        "   \"tilesetDefUid\": null}],"
+        "  \"entities\": []},"
+        " \"levels\": [{\"identifier\": \"Room\", \"iid\": \"aaa\", \"worldX\": 0, \"worldY\": 0,"
+        "  \"worldDepth\": 0, \"pxWid\": 16, \"pxHei\": 8, \"bgRelPath\": null,"
+        "  \"externalRelPath\": null, \"__neighbours\": [],"
+        "  \"layerInstances\": ["
+        "   {\"__identifier\": \"Collision\", \"__type\": \"IntGrid\", \"layerDefUid\": 2,"
+        "    \"__cWid\": 65536, \"__cHei\": 65536, \"__gridSize\": 8, \"__opacity\": 1,"
+        "    \"__pxTotalOffsetX\": 0, \"__pxTotalOffsetY\": 0, \"__tilesetDefUid\": null,"
+        "    \"intGridCsv\": [], \"gridTiles\": [], \"autoLayerTiles\": [],"
+        "    \"entityInstances\": []}]}]}";
+    CHECK(fails_with(
+        &a, (orb_span) {(const uint8_t*)huge_grid_project, strlen(huge_grid_project)},
+        "larger than 65535x65535"
+    ));
+
+    // the same bound on a tileset definition's own grid, ahead of the slot count product
+    const char* huge_tileset_project =
+        "{\"jsonVersion\": \"1.5.3\", \"worlds\": [],"
+        " \"defs\": {\"tilesets\": [{\"uid\": 7, \"identifier\": \"Tiles\", \"relPath\": "
+        "\"t.aseprite\","
+        "   \"pxWid\": 8, \"pxHei\": 8, \"tileGridSize\": 8, \"spacing\": 0, \"padding\": 0,"
+        "   \"__cWid\": 65536, \"__cHei\": 1}],"
+        "  \"layers\": [], \"entities\": []},"
+        " \"levels\": []}";
+    CHECK(fails_with(
+        &a, (orb_span) {(const uint8_t*)huge_tileset_project, strlen(huge_tileset_project)},
+        "larger than 65535x65535"
     ));
 
     CHECK(fails_with(
