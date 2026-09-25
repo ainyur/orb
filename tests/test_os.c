@@ -1,6 +1,7 @@
 #include "test.h"
 #define ORB_OS_HEADLESS 1
 #include "../src/orb.c"
+#include "../src/os/evdev_pad.h"
 #include "../src/os/gdi_keys.h"
 #include "../src/os/x11_keys.h"
 
@@ -34,6 +35,30 @@ int main(int argc, char** argv) {
     CHECK_EQ(gdi_keys[0x1c], 40);       // return
     CHECK_EQ(gdi_keys[0x48], 96);       // keypad 8, the unextended code
     CHECK_EQ(gdi_keys[0], 0);
+
+    // the pad table: the kernel's positions, with xpad's X and Y swapped on an Xbox pad
+    CHECK_EQ(evdev_pad_button(0x130, ORB_PAD_MAKE_XBOX), ORB_PAD_SOUTH);
+    CHECK_EQ(evdev_pad_button(0x131, ORB_PAD_MAKE_OTHER), ORB_PAD_EAST);
+    CHECK_EQ(evdev_pad_button(0x133, ORB_PAD_MAKE_XBOX), ORB_PAD_WEST);
+    CHECK_EQ(evdev_pad_button(0x134, ORB_PAD_MAKE_XBOX), ORB_PAD_NORTH);
+    CHECK_EQ(evdev_pad_button(0x133, ORB_PAD_MAKE_PLAYSTATION), ORB_PAD_NORTH);
+    CHECK_EQ(evdev_pad_button(0x134, ORB_PAD_MAKE_PLAYSTATION), ORB_PAD_WEST);
+    CHECK_EQ(evdev_pad_button(0x13a, ORB_PAD_MAKE_XBOX), ORB_PAD_BACK);
+    CHECK_EQ(evdev_pad_button(0x220, ORB_PAD_MAKE_OTHER), ORB_PAD_UP);
+    CHECK_EQ(evdev_pad_button(0x223, ORB_PAD_MAKE_OTHER), ORB_PAD_RIGHT);
+    CHECK_EQ(evdev_pad_button(0x132, ORB_PAD_MAKE_XBOX), ORB_PAD_NONE);
+    CHECK_EQ(evdev_pad_button(0x138, ORB_PAD_MAKE_XBOX), ORB_PAD_NONE); // a trigger's button
+
+    char xbox_bitmap[] = "7cdb000000000000 0 0 0 0\n";
+    char tablet_bitmap[] = "3f0000000003ff 0 0 0 0\n";
+    char keyboard_bitmap[] = "1000000000007 ff9f207ac14057ff febeffdfffefffff fffffffffffffffe\n";
+    char system_control_bitmap[] =
+        "c000 0 0 40000001000000 1200000000 0 100000800000000 40000010cc00 10168000000000 0\n";
+
+    CHECK(evdev_is_pad_bitmap(xbox_bitmap));
+    CHECK(!evdev_is_pad_bitmap(tablet_bitmap));
+    CHECK(!evdev_is_pad_bitmap(keyboard_bitmap));
+    CHECK(!evdev_is_pad_bitmap(system_control_bitmap));
 
     // files
     uint8_t bytes[] = {1, 2, 3};

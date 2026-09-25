@@ -7,6 +7,7 @@
 #include <string.h>
 
 constexpr uint64_t ORB_AUDIO_TICK_NS = 20000000;
+constexpr uint64_t ORB_PAD_SCAN_NS = ORB_NS_PER_SECOND;
 constexpr int ORB_PATH_MAX = 600;
 
 #ifdef _WIN32

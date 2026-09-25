@@ -4,7 +4,7 @@ ifeq ($(OS),Windows_NT)
 CC       := gcc
 CFLAGS   := -std=c23 -D_WIN32_WINNT=0x0A00 -Wall -Wextra
 BACKEND  := -DORB_OS_GDI
-LIBS     := -lgdi32 -lole32 -lshell32
+LIBS     := -lgdi32 -lole32 -lshell32 -lxinput1_4
 TESTLIBS := -lshell32
 ORB      := bin/orb.exe
 LIB      := dll
@@ -27,7 +27,7 @@ endif
 
 $(WIN): private CFLAGS   := -std=c23 -D_WIN32_WINNT=0x0A00 -Wall -Wextra
 $(WIN): private BACKEND  := -DORB_OS_GDI
-$(WIN): private LIBS     := -lgdi32 -lole32 -lshell32
+$(WIN): private LIBS     := -lgdi32 -lole32 -lshell32 -lxinput1_4
 $(WIN): private TESTLIBS := -lshell32
 $(WIN): private LIB      := dll
 $(WIN): private OBJ      := obj

@@ -6,6 +6,7 @@
 #include "x11_keys.h"
 
 #include "alsa.c"
+#include "evdev.c"
 
 #include <X11/XKBlib.h>
 #include <X11/Xlib.h>
@@ -23,6 +24,7 @@ static Atom x11_wm_delete;
 static bool x11_down[ORB_KEY_COUNT];
 static XComposeStatus x11_compose;
 static bool x11_resized;
+static bool x11_focused;
 
 bool orb_os_open(const orb_os_config* config) {
     x11_display = XOpenDisplay(nullptr);
@@ -68,6 +70,7 @@ bool orb_os_open(const orb_os_config* config) {
         return false;
     }
 
+    x11_focused = true;
     alsa_open();
 
     return true;
@@ -102,14 +105,18 @@ bool orb_os_pump(orb_input* out) {
         } else if (event.type == ConfigureNotify) {
             x11_win = (orb_size) {event.xconfigure.width, event.xconfigure.height};
             x11_resized = true;
+        } else if (event.type == FocusIn) {
+            x11_focused = true;
         } else if (event.type == FocusOut) {
             memset(x11_down, 0, sizeof x11_down);
+            x11_focused = false;
         } else if (event.type == ClientMessage && (Atom)event.xclient.data.l[0] == x11_wm_delete) {
             return false;
         }
     }
 
     memcpy(out->keys, x11_down, sizeof x11_down);
+    evdev_pump(&out->pad, x11_focused);
 
     return true;
 }
@@ -173,6 +180,7 @@ int orb_os_key_position(uint32_t codepoint) {
 
 void orb_os_close(void) {
     alsa_close();
+    evdev_close();
     XDestroyImage(x11_image); // also frees x11_pixels
     XDestroyWindow(x11_display, x11_window);
     XCloseDisplay(x11_display);

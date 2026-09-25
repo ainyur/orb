@@ -6,6 +6,7 @@
 #include "win32.c"
 
 #include "wasapi.c"
+#include "xinput.c"
 
 #include <string.h>
 
@@ -14,6 +15,7 @@ static ATOM gdi_class;
 static orb_size gdi_fb, gdi_win;
 static bool gdi_down[ORB_KEY_COUNT];
 static bool gdi_closed;
+static bool gdi_focused;
 static const uint32_t* gdi_last_frame; // the frame most recently presented, for WM_PAINT
 static char gdi_text[ORB_INPUT_TEXT];
 static int gdi_text_len;
@@ -93,8 +95,12 @@ static LRESULT CALLBACK gdi_proc(HWND window, UINT msg, WPARAM wparam, LPARAM lp
 
         return 0;
     }
+    case WM_SETFOCUS:
+        gdi_focused = true;
+        return 0;
     case WM_KILLFOCUS:
         memset(gdi_down, 0, sizeof gdi_down);
+        gdi_focused = false;
         return 0;
     case WM_SYSCOMMAND:
         // A lone Alt or F10 would otherwise put a window with no menu into the menu loop.
@@ -165,6 +171,7 @@ bool orb_os_open(const orb_os_config* config) {
         return false;
     }
 
+    gdi_focused = true;
     ShowWindow(gdi_window, SW_SHOW);
 
     wasapi_open();
@@ -179,6 +186,7 @@ bool orb_os_pump(orb_input* out) {
     }
 
     memcpy(out->keys, gdi_down, sizeof gdi_down);
+    xinput_pump(&out->pad, gdi_focused);
     memcpy(out->text, gdi_text, sizeof gdi_text);
     gdi_text[0] = 0;
     gdi_text_len = 0;

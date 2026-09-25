@@ -27,6 +27,7 @@ static void init(void* state, const orb_api* orb) {
     self->speed = 1;
 
     orb->var_int("early", &self->ticks, nullptr);
+    orb->button_bind(ORB_BTN_SELECT, orb->key_find("m"));
 }
 
 static void teleport(void* state, const orb_api* orb, int argc, const char* const* argv) {

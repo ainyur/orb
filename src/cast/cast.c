@@ -1,6 +1,5 @@
 #include "cast.h"
 #include "../core/asset.h"
-#include "../core/input.h"
 #include "../graphics/sprite.h"
 #include "../os/os.h"
 #include "aseprite.h"
@@ -620,18 +619,6 @@ static bool cast_body(cast* context) {
         !world_cast(context, &world, first_tileset_sheet, &assets) || !cast_audio(context, &assets))
         return false;
 
-    orb_binding_desc bindings[ORB_BTN_COUNT] = {};
-
-    for (int i = 0; i < ORB_BTN_COUNT; i++)
-        snprintf(
-            bindings[i].symbol, sizeof bindings[i].symbol, "%s",
-            context->manifest->buttons[i][0] ? context->manifest->buttons[i]
-                                             : orb_button_defaults[i]
-        );
-
-    assets.bindings = bindings;
-    assets.binding_count = ORB_BTN_COUNT;
-
     context->result->file = orb_file_write(context->out, &assets);
     return true;
 }
@@ -714,36 +701,6 @@ static bool cast_song_map(
     return true;
 }
 
-// "buttons": {"select": "m", "a": "space"}: a key symbol per button it names.
-static bool cast_button_map(const orb_json* root, orb_manifest* manifest, orb_error* err) {
-    const orb_json* map = orb_json_get(root, "buttons");
-
-    if (!map) return true;
-
-    if (map->kind != ORB_JSON_OBJECT)
-        return orb_error_set(err, "orb.json: \"buttons\" must be an object of button to key");
-
-    for (const orb_json* node = map->first; node; node = node->next) {
-        int button = -1;
-
-        for (int i = 0; i < ORB_BTN_COUNT; i++)
-            if (strcmp(node->key, orb_button_names[i]) == 0) button = i;
-
-        if (button < 0)
-            return orb_error_set(err, "orb.json: \"buttons\" names no button \"%s\"", node->key);
-        if (manifest->buttons[button][0])
-            return orb_error_set(err, "orb.json: \"buttons\" names \"%s\" twice", node->key);
-        if (node->kind != ORB_JSON_STRING || !orb_input_symbol_valid(node->str))
-            return orb_error_set(
-                err, "orb.json: \"buttons.%s\" must be a key name or one character", node->key
-            );
-
-        snprintf(manifest->buttons[button], sizeof manifest->buttons[button], "%s", node->str);
-    }
-
-    return true;
-}
-
 bool orb_manifest_load(
     orb_arena* arena,
     const char* game_dir,
@@ -780,5 +737,5 @@ bool orb_manifest_load(
            cast_string(root, "sfx", "sfx", &manifest->sfx, err) &&
            cast_string(root, "music", "music", &manifest->music, err) &&
            cast_string(root, "world", "levels/world.ldtk", &manifest->world, err) &&
-           cast_song_map(arena, root, manifest, err) && cast_button_map(root, manifest, err);
+           cast_song_map(arena, root, manifest, err);
 }

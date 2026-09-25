@@ -20,8 +20,7 @@ typedef struct orb_manifest_song {
 // orb.json. id, name, and size are required; the rest default to the layout
 // art/palette.aseprite, art/, fonts/, sfx/, music/, and levels/world.ldtk. The
 // directories are walked recursively at cast, so only songs list files, one stem
-// to tempo each, since a rendered file carries none. buttons maps a button name
-// to a key symbol.
+// to tempo each, since a rendered file carries none.
 typedef struct orb_manifest {
     const char* id;
     const char* name;
@@ -33,7 +32,6 @@ typedef struct orb_manifest {
     const char* world;
     const orb_manifest_song* songs;
     int song_count;
-    orb_key_symbol buttons[ORB_BTN_COUNT]; // empty where the manifest named none
     orb_size size;
 } orb_manifest;
 

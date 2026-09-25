@@ -56,7 +56,6 @@ static const file_row file_rows[] = {
     FILE_ROW(FONTS, orb_font_desc, fonts, font_count, ORB_MAX_FONTS),
     FILE_ROW(GLYPHS, orb_glyph_desc, glyphs, glyph_count, 0),
     FILE_IDS(FONT_IDS, font_ids, font_count),
-    FILE_ROW(BINDINGS, orb_binding_desc, bindings, binding_count, ORB_BTN_COUNT),
     FILE_ROW(TYPES, orb_type_desc, types, type_count, ORB_MAX_TYPES),
     FILE_ROW(PLACEMENTS, orb_placement_desc, placements, placement_count, ORB_MAX_PLACEMENTS),
     FILE_ROW(FIELDS, orb_field_desc, fields, field_count, ORB_MAX_FIELDS),
@@ -234,19 +233,6 @@ static bool file_check_fonts(const orb_assets* out, orb_error* err) {
     return true;
 }
 
-static bool file_check_bindings(const orb_assets* out, orb_error* err) {
-    if (out->binding_count != 0 && out->binding_count != ORB_BTN_COUNT)
-        return orb_error_set(
-            err, "orb file: %u bindings, 0 or %u are valid", out->binding_count, ORB_BTN_COUNT
-        );
-
-    for (uint32_t i = 0; i < out->binding_count; i++)
-        if (!memchr(out->bindings[i].symbol, 0, sizeof out->bindings[i].symbol))
-            return orb_error_set(err, "orb file: binding %u has no terminator", i);
-
-    return true;
-}
-
 static bool file_check_entities(const orb_assets* out, orb_error* err) {
     for (uint32_t i = 0; i < out->type_count; i++) {
         const orb_type_desc* type = &out->types[i];
@@ -370,6 +356,5 @@ bool orb_file_load(orb_span file, orb_assets* out, orb_error* err) {
     }
 
     return file_check_audio(out, err) && file_check_levels(out, err) &&
-           file_check_fonts(out, err) && file_check_bindings(out, err) &&
-           file_check_entities(out, err);
+           file_check_fonts(out, err) && file_check_entities(out, err);
 }

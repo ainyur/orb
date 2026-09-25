@@ -44,6 +44,10 @@ static void init(void* state, const orb_api* orb) {
     demo->camera.lerp = 0.85f;
     demo->hint = true;
     orb->song_play(orb->song_find("song"), true);
+
+    int music_key = orb->key_find("m");
+
+    if (music_key != ORB_KEY_NONE) orb->button_bind(ORB_BTN_SELECT, music_key);
 }
 
 static float clampf(float value, float low, float high) {
@@ -69,8 +73,11 @@ static void player_update(void* state, const orb_api* orb, orb_entity_id id) {
     game_state* demo = state;
     orb_body* body = orb_body_of(orb, id);
     orb_sprite_component* sprite = orb_sprite_component_of(orb, id);
-    int dx = orb->button_down(ORB_BTN_RIGHT) - orb->button_down(ORB_BTN_LEFT);
-    int dy = orb->button_down(ORB_BTN_DOWN) - orb->button_down(ORB_BTN_UP);
+    orb_vec2f stick = orb->pad_stick(ORB_PAD_LEFT_STICK);
+    float dx =
+        clampf(stick.x + orb->button_down(ORB_BTN_RIGHT) - orb->button_down(ORB_BTN_LEFT), -1, 1);
+    float dy =
+        clampf(stick.y + orb->button_down(ORB_BTN_DOWN) - orb->button_down(ORB_BTN_UP), -1, 1);
     bool wandering = demo->idle >= IDLE_TICKS;
     float keep = wandering ? 1.0f : BOUNCE;
     float hit =
@@ -98,8 +105,8 @@ static void player_update(void* state, const orb_api* orb, orb_entity_id id) {
             body->velocity.y = IDLE_SPEED_Y;
         }
     } else if (dx || dy) {
-        body->velocity.x = clampf(body->velocity.x + ACCEL * (float)dx, -MAX_SPEED, MAX_SPEED);
-        body->velocity.y = clampf(body->velocity.y + ACCEL * (float)dy, -MAX_SPEED, MAX_SPEED);
+        body->velocity.x = clampf(body->velocity.x + ACCEL * dx, -MAX_SPEED, MAX_SPEED);
+        body->velocity.y = clampf(body->velocity.y + ACCEL * dy, -MAX_SPEED, MAX_SPEED);
     } else {
         body->velocity.x *= FRICTION;
         body->velocity.y *= FRICTION;

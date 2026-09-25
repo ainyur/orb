@@ -2,6 +2,5 @@
   "id": "fixture",
   "name": "Fixture",
   "size": [64, 32],
-  "songs": {"loop": 120},
-  "buttons": {"select": "m"}
+  "songs": {"loop": 120}
 }

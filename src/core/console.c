@@ -116,7 +116,7 @@ static void console_bind_add(int argc, const char* const* argv) {
         return;
     }
 
-    int key = orb_input_symbol_position(argv[1]);
+    int key = orb_key_find(argv[1]);
 
     if (key == ORB_KEY_NONE) {
         orb_log("no key \"%s\"", argv[1]);
@@ -148,7 +148,7 @@ static void console_bind_add(int argc, const char* const* argv) {
 }
 
 static void console_bind_remove(int argc, const char* const* argv) {
-    console_bind* bind = argc > 1 ? console_bind_find(orb_input_symbol_position(argv[1])) : nullptr;
+    console_bind* bind = argc > 1 ? console_bind_find(orb_key_find(argv[1])) : nullptr;
 
     if (!bind) return;
 

@@ -173,7 +173,7 @@ bool orb_boot(
 
     if (!orb_os_open(&os_config)) return orb_error_set(err, "cannot open a window");
 
-    orb_input_resolve(orb_api_assets());
+    orb_input_boot();
     host_game->init(host_state.base, orb_api_table());
     host_reload();
     host_previous = orb_os_ticks();
@@ -299,7 +299,6 @@ bool orb_recast(orb_error* err) {
     orb_api_set_assets(&assets);
     orb_entity_revalidate(&previous);
     orb_world_revalidate();
-    orb_input_resolve(orb_api_assets());
     host_reload();
     return true;
 }

@@ -49,21 +49,29 @@ int main(void) {
     CHECK_EQ(pixel(4 * 8, 2 * 8 + 7), YELLOW);
     CHECK_EQ(pixel(4 * 8, 2 * 8), WHITE);
 
-    // the manifest binds select to M, resolved through the headless US layout
+    // the fixture's init binds select to key_find("m"), the M of the headless US layout
     input.keys[ORB_KEY_M] = true;
     orb_os_headless_set_input(&input);
     CHECK(host_tick());
     CHECK_EQ(orb_api_table()->key_pressed_any(), ORB_KEY_M);
     CHECK(orb_api_table()->key_down(ORB_KEY_M));
-    CHECK(
-        strcmp(orb_api_table()->key_name(orb_api_table()->button_source(ORB_BTN_SELECT)), "m") == 0
-    );
+    CHECK(strcmp(orb_api_table()->key_name(orb_api_table()->button_key(ORB_BTN_SELECT)), "m") == 0);
     CHECK(orb_api_table()->button_down(ORB_BTN_SELECT));
     input.keys[ORB_KEY_M] = false;
     input.keys[ORB_KEY_TAB] = true;
     orb_os_headless_set_input(&input);
     CHECK(host_tick());
     CHECK(!orb_api_table()->button_down(ORB_BTN_SELECT));
+
+    // a pad's south button drives A through a host tick
+    input = (orb_input) {0};
+    input.pad.make = ORB_PAD_MAKE_XBOX;
+    input.pad.buttons[ORB_PAD_SOUTH - ORB_PAD_NONE] = true;
+    orb_os_headless_set_input(&input);
+    CHECK(host_tick());
+    CHECK(orb_api_table()->button_down(ORB_BTN_A));
+    CHECK(orb_api_table()->pad_pressed(ORB_PAD_SOUTH));
+    CHECK_EQ(orb_api_table()->pad_make(), ORB_PAD_MAKE_XBOX);
     input = (orb_input) {0};
     orb_os_headless_set_input(&input);
 
@@ -151,8 +159,11 @@ int main(void) {
     CHECK_EQ(pixel(body_x + 15, body_y), BACKGROUND);
 
     api->button_bind(ORB_BTN_SELECT, ORB_KEY_TAB);
+    api->button_bind(ORB_BTN_SELECT, ORB_PAD_NORTH);
     CHECK(orb_recast(&err));
-    CHECK_EQ(api->button_source(ORB_BTN_SELECT), ORB_KEY_M); // the manifest's, again
+    CHECK_EQ(api->button_key(ORB_BTN_SELECT), ORB_KEY_TAB); // a recast keeps bindings
+    CHECK_EQ(api->button_pad(ORB_BTN_SELECT), ORB_PAD_NORTH);
+    CHECK_EQ(api->key_find("m"), ORB_KEY_M);
 
     host_render();
 

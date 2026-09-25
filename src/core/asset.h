@@ -45,8 +45,6 @@ struct orb_assets {
     const orb_glyph_desc* glyphs;
     uint32_t glyph_count;
     const uint64_t* font_ids;
-    const orb_binding_desc* bindings;
-    uint32_t binding_count; // 0 or ORB_BTN_COUNT
     const orb_type_desc* types;
     uint32_t type_count;
     const orb_placement_desc* placements;

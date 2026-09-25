@@ -215,19 +215,57 @@ typedef enum orb_key {
     ORB_KEY_COUNT = 256
 } orb_key;
 
-constexpr int ORB_INPUT_TEXT = 32;
+// Pad buttons by position on an Xbox pad. The values continue above the keys, so a
+// binding's source is a key or a pad button by value.
+typedef enum orb_pad {
+    ORB_PAD_NONE = 512,
+    ORB_PAD_SOUTH, // Xbox A
+    ORB_PAD_EAST,  // Xbox B
+    ORB_PAD_WEST,  // Xbox X
+    ORB_PAD_NORTH, // Xbox Y
+    ORB_PAD_LEFT_SHOULDER,
+    ORB_PAD_RIGHT_SHOULDER,
+    ORB_PAD_LEFT_TRIGGER, // down from half its travel
+    ORB_PAD_RIGHT_TRIGGER,
+    ORB_PAD_BACK,
+    ORB_PAD_START,
+    ORB_PAD_LEFT_STICK, // the stick's click
+    ORB_PAD_RIGHT_STICK,
+    ORB_PAD_UP, // the d-pad
+    ORB_PAD_DOWN,
+    ORB_PAD_LEFT,
+    ORB_PAD_RIGHT,
+    ORB_PAD_END
+} orb_pad;
 
-// The keyboard as the OS layer reports it each tick.
+// The family whose labels a pad carries.
+typedef enum orb_pad_make : uint8_t {
+    ORB_PAD_MAKE_NONE, // no pad
+    ORB_PAD_MAKE_OTHER,
+    ORB_PAD_MAKE_XBOX,
+    ORB_PAD_MAKE_PLAYSTATION,
+    ORB_PAD_MAKE_NINTENDO,
+} orb_pad_make;
+
+constexpr int ORB_INPUT_TEXT = 32;
+constexpr int ORB_PAD_BUTTONS = ORB_PAD_END - ORB_PAD_NONE; // index 0 unused
+
+// The pad as the OS layer reports it: raw axes, and every button but the triggers.
+typedef struct orb_pad_input {
+    orb_pad_make make;
+    bool buttons[ORB_PAD_BUTTONS]; // by pad - ORB_PAD_NONE
+    struct {
+        int16_t x, y;
+    } left_stick, right_stick;           // -32767..32767 each, y down
+    int16_t left_trigger, right_trigger; // 0..32767
+} orb_pad_input;
+
+// The keyboard and the pad as the OS layer reports them each tick.
 typedef struct orb_input {
     bool keys[ORB_KEY_COUNT];  // by position
     char text[ORB_INPUT_TEXT]; // UTF-8 the layout produced this tick, NUL-terminated
+    orb_pad_input pad;
 } orb_input;
-
-// A button's source: a key position, or a pad button once the gamepad lands.
-constexpr int ORB_SOURCE_NONE = 0;
-constexpr int ORB_SOURCE_PAD = 512;
-
-typedef char orb_key_symbol[24]; // a key's name or one UTF-8 codepoint, NUL-terminated
 
 typedef enum orb_level_dir : uint8_t {
     ORB_LEVEL_N,
@@ -414,14 +452,19 @@ constexpr int ORB_AUDIO_RATE = 48000;
 // draw nothing and do not advance. text_measure is the string's pixel width and the font's
 // line height, for centring.
 //
-// Input. A key is a physical position (ORB_KEY_*, HID usage IDs) and a button is a
-// binding to one: the manifest's buttons map sets it, button_bind changes it in memory,
-// button_source reads it. key_down, key_pressed and key_released read any position, exact
-// per tick; key_pressed_any is the lowest position that went down this tick, ORB_KEY_NONE
-// when none did, for capturing a binding. key_name is a named key's name ("tab",
-// "page_up") or the layout's symbol for a printable one ("m", ","), "" for a position with
-// neither; the string is valid until the next call. A recast resets bindings to the
-// manifest's, so re-apply your own in reload.
+// Input. A key is a physical position (ORB_KEY_*, HID usage IDs) and a pad button a
+// position on an Xbox pad (ORB_PAD_SOUTH is A). A button is bound to one key and one pad
+// button and is down while either is. Bindings start at orb's defaults and change only
+// through button_bind, which sets the slot the source's kind belongs to (ORB_KEY_NONE or
+// ORB_PAD_NONE empties it); button_key and button_pad read them, and a game that saves
+// bindings calls button_bind after loading. key_find("m") is the position of the key
+// labelled m on the player's layout. key_* and pad_* down, pressed and released read one
+// source, exact per tick; key_pressed_any and pad_pressed_any are the lowest source that
+// went down this tick, for capturing a binding. The triggers also read as pad buttons past
+// half; the sticks are analog only. pad_stick is -1..1 each way with y down and a dead
+// zone, pad_trigger 0..1, pad_make ORB_PAD_MAKE_NONE with no pad, else the family whose
+// labels to draw. key_name is a named key's name ("tab", "page_up") or the layout's symbol
+// ("m", ","), "" for neither; the string is valid until the next call.
 //
 // Entities. type_find("crate") is the LDtk entity definition Crate; type_bind attaches init
 // and update functions to it and belongs in reload, since the table is cleared before every
@@ -555,12 +598,21 @@ typedef struct orb_api {
     bool (*button_down)(orb_button button);
     bool (*button_pressed)(orb_button button);
     bool (*button_released)(orb_button button);
-    int (*button_source)(orb_button button);
+    int (*button_key)(orb_button button);
+    orb_pad (*button_pad)(orb_button button);
     bool (*key_down)(int key);
     bool (*key_pressed)(int key);
     bool (*key_released)(int key);
     int (*key_pressed_any)(void);
+    int (*key_find)(const char* symbol);
     const char* (*key_name)(int key);
+    bool (*pad_down)(orb_pad pad);
+    bool (*pad_pressed)(orb_pad pad);
+    bool (*pad_released)(orb_pad pad);
+    orb_pad (*pad_pressed_any)(void);
+    orb_vec2f (*pad_stick)(orb_pad stick);
+    float (*pad_trigger)(orb_pad trigger);
+    orb_pad_make (*pad_make)(void);
 
     [[gnu::format(gnu_printf, 1, 2)]] void (*log)(const char* fmt, ...);
 

@@ -2,8 +2,5 @@
   "id": "demo",
   "name": "Demo",
   "size": [320, 180],
-  "songs": {"song": 120},
-  "buttons": {
-      "select": "m"
-  }
+  "songs": {"song": 120}
 }

@@ -35,7 +35,6 @@ typedef enum orb_section_kind {
     ORB_SEC_FONTS,
     ORB_SEC_GLYPHS,
     ORB_SEC_FONT_IDS,
-    ORB_SEC_BINDINGS,
     ORB_SEC_TYPES,
     ORB_SEC_PLACEMENTS,
     ORB_SEC_FIELDS,
@@ -191,12 +190,6 @@ typedef struct orb_glyph_desc {
 } orb_glyph_desc; // 8 bytes
 
 static_assert(sizeof(orb_glyph_desc) == 8, "orb_glyph_desc layout");
-
-typedef struct orb_binding_desc {
-    orb_key_symbol symbol; // UTF-8, NUL-terminated
-} orb_binding_desc;        // 24 bytes
-
-static_assert(sizeof(orb_binding_desc) == 24, "orb_binding_desc layout");
 
 typedef struct orb_type_desc {
     uint16_t width, height; // pixels
