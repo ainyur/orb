@@ -273,6 +273,7 @@ static const orb_api api_table = {
     .pad_released = orb_pad_released,
     .pad_pressed_any = orb_pad_pressed_any,
     .pad_stick = orb_pad_stick,
+    .pad_stick_dpad = orb_pad_stick_dpad,
     .pad_trigger = orb_pad_trigger,
     .pad_make = orb_input_pad_make,
     .log = orb_log,

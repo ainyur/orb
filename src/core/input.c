@@ -5,11 +5,13 @@
 #include "log.h"
 #include "macros.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 constexpr int INPUT_AXIS_MAX = 32767;
-constexpr int INPUT_HALF = 16384; // a trigger this far down reads as a button
+constexpr int INPUT_HALF = 16384; // a trigger this far down, or a stick this far out, is a button
 constexpr int INPUT_STICK_DEAD = 7849;
+constexpr int INPUT_STICK_OFF = 11468; // a stick holding the d-pad lets go under this
 constexpr int INPUT_TRIGGER_DEAD = 3855;
 
 static const char* const input_button_names[ORB_BTN_COUNT] = {"up", "down", "left",  "right",
@@ -89,6 +91,7 @@ static const char* const input_names[ORB_KEY_COUNT] = {
 static orb_input input_now, input_before;
 static int input_keys[ORB_BTN_COUNT]; // both slots set by orb_input_boot before any query
 static orb_pad input_pads[ORB_BTN_COUNT];
+static bool input_stick_dpad, input_stick_held;
 static char input_name[8]; // orb_key_name's buffer for a printable key's UTF-8
 
 static bool input_key_ok(int key) {
@@ -130,6 +133,33 @@ static uint32_t input_sqrt(uint32_t n) {
     }
 
     return root;
+}
+
+static int input_length(int x, int y) {
+    return (int)input_sqrt((uint32_t)(x * x) + (uint32_t)(y * y));
+}
+
+// Whether a stick points within 67.5° of an axis, past which it leaves that axis's three
+// sectors; 985/2378 is tan 22.5°.
+static bool input_toward(int along, int across) {
+    return along * 2378 > abs(across) * 985;
+}
+
+// The left stick holds the d-pad directions of its sector from half its travel until it
+// falls under INPUT_STICK_OFF.
+static void input_stick_dpad_step(orb_pad_input* pad) {
+    int x = pad->left_stick.x;
+    int y = pad->left_stick.y;
+    int threshold = input_stick_held ? INPUT_STICK_OFF : INPUT_HALF;
+
+    input_stick_held = input_stick_dpad && input_length(x, y) >= threshold;
+
+    if (!input_stick_held) return;
+
+    pad->buttons[ORB_PAD_UP - ORB_PAD_NONE] |= input_toward(-y, x);
+    pad->buttons[ORB_PAD_DOWN - ORB_PAD_NONE] |= input_toward(y, x);
+    pad->buttons[ORB_PAD_LEFT - ORB_PAD_NONE] |= input_toward(-x, y);
+    pad->buttons[ORB_PAD_RIGHT - ORB_PAD_NONE] |= input_toward(x, y);
 }
 
 // A symbol is a named key's name, else one codepoint above space; returns the name's
@@ -213,7 +243,7 @@ orb_vec2f orb_pad_stick(orb_pad stick) {
     const orb_pad_input* pad = &input_now.pad;
     int x = stick == ORB_PAD_LEFT_STICK ? pad->left_stick.x : pad->right_stick.x;
     int y = stick == ORB_PAD_LEFT_STICK ? pad->left_stick.y : pad->right_stick.y;
-    int length = (int)input_sqrt((uint32_t)(x * x) + (uint32_t)(y * y));
+    int length = input_length(x, y);
 
     if (length <= INPUT_STICK_DEAD) return (orb_vec2f) {};
 
@@ -221,6 +251,10 @@ orb_vec2f orb_pad_stick(orb_pad stick) {
                   (INPUT_AXIS_MAX - INPUT_STICK_DEAD) / (float)length;
 
     return (orb_vec2f) {(float)x * scale, (float)y * scale};
+}
+
+void orb_pad_stick_dpad(bool on) {
+    input_stick_dpad = on;
 }
 
 float orb_pad_trigger(orb_pad trigger) {
@@ -269,6 +303,8 @@ orb_pad_make orb_input_pad_make(void) {
 void orb_input_boot(void) {
     input_now = (orb_input) {};
     input_before = (orb_input) {};
+    input_stick_dpad = false;
+    input_stick_held = false;
 
     for (int i = 0; i < ORB_BTN_COUNT; i++) {
         input_keys[i] = orb_key_find(input_key_defaults[i]);
@@ -288,4 +324,5 @@ void orb_input_step(const orb_input* next) {
     input_now = *next;
     pad->buttons[ORB_PAD_LEFT_TRIGGER - ORB_PAD_NONE] = pad->left_trigger >= INPUT_HALF;
     pad->buttons[ORB_PAD_RIGHT_TRIGGER - ORB_PAD_NONE] = pad->right_trigger >= INPUT_HALF;
+    input_stick_dpad_step(pad);
 }

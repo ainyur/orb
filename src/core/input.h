@@ -14,6 +14,7 @@ bool orb_pad_pressed(orb_pad pad);
 bool orb_pad_released(orb_pad pad);
 orb_pad orb_pad_pressed_any(void);
 orb_vec2f orb_pad_stick(orb_pad stick);
+void orb_pad_stick_dpad(bool on);
 float orb_pad_trigger(orb_pad trigger);
 
 void orb_button_bind(orb_button button, int source);

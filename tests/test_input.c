@@ -10,6 +10,27 @@ static bool* pad_button(orb_input* input, orb_pad pad) {
     return &input->pad.buttons[pad - ORB_PAD_NONE];
 }
 
+enum { UP = 1, DOWN = 2, LEFT = 4, RIGHT = 8 };
+
+static int dpad_down(void) {
+    int down = 0;
+
+    for (int pad = ORB_PAD_UP; pad <= ORB_PAD_RIGHT; pad++)
+        if (orb_pad_down(pad)) down |= 1 << (pad - ORB_PAD_UP);
+
+    return down;
+}
+
+// Steps with only the left stick at x, y.
+static int stick_step(int x, int y) {
+    orb_input input = {0};
+
+    input.pad.left_stick.x = (int16_t)x;
+    input.pad.left_stick.y = (int16_t)y;
+    orb_input_step(&input);
+    return dpad_down();
+}
+
 int main(void) {
     // the default binding, through the headless layout
     orb_input_boot();
@@ -146,6 +167,95 @@ int main(void) {
     CHECK(!orb_button_down(ORB_BTN_UP));
     CHECK_EQ(orb_pad_pressed_any(), ORB_PAD_NONE);
 
+    // the left stick as the d-pad: pressed from half its length, with the usual edges
+    orb_pad_stick_dpad(true);
+    CHECK_EQ(stick_step(16383, 0), 0);
+    CHECK_EQ(stick_step(16384, 0), RIGHT);
+    CHECK(orb_pad_pressed(ORB_PAD_RIGHT));
+    CHECK(orb_button_pressed(ORB_BTN_RIGHT));
+    CHECK_EQ(orb_pad_pressed_any(), ORB_PAD_RIGHT);
+    CHECK_EQ(stick_step(16384, 0), RIGHT);
+    CHECK(!orb_pad_pressed(ORB_PAD_RIGHT));
+    CHECK_EQ(stick_step(0, 0), 0);
+    CHECK(orb_pad_released(ORB_PAD_RIGHT));
+    CHECK(orb_button_released(ORB_BTN_RIGHT));
+    CHECK_EQ(stick_step(11585, 11585), 0);            // length 16383
+    CHECK_EQ(stick_step(11586, 11586), DOWN | RIGHT); // length 16385
+    CHECK_EQ(stick_step(0, 0), 0);
+
+    // hysteresis: held down to 11468, following the sector, and pressed again only from half
+    CHECK_EQ(stick_step(0, -16384), UP);
+    CHECK_EQ(stick_step(0, -11468), UP);
+    CHECK(!orb_pad_pressed(ORB_PAD_UP));
+    CHECK_EQ(stick_step(-12000, 0), LEFT);
+    CHECK(orb_pad_released(ORB_PAD_UP));
+    CHECK(orb_pad_pressed(ORB_PAD_LEFT));
+    CHECK_EQ(stick_step(0, -16383), UP);
+    CHECK_EQ(stick_step(0, -11467), 0);
+    CHECK(orb_pad_released(ORB_PAD_UP));
+    CHECK_EQ(stick_step(0, -16383), 0);
+    CHECK_EQ(stick_step(0, -16384), UP);
+
+    // eight sectors of 45°: each direction spans three, so a diagonal holds two
+    CHECK_EQ(stick_step(32767, 0), RIGHT);
+    CHECK_EQ(stick_step(23170, 23170), DOWN | RIGHT);
+    CHECK_EQ(stick_step(0, 32767), DOWN);
+    CHECK_EQ(stick_step(-23170, 23170), DOWN | LEFT);
+    CHECK_EQ(stick_step(-32767, 0), LEFT);
+    CHECK_EQ(stick_step(-23170, -23170), UP | LEFT);
+    CHECK_EQ(stick_step(0, -32767), UP);
+    CHECK_EQ(stick_step(23170, -23170), UP | RIGHT);
+    CHECK_EQ(stick_step(-32768, -32768), UP | LEFT); // past the backends' range
+
+    // the boundaries at 22.5° and 67.5°: 24000 × tan 22.5° is 9941.1
+    CHECK_EQ(stick_step(24000, 9941), RIGHT);
+    CHECK_EQ(stick_step(24000, 9942), DOWN | RIGHT);
+    CHECK_EQ(stick_step(9942, 24000), DOWN | RIGHT);
+    CHECK_EQ(stick_step(9941, 24000), DOWN);
+    CHECK_EQ(stick_step(-24000, -9941), LEFT);
+    CHECK_EQ(stick_step(-24000, -9942), UP | LEFT);
+    CHECK_EQ(stick_step(-9942, -24000), UP | LEFT);
+    CHECK_EQ(stick_step(-9941, -24000), UP);
+
+    // the stick and the d-pad make one level per direction: no edge until both let go
+    input = (orb_input) {0};
+    input.pad.left_stick.x = 32767;
+    orb_input_step(&input);
+    *pad_button(&input, ORB_PAD_RIGHT) = true;
+    orb_input_step(&input);
+    CHECK(orb_pad_down(ORB_PAD_RIGHT));
+    CHECK(!orb_pad_pressed(ORB_PAD_RIGHT));
+    CHECK(!orb_button_pressed(ORB_BTN_RIGHT));
+    input.pad.left_stick.x = 0;
+    orb_input_step(&input);
+    CHECK(orb_pad_down(ORB_PAD_RIGHT));
+    CHECK(!orb_pad_released(ORB_PAD_RIGHT));
+    CHECK(!orb_button_released(ORB_BTN_RIGHT));
+    input.pad.left_stick.y = -32767;
+    orb_input_step(&input);
+    CHECK(orb_pad_down(ORB_PAD_RIGHT));
+    CHECK(orb_pad_pressed(ORB_PAD_UP));
+    *pad_button(&input, ORB_PAD_RIGHT) = false;
+    orb_input_step(&input);
+    CHECK(orb_pad_released(ORB_PAD_RIGHT));
+    CHECK(orb_pad_down(ORB_PAD_UP));
+
+    for (int pad = ORB_PAD_UP; pad <= ORB_PAD_RIGHT; pad++)
+        *pad_button(&input, pad) = true;
+
+    orb_input_step(&input);
+    CHECK_EQ(dpad_down(), UP | DOWN | LEFT | RIGHT);
+    input.pad.left_stick.y = 32767;
+    orb_input_step(&input);
+    CHECK_EQ(dpad_down(), UP | DOWN | LEFT | RIGHT);
+
+    // switched off, the stick presses nothing, and switched back on it starts released
+    orb_pad_stick_dpad(false);
+    CHECK_EQ(stick_step(32767, 0), 0);
+    orb_pad_stick_dpad(true);
+    CHECK_EQ(stick_step(12000, 0), 0);
+    orb_pad_stick_dpad(false);
+
     // a worn stick resting off center reads as centered
     input = (orb_input) {0};
     input.pad.left_stick.x = -4141;
@@ -245,9 +355,10 @@ int main(void) {
     CHECK_EQ(orb_key_find("\xc1\xbf"), ORB_KEY_NONE);     // overlong
     CHECK_EQ(orb_key_find("\xed\xa0\x80"), ORB_KEY_NONE); // surrogate
 
-    // boot restores both slots' defaults and empties both snapshots
+    // boot restores both slots' defaults, turns the stick d-pad off, and empties both snapshots
     orb_button_bind(ORB_BTN_SELECT, ORB_KEY_M);
     orb_button_bind(ORB_BTN_SELECT, ORB_PAD_NORTH);
+    orb_pad_stick_dpad(true);
     input = (orb_input) {0};
     input.keys[ORB_KEY_M] = true;
     orb_input_step(&input);
@@ -258,6 +369,7 @@ int main(void) {
     CHECK_EQ(orb_button_pad(ORB_BTN_SELECT), ORB_PAD_BACK);
     CHECK_EQ(orb_button_key(ORB_BTN_START), ORB_KEY_RETURN);
     CHECK_EQ(orb_button_pad(ORB_BTN_START), ORB_PAD_START);
+    CHECK_EQ(stick_step(32767, 0), 0);
 
     return 0;
 }

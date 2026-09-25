@@ -461,9 +461,11 @@ constexpr int ORB_AUDIO_RATE = 48000;
 // labelled m on the player's layout. key_* and pad_* down, pressed and released read one
 // source, exact per tick; key_pressed_any and pad_pressed_any are the lowest source that
 // went down this tick, for capturing a binding. The triggers also read as pad buttons past
-// half; the sticks are analog only. pad_stick is -1..1 each way with y down and a dead
-// zone, pad_trigger 0..1, pad_make ORB_PAD_MAKE_NONE with no pad, else the family whose
-// labels to draw. key_name is a named key's name ("tab", "page_up") or the layout's symbol
+// half. pad_stick_dpad(true), off at boot, makes the left stick also hold the d-pad
+// buttons: from half its travel until it falls under 0.35, the directions of its 45°
+// sector, two on a diagonal. pad_stick is -1..1 each way with y down and a dead zone,
+// pad_trigger 0..1, pad_make ORB_PAD_MAKE_NONE with no pad, else the family whose labels
+// to draw. key_name is a named key's name ("tab", "page_up") or the layout's symbol
 // ("m", ","), "" for neither; the string is valid until the next call.
 //
 // Entities. type_find("crate") is the LDtk entity definition Crate; type_bind attaches init
@@ -611,6 +613,7 @@ typedef struct orb_api {
     bool (*pad_released)(orb_pad pad);
     orb_pad (*pad_pressed_any)(void);
     orb_vec2f (*pad_stick)(orb_pad stick);
+    void (*pad_stick_dpad)(bool on);
     float (*pad_trigger)(orb_pad trigger);
     orb_pad_make (*pad_make)(void);
 
