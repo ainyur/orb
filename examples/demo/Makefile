@@ -32,7 +32,7 @@ build/%.obj: %.c | build
 release-objects: $(RELEASE_OBJ)
 
 build/release/%.o: %.c | build/release
-	$(CC) $(CFLAGS) -O2 -DORB_RELEASE -MMD -MP -MF $@.d -c -o $@ $<
+	$(CC) $(CFLAGS) -O2 -fPIE -DORB_RELEASE -MMD -MP -MF $@.d -c -o $@ $<
 
 build/release/%.obj: %.c | build/release
 	$(CC) $(CFLAGS) -O2 -DORB_RELEASE -MMD -MP -MF $@.d -c -o $@ $<
