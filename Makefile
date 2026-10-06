@@ -40,7 +40,7 @@ TESTS_ASAN := $(patsubst tests/%.c,build/asan/%,$(wildcard tests/test_*.c))
 GAME     ?= examples/demo
 GAMENAME := $(notdir $(abspath $(GAME)))
 
-.PHONY: all run test test-asan test-wine run-wine release release-wine fixtures clean
+.PHONY: all run test test-asan test-wine run-wine release release-wine fixtures clean test-fail
 
 all: $(ORB)
 
@@ -58,10 +58,10 @@ run: $(ORB)
 	$(ORB) run $(GAME)
 
 release release-wine: $(ORB)
-	$(MAKE) --no-print-directory -s -C $(GAME) build/game.$(LIB)
+	$(MAKE) --no-print-directory -s -C $(GAME) release-objects RELEASE_EXT=$(OBJ)
 	$(ORB) seal $(GAME) $(GAME)/build/game.orb
 	mkdir -p $(GAME)/bin
-	$(CC) $(CFLAGS) -O2 $(BACKEND) -DORB_RELEASE $(HARDEN) --embed-dir=$(GAME)/build -o $(GAME)/bin/$(GAMENAME)$(EXE) src/main.c $(GAME)/build/*.$(OBJ) $(LIBS)
+	$(CC) $(CFLAGS) -O2 $(BACKEND) -DORB_RELEASE $(HARDEN) --embed-dir=$(GAME)/build -o $(GAME)/bin/$(GAMENAME)$(EXE) src/main.c $(GAME)/build/release/*.$(OBJ) $(LIBS)
 
 run-wine: bin/orb.exe
 	$(MAKE) --no-print-directory -s -C $(GAME) build/game.dll
@@ -76,8 +76,19 @@ build/wine/test_%.exe: tests/test_%.c tests/test.h $(SRC) $(wildcard tests/fixtu
 build/asan/test_%: tests/test_%.c tests/test.h $(SRC) $(wildcard tests/fixtures/* tests/fixtures/*/* tests/fixtures/*/*/*) | build/scratch build/asan
 	$(CC) $(CFLAGS) -g -O1 -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -DORB_OS_HEADLESS -Isrc -o $@ $< $(TESTLIBS)
 
-test: $(TESTS)
+test: $(TESTS) test-fail
 	@for t in $(TESTS); do echo "== $$t"; ./$$t || exit 1; done
+
+# Each tests/fail file must not compile, and the compiler's output must hold one
+# of the file's "// expect: " lines.
+test-fail:
+	@for f in tests/fail/*.c; do \
+		out=$$($(CC) $(CFLAGS) -Isrc -fsyntax-only $$f 2>&1) && { echo "$$f compiled"; exit 1; }; \
+		sed -n 's|^// expect: ||p' $$f | { \
+			while IFS= read -r want; do case "$$out" in *"$$want"*) exit 0;; esac; done; \
+			echo "$$f: none of its expect lines matched:"; echo "$$out" | head -5; exit 1; \
+		} || exit 1; \
+	done; echo "== test-fail: $$(ls tests/fail/*.c | wc -l) files"
 
 test-asan: $(TESTS_ASAN)
 	@for t in $(TESTS_ASAN); do echo "== $$t"; ./$$t || exit 1; done

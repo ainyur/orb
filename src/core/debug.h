@@ -6,11 +6,11 @@
 
 typedef struct orb_watch {
     orb_path path;
-    uint64_t mtime, pending_mtime, pending_since;
+    u64 mtime, pending_mtime, pending_since;
 } orb_watch;
 
 void orb_watch_init(orb_watch* watch, const char* path);
-bool orb_watch_poll(orb_watch* watch, uint64_t now);
+bool orb_watch_poll(orb_watch* watch, u64 now);
 
 int orb_debug_cast(const char* dir, bool seal, const char* out_path); // seal also writes the .orb
 int orb_debug_run(const char* game_dir);                              // plain run: no watching

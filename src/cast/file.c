@@ -2,68 +2,71 @@
 #include "../core/asset.h"
 #include "../core/bytes.h"
 
-#include <stddef.h>
-#include <stdio.h>
-#include <string.h>
-
 // One row per section: where its bytes and count live in orb_assets. A row with
 // no count field is one element. An id section holds one id per element of its
 // desc section, so it must be at least that long rather than setting a count.
 typedef struct file_row {
-    uint8_t tag;
+    u8 tag;
     bool ids;
-    uint16_t elem;
-    uint16_t ptr, count; // offsetof; FILE_NO_COUNT for a single element
-    uint32_t max;        // elements, 0 for no bound
+    u16 elem;
+    u16 ptr, count; // offsetof; FILE_NO_COUNT for a single element
+    u32 max;        // elements, 0 for no bound
     const char* name;
 } file_row;
 
-constexpr uint16_t FILE_NO_COUNT = 0xffff;
+constexpr u16 FILE_NO_COUNT = 0xffff;
 
-// FILE_ONE: a single struct. FILE_ROW: an array with its count field and bound.
-// FILE_IDS: one id per element of the section whose count field is named.
+// FILE_ONE: a single struct. FILE_ROW: a span field and its bound.
+// FILE_IDS: one id per element of the span field named.
 #define FILE_ENTRY(sec, ids, T, ptr, count, max)                                                   \
-    {ORB_SEC_##sec, ids, sizeof(T), offsetof(orb_assets, ptr), count, max, #sec}
-#define FILE_ONE(sec, T, ptr) FILE_ENTRY(sec, false, T, ptr, FILE_NO_COUNT, 0)
-#define FILE_ROW(sec, T, ptr, count, max)                                                          \
-    FILE_ENTRY(sec, false, T, ptr, offsetof(orb_assets, count), max)
-#define FILE_IDS(sec, ptr, count)                                                                  \
-    FILE_ENTRY(sec, true, uint64_t, ptr, offsetof(orb_assets, count), 0)
+    {ORB_SEC_##sec, ids, sizeof(T), ptr, count, max, #sec}
+#define FILE_ONE(sec, T, field)                                                                    \
+    FILE_ENTRY(sec, false, T, offsetof(orb_assets, field), FILE_NO_COUNT, 0)
+#define FILE_ROW(sec, T, field, max)                                                               \
+    FILE_ENTRY(                                                                                    \
+        sec, false, T, offsetof(orb_assets, field),                                                \
+        offsetof(orb_assets, field) + offsetof(u8_span, len), max                                  \
+    )
+#define FILE_IDS(sec, field, kind)                                                                 \
+    FILE_ENTRY(                                                                                    \
+        sec, true, u64, offsetof(orb_assets, field),                                               \
+        offsetof(orb_assets, kind) + offsetof(u8_span, len), 0                                     \
+    )
 
 static const file_row file_rows[] = {
     FILE_ONE(INFO, orb_info_desc, info),
-    FILE_ONE(PAL, uint8_t[256 * 4], pal),
-    FILE_ROW(SHEETS, orb_sheet_desc, sheets, sheet_count, 0),
-    FILE_ROW(PIXELS, uint8_t, pixels, pixel_count, 0),
-    FILE_ROW(SPRITES, orb_sprite_desc, sprites, sprite_count, ORB_MAX_SPRITES),
-    FILE_ROW(ANIMS, orb_anim_desc, anims, anim_count, ORB_MAX_ANIMS),
-    FILE_ROW(DURATIONS, uint16_t, durations, duration_count, 0),
-    FILE_IDS(SPRITE_IDS, sprite_ids, sprite_count),
-    FILE_IDS(ANIM_IDS, anim_ids, anim_count),
-    FILE_ROW(SAMPLES, orb_sample_desc, samples, sample_count, ORB_MAX_SAMPLES),
-    FILE_ROW(PCM, int16_t, pcm, pcm_count, 0),
-    FILE_IDS(SAMPLE_IDS, sample_ids, sample_count),
-    FILE_ROW(SONGS, orb_song_desc, songs, song_count, ORB_MAX_SONGS),
-    FILE_IDS(SONG_IDS, song_ids, song_count),
-    FILE_ROW(TILESETS, orb_tileset_desc, tilesets, tileset_count, 0),
-    FILE_ROW(LEVELS, orb_level_desc, levels, level_count, ORB_MAX_LEVELS),
-    FILE_ROW(LAYERS, orb_layer_desc, layers, layer_count, ORB_MAX_LAYERS),
-    FILE_ROW(NEIGHBORS, orb_neighbor_desc, neighbors, neighbor_count, 0),
-    FILE_ROW(TILES, uint16_t, tiles, tile_count, 0),
-    FILE_ROW(CELLS, uint8_t, cells, cell_count, 0),
-    FILE_IDS(LEVEL_IDS, level_ids, level_count),
-    FILE_IDS(LAYER_IDS, layer_ids, layer_count),
-    FILE_ROW(FONTS, orb_font_desc, fonts, font_count, ORB_MAX_FONTS),
-    FILE_ROW(GLYPHS, orb_glyph_desc, glyphs, glyph_count, 0),
-    FILE_IDS(FONT_IDS, font_ids, font_count),
-    FILE_ROW(TYPES, orb_type_desc, types, type_count, ORB_MAX_TYPES),
-    FILE_ROW(PLACEMENTS, orb_placement_desc, placements, placement_count, ORB_MAX_PLACEMENTS),
-    FILE_ROW(FIELDS, orb_field_desc, fields, field_count, ORB_MAX_FIELDS),
-    FILE_ROW(FIELD_DATA, uint8_t, field_data, field_data_count, 0),
-    FILE_IDS(TYPE_IDS, type_ids, type_count),
+    FILE_ONE(PAL, u8[256 * 4], pal),
+    FILE_ROW(SHEETS, orb_sheet_desc, sheets, 0),
+    FILE_ROW(PIXELS, u8, pixels, 0),
+    FILE_ROW(SPRITES, orb_sprite_desc, sprites, ORB_MAX_SPRITES),
+    FILE_ROW(ANIMS, orb_anim_desc, anims, ORB_MAX_ANIMS),
+    FILE_ROW(DURATIONS, u16, durations, 0),
+    FILE_IDS(SPRITE_IDS, sprite_ids, sprites),
+    FILE_IDS(ANIM_IDS, anim_ids, anims),
+    FILE_ROW(SAMPLES, orb_sample_desc, samples, ORB_MAX_SAMPLES),
+    FILE_ROW(PCM, i16, pcm, 0),
+    FILE_IDS(SAMPLE_IDS, sample_ids, samples),
+    FILE_ROW(SONGS, orb_song_desc, songs, ORB_MAX_SONGS),
+    FILE_IDS(SONG_IDS, song_ids, songs),
+    FILE_ROW(TILESETS, orb_tileset_desc, tilesets, 0),
+    FILE_ROW(LEVELS, orb_level_desc, levels, ORB_MAX_LEVELS),
+    FILE_ROW(LAYERS, orb_layer_desc, layers, ORB_MAX_LAYERS),
+    FILE_ROW(NEIGHBORS, orb_neighbor_desc, neighbors, 0),
+    FILE_ROW(TILES, u16, tiles, 0),
+    FILE_ROW(CELLS, u8, cells, 0),
+    FILE_IDS(LEVEL_IDS, level_ids, levels),
+    FILE_IDS(LAYER_IDS, layer_ids, layers),
+    FILE_ROW(FONTS, orb_font_desc, fonts, ORB_MAX_FONTS),
+    FILE_ROW(GLYPHS, orb_glyph_desc, glyphs, 0),
+    FILE_IDS(FONT_IDS, font_ids, fonts),
+    FILE_ROW(TYPES, orb_type_desc, types, ORB_MAX_TYPES),
+    FILE_ROW(PLACEMENTS, orb_placement_desc, placements, ORB_MAX_PLACEMENTS),
+    FILE_ROW(FIELDS, orb_field_desc, fields, ORB_MAX_FIELDS),
+    FILE_ROW(FIELD_DATA, u8, field_data, 0),
+    FILE_IDS(TYPE_IDS, type_ids, types),
 };
 
-constexpr uint32_t FILE_ROW_COUNT = sizeof file_rows / sizeof *file_rows;
+constexpr u32 FILE_ROW_COUNT = sizeof file_rows / sizeof *file_rows;
 
 static_assert(FILE_ROW_COUNT == ORB_SEC_COUNT_ - 1, "every section tag has a row");
 
@@ -71,54 +74,52 @@ static const void** file_ptr(const orb_assets* assets, const file_row* row) {
     return (const void**)((char*)assets + row->ptr);
 }
 
-static uint32_t* file_count(const orb_assets* assets, const file_row* row) {
-    return (uint32_t*)((char*)assets + row->count);
+static u32* file_count(const orb_assets* assets, const file_row* row) {
+    return (u32*)((char*)assets + row->count);
 }
 
-static const file_row* file_row_for(uint32_t tag) {
-    for (uint32_t i = 0; i < FILE_ROW_COUNT; i++)
+static const file_row* file_row_for(u32 tag) {
+    for (u32 i = 0; i < FILE_ROW_COUNT; i++)
         if (file_rows[i].tag == tag) return &file_rows[i];
 
     return nullptr;
 }
 
-orb_span orb_file_write(orb_arena* arena, const orb_assets* in) {
-    orb_file_header* header = orb_arena_push(arena, sizeof *header, 16);
-    uint8_t* base = (uint8_t*)header;
+u8_span orb_file_write(arena* out, const orb_assets* in) {
+    orb_file_header* header = orb_arena_push(out, sizeof *header, 16);
+    u8* base = (u8*)header;
 
     header->magic = ORB_FILE_MAGIC;
     header->version = ORB_FILE_VERSION;
     header->section_count = FILE_ROW_COUNT;
 
-    orb_section* table = orb_arena_push(arena, sizeof(orb_section) * FILE_ROW_COUNT, 16);
+    orb_section* table = orb_arena_push(out, sizeof(orb_section) * FILE_ROW_COUNT, 16);
 
-    for (uint32_t i = 0; i < FILE_ROW_COUNT; i++) {
+    for (u32 i = 0; i < FILE_ROW_COUNT; i++) {
         const file_row* row = &file_rows[i];
-        uint32_t n = row->count == FILE_NO_COUNT ? 1 : *file_count(in, row);
-        size_t size = (size_t)row->elem * n;
-        uint8_t* dst = orb_arena_push(arena, size, 16);
+        u32 n = row->count == FILE_NO_COUNT ? 1 : *file_count(in, row);
+        usize size = (usize)row->elem * n;
+        u8* dst = orb_arena_push(out, size, 16);
 
         if (size) memcpy(dst, *file_ptr(in, row), size);
 
-        table[i] = (orb_section) {
-            .tag = row->tag, .offset = (uint32_t)(dst - base), .size = (uint32_t)size
-        };
+        table[i] = (orb_section) {.tag = row->tag, .offset = (u32)(dst - base), .size = (u32)size};
     }
 
-    return (orb_span) {base, (size_t)(arena->base + arena->used - base)};
+    return (u8_span) {base, (u32)(out->base + out->used - base)};
 }
 
 static bool file_check_audio(const orb_assets* out, orb_error* err) {
-    for (uint32_t i = 0; i < out->sample_count; i++) {
-        const orb_sample_desc* sample = &out->samples[i];
-        uint64_t end = (uint64_t)sample->first + (uint64_t)sample->count * sample->channels;
+    for (u32 i = 0; i < out->samples.len; i++) {
+        const orb_sample_desc* sample = &out->samples.elems[i];
+        u64 end = (u64)sample->first + (u64)sample->count * sample->channels;
 
         if (sample->channels != 1 && sample->channels != 2)
             return orb_error_set(
                 err, "orb file: sample %u has %u channels, expected 1 or 2", i, sample->channels
             );
 
-        if (end > out->pcm_count)
+        if (end > out->pcm.len)
             return orb_error_set(err, "orb file: sample %u runs past the PCM section", i);
 
         if (sample->rate < 1 || sample->rate > ORB_MAX_RATE)
@@ -132,16 +133,17 @@ static bool file_check_audio(const orb_assets* out, orb_error* err) {
             );
     }
 
-    for (uint32_t i = 0; i < out->song_count; i++) {
-        if (out->songs[i].sample >= out->sample_count)
+    for (u32 i = 0; i < out->songs.len; i++) {
+        if (out->songs.elems[i].sample >= out->samples.len)
             return orb_error_set(
-                err, "orb file: song %u names sample %u of %u", i, out->songs[i].sample,
-                out->sample_count
+                err, "orb file: song %u names sample %u of %u", i, out->songs.elems[i].sample,
+                out->samples.len
             );
 
-        if (out->songs[i].millibpm == 0 || out->songs[i].millibpm > ORB_MAX_BPM * 1000)
+        if (out->songs.elems[i].millibpm == 0 || out->songs.elems[i].millibpm > ORB_MAX_BPM * 1000)
             return orb_error_set(
-                err, "orb file: song %u has a bad bpm: %u thousandths", i, out->songs[i].millibpm
+                err, "orb file: song %u has a bad bpm: %u thousandths", i,
+                out->songs.elems[i].millibpm
             );
     }
 
@@ -149,16 +151,16 @@ static bool file_check_audio(const orb_assets* out, orb_error* err) {
 }
 
 static bool file_check_levels(const orb_assets* out, orb_error* err) {
-    for (uint32_t i = 0; i < out->tileset_count; i++) {
-        const orb_tileset_desc* tileset = &out->tilesets[i];
+    for (u32 i = 0; i < out->tilesets.len; i++) {
+        const orb_tileset_desc* tileset = &out->tilesets.elems[i];
 
-        if (tileset->sheet >= out->sheet_count || tileset->grid == 0 || tileset->columns == 0)
+        if (tileset->sheet >= out->sheets.len || tileset->grid == 0 || tileset->columns == 0)
             return orb_error_set(err, "orb file: tileset %u names a bad sheet or grid", i);
     }
 
-    for (uint32_t i = 0; i < out->layer_count; i++) {
-        const orb_layer_desc* layer = &out->layers[i];
-        uint64_t area = (uint64_t)layer->columns * layer->rows;
+    for (u32 i = 0; i < out->layers.len; i++) {
+        const orb_layer_desc* layer = &out->layers.elems[i];
+        u64 area = (u64)layer->columns * layer->rows;
 
         if (layer->grid == 0 || area == 0)
             return orb_error_set(err, "orb file: layer %u has an empty grid", i);
@@ -166,38 +168,38 @@ static bool file_check_levels(const orb_assets* out, orb_error* err) {
         if (layer->sublayers > ORB_MAX_SUBLAYERS)
             return orb_error_set(err, "orb file: layer %u has %u sub-layers", i, layer->sublayers);
 
-        if (layer->sublayers && layer->tileset >= out->tileset_count)
+        if (layer->sublayers && layer->tileset >= out->tilesets.len)
             return orb_error_set(err, "orb file: layer %u names tileset %u", i, layer->tileset);
 
-        if (layer->sublayers && (uint64_t)layer->tiles + area * layer->sublayers > out->tile_count)
+        if (layer->sublayers && (u64)layer->tiles + area * layer->sublayers > out->tiles.len)
             return orb_error_set(err, "orb file: layer %u runs past the tiles section", i);
 
-        if (layer->cells != ORB_NO_INDEX && (uint64_t)layer->cells + area > out->cell_count)
+        if (layer->cells != ORB_NO_INDEX && (u64)layer->cells + area > out->cells.len)
             return orb_error_set(err, "orb file: layer %u runs past the cells section", i);
 
-        for (uint64_t k = 0; layer->sublayers && k < area * layer->sublayers; k++) {
-            uint16_t id = out->tiles[layer->tiles + k] & ORB_TILE_ID_MASK;
+        for (u64 k = 0; layer->sublayers && k < area * layer->sublayers; k++) {
+            u16 id = out->tiles.elems[layer->tiles + k] & ORB_TILE_ID_MASK;
 
-            if (id > out->tilesets[layer->tileset].count)
+            if (id > out->tilesets.elems[layer->tileset].count)
                 return orb_error_set(
                     err, "orb file: layer %u holds tile %u past its tileset", i, id
                 );
         }
     }
 
-    for (uint32_t i = 0; i < out->level_count; i++) {
-        const orb_level_desc* level = &out->levels[i];
+    for (u32 i = 0; i < out->levels.len; i++) {
+        const orb_level_desc* level = &out->levels.elems[i];
 
-        if ((uint32_t)level->first_layer + level->layer_count > out->layer_count ||
-            (uint32_t)level->first_neighbor + level->neighbor_count > out->neighbor_count)
+        if ((u32)level->first_layer + level->layer_count > out->layers.len ||
+            (u32)level->first_neighbor + level->neighbor_count > out->neighbors.len)
             return orb_error_set(err, "orb file: level %u runs past its layers or neighbors", i);
     }
 
-    for (uint32_t i = 0; i < out->neighbor_count; i++) {
-        if (out->neighbors[i].level >= out->level_count ||
-            out->neighbors[i].dir > ORB_LEVEL_OVERLAP)
+    for (u32 i = 0; i < out->neighbors.len; i++) {
+        if (out->neighbors.elems[i].level >= out->levels.len ||
+            out->neighbors.elems[i].dir > ORB_LEVEL_OVERLAP)
             return orb_error_set(
-                err, "orb file: neighbor %u names level %u", i, out->neighbors[i].level
+                err, "orb file: neighbor %u names level %u", i, out->neighbors.elems[i].level
             );
     }
 
@@ -205,25 +207,25 @@ static bool file_check_levels(const orb_assets* out, orb_error* err) {
 }
 
 static bool file_check_fonts(const orb_assets* out, orb_error* err) {
-    for (uint32_t i = 0; i < out->font_count; i++) {
-        const orb_font_desc* font = &out->fonts[i];
+    for (u32 i = 0; i < out->fonts.len; i++) {
+        const orb_font_desc* font = &out->fonts.elems[i];
 
-        if (font->sheet >= out->sheet_count)
+        if (font->sheet >= out->sheets.len)
             return orb_error_set(err, "orb file: font %u names a bad sheet", i);
 
-        const orb_sheet_desc* sheet = &out->sheets[font->sheet];
+        const orb_sheet_desc* sheet = &out->sheets.elems[font->sheet];
 
         if (font->line_height == 0 || font->line_height > sheet->height)
             return orb_error_set(err, "orb file: font %u has a bad line height", i);
 
-        if ((uint64_t)font->first_glyph + ORB_FONT_GLYPHS > out->glyph_count)
+        if ((u64)font->first_glyph + ORB_FONT_GLYPHS > out->glyphs.len)
             return orb_error_set(err, "orb file: font %u leaves the glyphs section", i);
 
-        for (uint32_t glyph_index = 0; glyph_index < ORB_FONT_GLYPHS; glyph_index++) {
-            const orb_glyph_desc* glyph = &out->glyphs[font->first_glyph + glyph_index];
+        for (u32 glyph_index = 0; glyph_index < ORB_FONT_GLYPHS; glyph_index++) {
+            const orb_glyph_desc* glyph = &out->glyphs.elems[font->first_glyph + glyph_index];
 
-            if ((uint32_t)glyph->x + glyph->width > sheet->width ||
-                (uint32_t)glyph->y + font->line_height > sheet->height)
+            if ((u32)glyph->x + glyph->width > sheet->width ||
+                (u32)glyph->y + font->line_height > sheet->height)
                 return orb_error_set(
                     err, "orb file: font %u glyph %u leaves its sheet", i, glyph_index
                 );
@@ -234,59 +236,59 @@ static bool file_check_fonts(const orb_assets* out, orb_error* err) {
 }
 
 static bool file_check_entities(const orb_assets* out, orb_error* err) {
-    for (uint32_t i = 0; i < out->type_count; i++) {
-        const orb_type_desc* type = &out->types[i];
+    for (u32 i = 0; i < out->types.len; i++) {
+        const orb_type_desc* type = &out->types.elems[i];
 
-        if ((uint64_t)type->first_field + type->field_count > out->field_count)
+        if ((u64)type->first_field + type->field_count > out->fields.len)
             return orb_error_set(err, "orb file: type %u runs past the fields section", i);
     }
 
-    for (uint32_t i = 0; i < out->placement_count; i++) {
-        const orb_placement_desc* placement = &out->placements[i];
+    for (u32 i = 0; i < out->placements.len; i++) {
+        const orb_placement_desc* placement = &out->placements.elems[i];
 
-        if (placement->type >= out->type_count || placement->level >= out->level_count)
+        if (placement->type >= out->types.len || placement->level >= out->levels.len)
             return orb_error_set(
                 err, "orb file: placement %u names type %u or level %u", i, placement->type,
                 placement->level
             );
 
-        if ((uint64_t)placement->first_field + placement->field_count > out->field_count)
+        if ((u64)placement->first_field + placement->field_count > out->fields.len)
             return orb_error_set(err, "orb file: placement %u runs past the fields section", i);
     }
 
-    for (uint32_t i = 0; i < out->level_count; i++) {
-        const orb_level_desc* level = &out->levels[i];
+    for (u32 i = 0; i < out->levels.len; i++) {
+        const orb_level_desc* level = &out->levels.elems[i];
 
-        if ((uint64_t)level->first_placement + level->placement_count > out->placement_count)
+        if ((u64)level->first_placement + level->placement_count > out->placements.len)
             return orb_error_set(err, "orb file: level %u runs past its placements", i);
     }
 
-    for (uint32_t i = 0; i < out->field_count; i++) {
-        const orb_field_desc* field = &out->fields[i];
+    for (u32 i = 0; i < out->fields.len; i++) {
+        const orb_field_desc* field = &out->fields.elems[i];
 
         if (field->kind > ORB_FIELD_REF)
             return orb_error_set(err, "orb file: field %u has kind %u", i, field->kind);
 
-        uint32_t width = orb_field_width(field->kind);
+        u32 width = orb_field_width(field->kind);
 
         if ((field->data & 3) != 0 ||
-            (uint64_t)field->data + (uint64_t)field->count * width > out->field_data_count)
+            (u64)field->data + (u64)field->count * width > out->field_data.len)
             return orb_error_set(err, "orb file: field %u runs past the field data", i);
 
-        for (uint32_t k = 0; k < field->count; k++) {
-            const uint8_t* element = out->field_data + field->data + k * width;
+        for (u32 k = 0; k < field->count; k++) {
+            const u8* element = out->field_data.elems + field->data + k * width;
 
             if (field->kind == ORB_FIELD_STRING) {
-                uint32_t at = orb_bytes_u32(element);
+                u32 at = orb_bytes_u32(element);
 
-                if (at >= out->field_data_count ||
-                    !memchr(out->field_data + at, 0, out->field_data_count - at))
+                if (at >= out->field_data.len ||
+                    !memchr(out->field_data.elems + at, 0, out->field_data.len - at))
                     return orb_error_set(
                         err, "orb file: field %u string %u leaves the field data", i, k
                     );
             }
 
-            if (field->kind == ORB_FIELD_REF && orb_bytes_u32(element) >= out->placement_count)
+            if (field->kind == ORB_FIELD_REF && orb_bytes_u32(element) >= out->placements.len)
                 return orb_error_set(err, "orb file: field %u ref %u names no placement", i, k);
         }
     }
@@ -294,10 +296,10 @@ static bool file_check_entities(const orb_assets* out, orb_error* err) {
     return true;
 }
 
-bool orb_file_load(orb_span file, orb_assets* out, orb_error* err) {
+bool orb_file_load(u8_span file, orb_assets* out, orb_error* err) {
     if (file.len < sizeof(orb_file_header)) return orb_error_set(err, "orb file: too short");
 
-    const orb_file_header* header = (const orb_file_header*)file.ptr;
+    const orb_file_header* header = (const orb_file_header*)file.elems;
 
     if (header->magic != ORB_FILE_MAGIC) return orb_error_set(err, "orb file: bad magic");
 
@@ -309,16 +311,16 @@ bool orb_file_load(orb_span file, orb_assets* out, orb_error* err) {
     if (sizeof(orb_file_header) + sizeof(orb_section) * header->section_count > file.len)
         return orb_error_set(err, "orb file: truncated section table");
 
-    const orb_section* table = (const orb_section*)(file.ptr + sizeof(orb_file_header));
-    uint32_t id_sizes[ORB_SEC_COUNT_ + 1] = {};
+    const orb_section* table = (const orb_section*)(file.elems + sizeof(orb_file_header));
+    u32 id_sizes[ORB_SEC_COUNT_ + 1] = {};
 
     memset(out, 0, sizeof *out);
 
-    for (uint32_t i = 0; i < header->section_count; i++) {
+    for (u32 i = 0; i < header->section_count; i++) {
         const orb_section* section = &table[i];
         const file_row* row = file_row_for(section->tag);
 
-        if ((size_t)section->offset + section->size > file.len || (section->offset & 15) != 0)
+        if ((usize)section->offset + section->size > file.len || (section->offset & 15) != 0)
             return orb_error_set(
                 err, "orb file: section %u out of bounds or misaligned", section->tag
             );
@@ -328,7 +330,7 @@ bool orb_file_load(orb_span file, orb_assets* out, orb_error* err) {
         if (row->count == FILE_NO_COUNT && section->size < row->elem)
             return orb_error_set(err, "orb file: short %s section", row->name);
 
-        *file_ptr(out, row) = file.ptr + section->offset;
+        *file_ptr(out, row) = file.elems + section->offset;
 
         if (row->ids)
             id_sizes[row->tag] = section->size;
@@ -341,14 +343,14 @@ bool orb_file_load(orb_span file, orb_assets* out, orb_error* err) {
 
     if (!out->info || !out->pal) return orb_error_set(err, "orb file: no info or palette section");
 
-    for (uint32_t i = 0; i < FILE_ROW_COUNT; i++) {
+    for (u32 i = 0; i < FILE_ROW_COUNT; i++) {
         const file_row* row = &file_rows[i];
-        uint32_t need = row->count == FILE_NO_COUNT ? 0 : *file_count(out, row);
+        u32 need = row->count == FILE_NO_COUNT ? 0 : *file_count(out, row);
 
         if (row->max && need > row->max)
             return orb_error_set(err, "orb file: %u %s, at most %u", need, row->name, row->max);
 
-        if (row->ids && id_sizes[row->tag] < (uint64_t)need * row->elem)
+        if (row->ids && id_sizes[row->tag] < (u64)need * row->elem)
             return orb_error_set(
                 err, "orb file: %s section holds %u ids, need %u", row->name,
                 id_sizes[row->tag] / row->elem, need

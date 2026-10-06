@@ -5,13 +5,13 @@
 #include "../graphics/sprite.h"
 #include "../graphics/text.h"
 #include "../graphics/tilemap.h"
+#include "../orb_math.h"
 #include "../os/os.h"
 #include "asset.h"
 #include "console.h"
 #include "entity.h"
 #include "input.h"
 #include "log.h"
-#include "macros.h"
 #include "world.h"
 
 #include <stdio.h>
@@ -24,20 +24,21 @@ static orb_pal api_pal;
 static orb_mixer api_mixer = ORB_MIXER_INIT;
 static orb_assets api_views[2]; // the mixer reads one; a publish fills the other and swaps
 static int api_view;
+static arena api_global_arena, api_frame_arena;
 
 static void api_pal_reset(void) {
     orb_pal_reset(&api_pal);
 }
 
-static void api_pal_set(int index, uint8_t r, uint8_t g, uint8_t b) {
+static void api_pal_set(int index, u8 r, u8 g, u8 b) {
     orb_pal_set(&api_pal, index, r, g, b);
 }
 
-static uint32_t api_pal_get(int index) {
+static u32 api_pal_get(int index) {
     return orb_pal_get(&api_pal, index);
 }
 
-static void api_clear(uint8_t index) {
+static void api_clear_screen(u8 index) {
     orb_fb_clear(&api_fb, index);
 }
 
@@ -53,19 +54,19 @@ static orb_camera api_camera_update(orb_camera camera) {
 }
 
 static orb_sprite api_sprite_find(const char* stem, int frame) {
-    uint32_t index = orb_asset_find(&api_assets, ORB_ASSET_SPRITE, orb_sprite_id(stem, frame));
+    u32 index = orb_asset_find(&api_assets, ORB_ASSET_SPRITE, orb_sprite_id(stem, frame));
 
     if (index == ORB_NO_INDEX) orb_log("no frame %d in %s", frame, stem);
 
     return ORB_SPRITE(index);
 }
 
-static void api_sprite_draw(orb_sprite sprite, orb_vec2 at, uint32_t flags, const uint8_t* remap) {
+static void api_sprite_draw(orb_sprite sprite, orb_vec2 at, u32 flags, const u8* remap) {
     orb_sprite_draw(&api_fb, &api_assets.assets, api_camera, sprite, at, flags, remap);
 }
 
 static orb_anim api_anim_find(const char* stem, const char* tag) {
-    uint32_t index = orb_asset_find(&api_assets, ORB_ASSET_ANIM, orb_asset_id(stem, tag));
+    u32 index = orb_asset_find(&api_assets, ORB_ASSET_ANIM, orb_asset_id(stem, tag));
 
     if (index == ORB_NO_INDEX) orb_log("no animation \"%s\" in %s", tag, stem);
 
@@ -94,7 +95,7 @@ static void api_layer_draw(orb_level level, int layer) {
 }
 
 static orb_level api_level_find(const char* stem) {
-    uint32_t index = orb_asset_find(&api_assets, ORB_ASSET_LEVEL, orb_asset_id(stem, ""));
+    u32 index = orb_asset_find(&api_assets, ORB_ASSET_LEVEL, orb_asset_id(stem, ""));
 
     if (index == ORB_NO_INDEX) orb_log("no level \"%s\"", stem);
 
@@ -105,8 +106,33 @@ static orb_rect api_level_bounds(orb_level level) {
     return orb_tilemap_level_bounds(&api_assets.assets, level);
 }
 
-static int api_level_neighbors(orb_level level, orb_level_neighbor* out, int max) {
-    return orb_tilemap_level_neighbors(&api_assets.assets, level, out, max);
+static orb_level_neighbor_list api_level_neighbors(orb_level level) {
+    return orb_tilemap_level_neighbors(&api_assets.assets, orb_api_frame(), level);
+}
+
+static orb_entity_id_list api_entity_all(void) {
+    return orb_entity_all(orb_api_frame());
+}
+
+static orb_entity_id_list api_entity_of_type(orb_type type) {
+    return orb_entity_of_type(orb_api_frame(), type);
+}
+
+static orb_entity_id_list api_query_rect(orb_rect rect, u32 mask, orb_entity_id except) {
+    return orb_query_rect(orb_api_frame(), rect, mask, except);
+}
+
+static orb_entity_id_list api_query_circle(
+    orb_vec2 center,
+    int radius,
+    u32 mask,
+    orb_entity_id except
+) {
+    return orb_query_circle(orb_api_frame(), center, radius, mask, except);
+}
+
+static orb_entity_id_list api_query_point(orb_vec2 at, u32 mask, orb_entity_id except) {
+    return orb_query_point(orb_api_frame(), at, mask, except);
 }
 
 static int api_cell_get(orb_level level, int layer, orb_vec2 at) {
@@ -114,7 +140,7 @@ static int api_cell_get(orb_level level, int layer, orb_vec2 at) {
 }
 
 static orb_type api_type_find(const char* stem) {
-    uint32_t index = orb_asset_find(&api_assets, ORB_ASSET_TYPE, orb_asset_id(stem, ""));
+    u32 index = orb_asset_find(&api_assets, ORB_ASSET_TYPE, orb_asset_id(stem, ""));
 
     if (index == ORB_NO_INDEX) orb_log("no entity type \"%s\"", stem);
 
@@ -126,7 +152,7 @@ static void api_world_draw(int layer) {
 }
 
 static orb_font api_font_find(const char* stem) {
-    uint32_t index = orb_asset_find(&api_assets, ORB_ASSET_FONT, orb_asset_id(stem, "font"));
+    u32 index = orb_asset_find(&api_assets, ORB_ASSET_FONT, orb_asset_id(stem, "font"));
 
     if (index == ORB_NO_INDEX) orb_log("no font \"%s\"", stem);
 
@@ -137,12 +163,12 @@ static orb_size api_text_measure(orb_font font, const char* text) {
     return orb_text_measure(&api_assets.assets, font, text);
 }
 
-static void api_text_draw(orb_font font, const char* text, orb_vec2 at, const uint8_t* remap) {
+static void api_text_draw(orb_font font, const char* text, orb_vec2 at, const u8* remap) {
     orb_text_draw(&api_fb, &api_assets.assets, font, text, at, remap);
 }
 
 static orb_sample api_sample_find(const char* stem) {
-    uint32_t index = orb_asset_find(&api_assets, ORB_ASSET_SAMPLE, orb_asset_id(stem, ""));
+    u32 index = orb_asset_find(&api_assets, ORB_ASSET_SAMPLE, orb_asset_id(stem, ""));
 
     if (index == ORB_NO_INDEX) orb_log("no sound \"%s\"", stem);
 
@@ -162,7 +188,7 @@ static void api_sound_stop(orb_voice voice) {
 }
 
 static orb_song api_song_find(const char* stem) {
-    uint32_t index = orb_asset_find(&api_assets, ORB_ASSET_SONG, orb_asset_id(stem, ""));
+    u32 index = orb_asset_find(&api_assets, ORB_ASSET_SONG, orb_asset_id(stem, ""));
 
     if (index == ORB_NO_INDEX) orb_log("no song \"%s\"", stem);
 
@@ -194,10 +220,12 @@ static void api_volume_set(orb_volumes volumes) {
 }
 
 static const orb_api api_table = {
+    .global_arena = &api_global_arena,
+    .frame_arena = &api_frame_arena,
     .pal_reset = api_pal_reset,
     .pal_set = api_pal_set,
     .pal_get = api_pal_get,
-    .clear = api_clear,
+    .clear_screen = api_clear_screen,
     .camera_set = api_camera_set,
     .camera_update = api_camera_update,
     .sprite_find = api_sprite_find,
@@ -221,8 +249,8 @@ static const orb_api api_table = {
     .entity_remove = orb_entity_remove,
     .entity_component = orb_entity_component,
     .entity_world_at = orb_entity_world_at,
-    .entity_all = orb_entity_all,
-    .entity_of_type = orb_entity_of_type,
+    .entity_all = api_entity_all,
+    .entity_of_type = api_entity_of_type,
     .entity_field_count = orb_entity_field_count,
     .entity_field_int = orb_entity_field_int,
     .entity_field_float = orb_entity_field_float,
@@ -238,9 +266,9 @@ static const orb_api api_table = {
     .world_update = orb_world_update,
     .world_draw = api_world_draw,
     .remap_set = orb_world_remap_set,
-    .query_rect = orb_query_rect,
-    .query_circle = orb_query_circle,
-    .query_point = orb_query_point,
+    .query_rect = api_query_rect,
+    .query_circle = api_query_circle,
+    .query_point = api_query_point,
     .query_ray = orb_query_ray,
     .font_find = api_font_find,
     .text_measure = api_text_measure,
@@ -285,6 +313,14 @@ static const orb_api api_table = {
     .console_open = orb_console_open,
 };
 
+arena* orb_api_global(void) {
+    return &api_global_arena;
+}
+
+arena* orb_api_frame(void) {
+    return &api_frame_arena;
+}
+
 const orb_api* orb_api_table(void) {
     return &api_table;
 }
@@ -297,7 +333,7 @@ const orb_fb* orb_api_fb(void) {
     return &api_fb;
 }
 
-const uint32_t* orb_api_pal_base(void) {
+const u32* orb_api_pal_base(void) {
     return api_pal.base;
 }
 
@@ -312,8 +348,8 @@ static void api_publish(void) {
     api_view = 1 - api_view;
     api_views[api_view] = api_assets.assets;
 
-    uint32_t pending_render = orb_mixer_set_assets(&api_mixer, &api_views[api_view]);
-    uint64_t start = orb_os_ticks();
+    u32 pending_render = orb_mixer_set_assets(&api_mixer, &api_views[api_view]);
+    u64 start = orb_os_ticks();
 
     while (pending_render && !orb_mixer_rendered(&api_mixer, pending_render) &&
            orb_os_ticks() - start < 200000000u)
@@ -322,13 +358,13 @@ static void api_publish(void) {
 
 // The mixer needs no step here: it is a static built from ORB_MIXER_INIT, and the
 // audio thread it serves is the OS layer's.
-void orb_api_boot(orb_arena* arena, orb_size size, const orb_assets* assets) {
-    orb_fb_init(&api_fb, arena, size);
+void orb_api_boot(arena* out, orb_size size, const orb_assets* assets) {
+    orb_fb_init(&api_fb, out, size);
     orb_api_set_assets(assets);
 }
 
 void orb_api_poll(void) {
-    static uint32_t reported, quiet_ticks;
+    static u32 reported, quiet_ticks;
 
     if (quiet_ticks) quiet_ticks--;
     if (api_mixer.dropped == reported || quiet_ticks) return;
@@ -338,7 +374,7 @@ void orb_api_poll(void) {
     quiet_ticks = 60;
 }
 
-void orb_api_resolve(uint32_t* rgb) {
+void orb_api_resolve(u32* rgb) {
     orb_fb_resolve(&api_fb, api_pal.live, rgb);
 }
 
@@ -354,12 +390,13 @@ void orb_api_quit(void) {
     api_assets = (orb_asset_table) {};
     api_fb = (orb_fb) {};
     api_mixer = (orb_mixer)ORB_MIXER_INIT;
+    api_global_arena = api_frame_arena = (arena) {};
 }
 
-bool orb_audio_idle(uint64_t elapsed_ns, uint64_t* rendered) {
+bool orb_audio_idle(u64 elapsed_ns, u64* rendered) {
     return orb_mixer_idle(&api_mixer, elapsed_ns, rendered);
 }
 
-void orb_audio_render(int16_t* out, int frames) {
+void orb_audio_render(i16* out, int frames) {
     orb_mixer_render(&api_mixer, out, frames);
 }

@@ -10,9 +10,10 @@ typedef struct {
     orb_font font;
     orb_level room;
     int floor;
-    int32_t speed, ticks;
-    float scale;
+    i32 speed, ticks;
+    f32 scale;
     bool god;
+    u32 drawn;
 } game_state;
 
 static orb_config config(void) {
@@ -36,7 +37,7 @@ static void teleport(void* state, const orb_api* orb, int argc, const char* cons
 
     if (argc != 3 || !entity) return;
 
-    entity->at = (orb_vec2f) {(float)atoi(argv[1]), (float)atoi(argv[2])};
+    entity->at = (orb_vec2f) {(f32)atoi(argv[1]), (f32)atoi(argv[2])};
 }
 
 // The player's sprite is the walk animation drawn 4 pixels up and left of its 8x8 body.
@@ -51,7 +52,7 @@ static void player_init(void* state, const orb_api* orb, orb_entity_id id) {
 
 static void reload(void* state, const orb_api* orb) {
     game_state* self = state;
-    uint8_t kinds[256] = {0};
+    u8 kinds[256] = {0};
 
     kinds[1] = ORB_CELL_SOLID;
     self->walk = orb->anim_find("player", "walk");
@@ -64,7 +65,9 @@ static void reload(void* state, const orb_api* orb) {
 
     if (!orb->entity_get(self->player)) {
         orb->level_spawn(self->room);
-        orb->entity_of_type(self->player_type, &self->player, 1);
+        orb_entity_id_list players = orb->entity_of_type(self->player_type);
+
+        if (players.len) self->player = get(players, 0);
     }
 
     orb->var_int("speed", &self->speed, "walk speed");
@@ -86,7 +89,7 @@ static void update(void* state, const orb_api* orb) {
 
     if (dx) self->flip = dx < 0;
 
-    body->velocity = (orb_vec2f) {(float)(self->speed * dx), (float)(self->speed * dy)};
+    body->velocity = (orb_vec2f) {(f32)(self->speed * dx), (f32)(self->speed * dy)};
     body->box.size = self->god ? (orb_size) {} : entity->size; // an empty box collides with nothing
     sprite->flags = self->flip ? ORB_FLIP_X : 0;
     orb->world_update();
@@ -95,10 +98,11 @@ static void update(void* state, const orb_api* orb) {
 static void draw(void* state, const orb_api* orb) {
     game_state* self = state;
 
-    orb->clear(1);
+    orb->clear_screen(1);
     orb->layer_draw(self->room, self->floor);
     orb->world_draw(0);
     orb->text_draw(self->font, "AB", (orb_vec2) {0, 0}, nullptr);
+    self->drawn = orb->entity_all().len;
 }
 
 static const orb_game game = {config, init, reload, update, draw};

@@ -1,19 +1,33 @@
 #pragma once
 
-#include <stddef.h>
-#include <stdint.h>
+// find accepts these handle types; the macro expands where find is used, after
+// the types below exist.
+// clang-format off
+#undef STD_FIND_HANDLES
+#define STD_FIND_HANDLES                                                                           \
+    orb_anim: true,                                                                                \
+    orb_font: true,                                                                                \
+    orb_level: true,                                                                               \
+    orb_sample: true,                                                                              \
+    orb_song: true,                                                                                \
+    orb_sprite: true,                                                                              \
+    orb_entity_id: true,                                                                           \
+    orb_type: true,
+// clang-format on
+#include "orb_math.h"
+#include "orb_std.h"
 
 typedef struct {
-    uint32_t v;
+    u32 v;
 } orb_anim;
 
 typedef struct orb_anim_state {
     orb_anim anim;
-    uint16_t frame, ticks;
+    u16 frame, ticks;
 } orb_anim_state;
 
 typedef struct {
-    uint32_t v;
+    u32 v;
 } orb_font;
 
 typedef struct orb_layer_info {
@@ -22,68 +36,48 @@ typedef struct orb_layer_info {
 } orb_layer_info;
 
 typedef struct {
-    uint32_t v;
+    u32 v;
 } orb_level;
 
 typedef struct {
-    uint32_t v;
+    u32 v;
 } orb_sample;
 
-typedef struct orb_size {
-    int width, height;
-} orb_size;
-
 typedef struct {
-    uint32_t v;
+    u32 v;
 } orb_song;
 
 typedef struct orb_song_position {
-    int32_t ms;         // into the song's file; both -1 when no song plays
-    int32_t millibeats; // beats * 1000, from the manifest's bpm
+    i32 ms;         // into the song's file; both -1 when no song plays
+    i32 millibeats; // beats * 1000, from the manifest's bpm
 } orb_song_position;
 
+constexpr orb_song_position ORB_NO_SONG_POSITION = {-1, -1};
+
 typedef struct orb_sound_params {
-    float volume, pan; // 0..1, -1..1
-    int pitch_cents;   // -2400..2400; 0 is the sample's own rate
+    f32 volume, pan; // 0..1, -1..1
+    int pitch_cents; // -2400..2400; 0 is the sample's own rate
 } orb_sound_params;
 
 typedef struct {
-    const uint8_t* ptr;
-    size_t len;
-} orb_span;
-
-typedef struct {
-    uint32_t v;
+    u32 v;
 } orb_sprite;
-
-typedef struct orb_vec2 {
-    int x, y;
-} orb_vec2;
-
-typedef struct orb_vec2f {
-    float x, y;
-} orb_vec2f;
-
-typedef struct orb_rect {
-    orb_vec2 at;
-    orb_size size;
-} orb_rect;
 
 typedef struct orb_camera {
     orb_vec2f at;     // world position of the framebuffer's top-left
     orb_vec2f target; // world point to center
-    float lerp;       // 0 snaps to the target, 1 never moves
+    f32 lerp;         // 0 snaps to the target, 1 never moves
     orb_rect bounds;  // zero size means no clamp
     orb_vec2f shake;  // added after the clamp
 } orb_camera;
 
 // Opaque: a game only passes it back. Not an ORB_HANDLE_INDEX handle.
 typedef struct {
-    uint32_t v;
+    u32 v;
 } orb_voice;
 
 typedef struct orb_volumes {
-    float master, song, sound; // 0..1 each, 1 by default
+    f32 master, song, sound; // 0..1 each, 1 by default
 } orb_volumes;
 
 typedef enum orb_button {
@@ -239,7 +233,7 @@ typedef enum orb_pad {
 } orb_pad;
 
 // The family whose labels a pad carries.
-typedef enum orb_pad_make : uint8_t {
+typedef enum orb_pad_make : u8 {
     ORB_PAD_MAKE_NONE, // no pad
     ORB_PAD_MAKE_OTHER,
     ORB_PAD_MAKE_XBOX,
@@ -255,9 +249,9 @@ typedef struct orb_pad_input {
     orb_pad_make make;
     bool buttons[ORB_PAD_BUTTONS]; // by pad - ORB_PAD_NONE
     struct {
-        int16_t x, y;
-    } left_stick, right_stick;           // -32767..32767 each, y down
-    int16_t left_trigger, right_trigger; // 0..32767
+        i16 x, y;
+    } left_stick, right_stick;       // -32767..32767 each, y down
+    i16 left_trigger, right_trigger; // 0..32767
 } orb_pad_input;
 
 // The keyboard and the pad as the OS layer reports them each tick.
@@ -267,7 +261,7 @@ typedef struct orb_input {
     orb_pad_input pad;
 } orb_input;
 
-typedef enum orb_level_dir : uint8_t {
+typedef enum orb_level_dir : u8 {
     ORB_LEVEL_N,
     ORB_LEVEL_S,
     ORB_LEVEL_E,
@@ -286,17 +280,19 @@ typedef struct orb_level_neighbor {
     orb_level_dir dir;
 } orb_level_neighbor;
 
-#define ORB_ANIM(index) ((orb_anim) {(uint32_t)(index)})
-#define ORB_FONT(index) ((orb_font) {(uint32_t)(index)})
-#define ORB_LEVEL(index) ((orb_level) {(uint32_t)(index)})
-#define ORB_SAMPLE(index) ((orb_sample) {(uint32_t)(index)})
-#define ORB_SONG(index) ((orb_song) {(uint32_t)(index)})
-#define ORB_SPRITE(index) ((orb_sprite) {(uint32_t)(index)})
+list(orb_level_neighbor);
+
+#define ORB_ANIM(index) ((orb_anim) {(u32)(index)})
+#define ORB_FONT(index) ((orb_font) {(u32)(index)})
+#define ORB_LEVEL(index) ((orb_level) {(u32)(index)})
+#define ORB_SAMPLE(index) ((orb_sample) {(u32)(index)})
+#define ORB_SONG(index) ((orb_song) {(u32)(index)})
+#define ORB_SPRITE(index) ((orb_sprite) {(u32)(index)})
 #define ORB_HANDLE_INDEX(handle)                                                                   \
     ((handle).v & ORB_NO_INDEX) // v = handle index (24 bits) | generation << 24
 #define ORB_HANDLE_GEN(handle) ((handle).v >> 24)
 
-constexpr uint32_t ORB_NO_INDEX = 0xffffffu;
+constexpr u32 ORB_NO_INDEX = 0xffffffu;
 constexpr orb_anim ORB_NO_ANIM = {ORB_NO_INDEX};
 constexpr orb_font ORB_NO_FONT = {ORB_NO_INDEX};
 constexpr orb_level ORB_NO_LEVEL = {ORB_NO_INDEX};
@@ -306,18 +302,20 @@ constexpr orb_sprite ORB_NO_SPRITE = {ORB_NO_INDEX};
 constexpr orb_voice ORB_NO_VOICE = {0xffffu};
 
 typedef struct {
-    uint32_t v;
+    u32 v;
 } orb_entity_id;
 
 typedef struct {
-    uint32_t v;
+    u32 v;
 } orb_type;
 
-#define ORB_ENTITY(index) ((orb_entity_id) {(uint32_t)(index)})
-#define ORB_TYPE(index) ((orb_type) {(uint32_t)(index)})
+#define ORB_ENTITY(index) ((orb_entity_id) {(u32)(index)})
+#define ORB_TYPE(index) ((orb_type) {(u32)(index)})
 
 constexpr orb_entity_id ORB_NO_ENTITY = {ORB_NO_INDEX};
 constexpr orb_type ORB_NO_TYPE = {ORB_NO_INDEX};
+
+list(orb_entity_id);
 
 constexpr int ORB_COMPONENT_SPRITE = 0;
 constexpr int ORB_COMPONENT_BODY = 1;
@@ -325,42 +323,42 @@ constexpr int ORB_COMPONENT_TAG = 2;
 // the first of the game's kinds, in orb_config.components order
 constexpr int ORB_COMPONENT_GAME = 3;
 constexpr int ORB_MAX_COMPONENTS = 32;
-constexpr uint32_t ORB_MAX_ENTITIES = 1 << 16;
+constexpr u32 ORB_MAX_ENTITIES = 1 << 16;
 constexpr int ORB_MAX_REMAPS = 8;
 constexpr int ORB_MAX_SPRITE_LAYERS = 8;
 
 typedef struct orb_entity {
-    uint64_t iid; // the placement's iid hash, or 0 for a runtime spawn
+    u64 iid; // the placement's iid hash, or 0 for a runtime spawn
     orb_entity_id self;
     orb_type type;
     orb_level level; // the level it was placed or spawned in, or ORB_NO_LEVEL
     orb_entity_id parent;
-    uint32_t placement;  // its placement index, or ORB_NO_INDEX
-    uint32_t components; // bit per live kind
-    uint16_t flags;      // ORB_ENTITY_*
-    uint8_t pad[2];
+    u32 placement;  // its placement index, or ORB_NO_INDEX
+    u32 components; // bit per live kind
+    u16 flags;      // ORB_ENTITY_*
+    u8 pad[2];
     orb_vec2f at; // world pixels; relative to the parent when set
     orb_size size;
-    uint8_t pad2[4];
+    u8 pad2[4];
 } orb_entity;
 
 static_assert(sizeof(orb_entity) == 56, "orb_entity layout");
 
-constexpr uint16_t ORB_ENTITY_VISIBLE = 1;
-constexpr uint16_t ORB_ENTITY_PAUSED = 2;
-constexpr uint16_t ORB_ENTITY_PERSISTENT = 4;
-constexpr uint16_t ORB_ENTITY_DESPAWNING = 8;
-constexpr uint16_t ORB_ENTITY_NEW = 16; // orb's: spawned inside the update in progress
+constexpr u16 ORB_ENTITY_VISIBLE = 1;
+constexpr u16 ORB_ENTITY_PAUSED = 2;
+constexpr u16 ORB_ENTITY_PERSISTENT = 4;
+constexpr u16 ORB_ENTITY_DESPAWNING = 8;
+constexpr u16 ORB_ENTITY_NEW = 16; // orb's: spawned inside the update in progress
 
 typedef struct orb_sprite_component {
     orb_sprite sprite;   // drawn when anim is ORB_NO_ANIM
     orb_anim_state anim; // stepped by world_update; its frame is drawn when set
-    uint32_t flags;      // ORB_FLIP_X, ORB_FLIP_Y
+    u32 flags;           // ORB_FLIP_X, ORB_FLIP_Y
     orb_vec2 offset;     // draw position relative to the world position
-    int8_t remap;        // remap table index, -1 for none
-    int8_t sort_bias;    // added to the sort key
-    uint8_t layer;       // 0 to ORB_MAX_SPRITE_LAYERS - 1; world_draw takes one
-    uint8_t pad;
+    i8 remap;            // remap table index, -1 for none
+    i8 sort_bias;        // added to the sort key
+    u8 layer;            // 0 to ORB_MAX_SPRITE_LAYERS - 1; world_draw takes one
+    u8 pad;
 } orb_sprite_component;
 
 typedef struct orb_body {
@@ -370,36 +368,36 @@ typedef struct orb_body {
     orb_vec2f last_at;  // world position at the end of the last update, kept by orb; setting
                         // parent after entity_add moves the body without moving this, so a
                         // solid reports that jump as moved on the next update
-    float gravity;      // scale on the world gravity, 0 for none
+    f32 gravity;        // scale on the world gravity, 0 for none
     orb_rect box;       // relative to the world position; entity_add sets it to the entity's size
-    uint16_t flags;     // ORB_BODY_*
-    uint8_t pad[2];
+    u16 flags;          // ORB_BODY_*
+    u8 pad[2];
     orb_entity_id standing_on; // the solid under it after the last update, or ORB_NO_ENTITY
     orb_entity_id carrier;     // a solid the game says moves it, or ORB_NO_ENTITY
 } orb_body;
 
 static_assert(sizeof(orb_body) == 64, "orb_body layout");
 
-constexpr uint16_t ORB_BODY_SOLID = 1;
+constexpr u16 ORB_BODY_SOLID = 1;
 // with SOLID: solid only to a body arriving from the north
-constexpr uint16_t ORB_BODY_ONEWAY_N = 2;
-constexpr uint16_t ORB_BODY_ONEWAY_S = 4;
-constexpr uint16_t ORB_BODY_ONEWAY_E = 8;
-constexpr uint16_t ORB_BODY_ONEWAY_W = 16;
-constexpr uint16_t ORB_BODY_DROP = 32; // this update treats every one-way as open; cleared after
-constexpr uint16_t ORB_BODY_GROUNDED = 64; // set by the last update
-constexpr uint16_t ORB_BODY_CEILING = 128;
-constexpr uint16_t ORB_BODY_WALL_LEFT = 256;
-constexpr uint16_t ORB_BODY_WALL_RIGHT = 512;
-constexpr uint16_t ORB_BODY_CRUSHED = 1024;
+constexpr u16 ORB_BODY_ONEWAY_N = 2;
+constexpr u16 ORB_BODY_ONEWAY_S = 4;
+constexpr u16 ORB_BODY_ONEWAY_E = 8;
+constexpr u16 ORB_BODY_ONEWAY_W = 16;
+constexpr u16 ORB_BODY_DROP = 32;     // this update treats every one-way as open; cleared after
+constexpr u16 ORB_BODY_GROUNDED = 64; // set by the last update
+constexpr u16 ORB_BODY_CEILING = 128;
+constexpr u16 ORB_BODY_WALL_LEFT = 256;
+constexpr u16 ORB_BODY_WALL_RIGHT = 512;
+constexpr u16 ORB_BODY_CRUSHED = 1024;
 
 typedef struct orb_tag {
-    uint32_t bits;
+    u32 bits;
 } orb_tag;
 
-constexpr uint32_t ORB_TAG_ANY = 0xffffffffu;
+constexpr u32 ORB_TAG_ANY = 0xffffffffu;
 
-typedef enum orb_cell_kind : uint8_t {
+typedef enum orb_cell_kind : u8 {
     ORB_CELL_OPEN,
     ORB_CELL_SOLID,
     ORB_CELL_ONEWAY_N, // solid only to a body arriving from the north
@@ -412,20 +410,20 @@ typedef struct orb_hit {
     orb_entity_id entity; // ORB_NO_ENTITY for a cell
     orb_vec2 at;          // the hit point; for a cell, the last open pixel before it
     orb_vec2 normal;      // the face hit: one axis -1 or 1, the other 0
-    float fraction;       // 0..1 along the segment
+    f32 fraction;         // 0..1 along the segment
 } orb_hit;
 
-constexpr uint32_t ORB_RAY_CELLS = 1;  // test collision cells
-constexpr uint32_t ORB_RAY_SOLIDS = 2; // test solid bodies whatever their tags
+constexpr u32 ORB_RAY_CELLS = 1;  // test collision cells
+constexpr u32 ORB_RAY_SOLIDS = 2; // test solid bodies whatever their tags
 // one-way cells and bodies block from their solid side; else open
-constexpr uint32_t ORB_RAY_ONEWAY = 4;
+constexpr u32 ORB_RAY_ONEWAY = 4;
 
-constexpr uint32_t ORB_FLIP_X = 1;
-constexpr uint32_t ORB_FLIP_Y = 2;
+constexpr u32 ORB_FLIP_X = 1;
+constexpr u32 ORB_FLIP_Y = 2;
 
-constexpr uint64_t ORB_NS_PER_SECOND = 1000000000;
+constexpr u64 ORB_NS_PER_SECOND = 1000000000;
 constexpr int ORB_TICK_RATE = 60; // update calls per second
-constexpr float ORB_TICK_SECONDS = 1.0f / ORB_TICK_RATE;
+constexpr f32 ORB_TICK_SECONDS = 1.0f / ORB_TICK_RATE;
 
 constexpr int ORB_AUDIO_CHANNELS = 2;
 constexpr int ORB_AUDIO_RATE = 48000;
@@ -491,6 +489,18 @@ typedef struct orb_api orb_api;
 
 typedef void (*orb_entity_fn)(void* state, const orb_api* orb, orb_entity_id id);
 
+// Memory. global_arena lives for the run; make the game's own arenas from it with
+// arena_new, usually in init, into arena fields of the state, and never copy one.
+// frame_arena is cleared before each update: draw sees what the last update
+// allocated, and what draw allocates is released when it returns, so draw does not
+// grow a list update made. Calls that return a list allocate it in frame_arena.
+// orb_config.memory sizes both; exhausting one returns false or nullptr and logs
+// once. A list holds pointers, so a save writes its elements, not the list.
+// A state reset (a changed version, state size, pool, or memory) clears both arenas. A
+// call that returns a list whose result does not fit traps in a debug build and returns an
+// empty list in a release build.
+// Containers and arenas are for the main thread only.
+//
 // Console. The console opens on the grave key. var_int, var_float, var_bool, and command
 // register a name the console reads, sets, or runs; call them in reload, since the console
 // clears its tables before every reload. A variable points into your state; help is one
@@ -501,16 +511,19 @@ typedef void (*orb_entity_fn)(void* state, const orb_api* orb, orb_entity_id id)
 // and your input is empty.
 typedef void (*orb_command_fn)(void* state, const orb_api* orb, int argc, const char* const* argv);
 typedef struct orb_api {
-    void (*pal_reset)(void);
-    void (*pal_set)(int index, uint8_t r, uint8_t g, uint8_t b);
-    uint32_t (*pal_get)(int index);
+    arena* global_arena;
+    arena* frame_arena;
 
-    void (*clear)(uint8_t index);
+    void (*pal_reset)(void);
+    void (*pal_set)(int index, u8 r, u8 g, u8 b);
+    u32 (*pal_get)(int index);
+
+    void (*clear_screen)(u8 index);
     void (*camera_set)(orb_vec2f at);
     orb_camera (*camera_update)(orb_camera camera);
 
     orb_sprite (*sprite_find)(const char* stem, int frame);
-    void (*sprite_draw)(orb_sprite sprite, orb_vec2 at, uint32_t flags, const uint8_t* remap);
+    void (*sprite_draw)(orb_sprite sprite, orb_vec2 at, u32 flags, const u8* remap);
     orb_anim (*anim_find)(const char* stem, const char* tag);
     void (*anim_start)(orb_anim_state* state, orb_anim anim);
     orb_sprite (*anim_step)(orb_anim_state* state);
@@ -520,7 +533,7 @@ typedef struct orb_api {
     void (*layer_draw)(orb_level level, int layer);
     orb_level (*level_find)(const char* stem);
     orb_rect (*level_bounds)(orb_level level);
-    int (*level_neighbors)(orb_level level, orb_level_neighbor* out, int max);
+    orb_level_neighbor_list (*level_neighbors)(orb_level level);
     int (*cell_get)(orb_level level, int layer, orb_vec2 at);
 
     orb_type (*type_find)(const char* stem);
@@ -532,57 +545,38 @@ typedef struct orb_api {
     void (*entity_remove)(orb_entity_id id, int kind);
     void* (*entity_component)(orb_entity_id id, int kind);
     orb_vec2f (*entity_world_at)(orb_entity_id id);
-    int (*entity_all)(orb_entity_id* out, int max);
-    int (*entity_of_type)(orb_type type, orb_entity_id* out, int max);
+    orb_entity_id_list (*entity_all)(void);
+    orb_entity_id_list (*entity_of_type)(orb_type type);
     int (*entity_field_count)(orb_entity_id id, const char* name);
-    int32_t (*entity_field_int)(orb_entity_id id, const char* name, int index);
-    float (*entity_field_float)(orb_entity_id id, const char* name, int index);
+    i32 (*entity_field_int)(orb_entity_id id, const char* name, int index);
+    f32 (*entity_field_float)(orb_entity_id id, const char* name, int index);
     bool (*entity_field_bool)(orb_entity_id id, const char* name, int index);
     const char* (*entity_field_string)(orb_entity_id id, const char* name, int index);
     orb_vec2 (*entity_field_point)(orb_entity_id id, const char* name, int index);
     orb_entity_id (*entity_field_ref)(orb_entity_id id, const char* name, int index);
     void (*level_spawn)(orb_level level);
     void (*level_despawn)(orb_level level);
-    void (*world_collision)(const char* layer, const uint8_t kinds[256]);
+    void (*world_collision)(const char* layer, const u8 kinds[256]);
     orb_cell_kind (*cell_kind)(orb_vec2 at);
     void (*world_gravity)(orb_vec2f gravity);
     void (*world_update)(void);
     void (*world_draw)(int layer);
-    void (*remap_set)(int index, const uint8_t table[256]);
-    int (*query_rect)(
-        orb_rect rect,
-        uint32_t mask,
-        orb_entity_id except,
-        orb_entity_id* out,
-        int max
-    );
-    int (*query_circle)(
-        orb_vec2 center,
-        int radius,
-        uint32_t mask,
-        orb_entity_id except,
-        orb_entity_id* out,
-        int max
-    );
-    int (*query_point)(
-        orb_vec2 at,
-        uint32_t mask,
-        orb_entity_id except,
-        orb_entity_id* out,
-        int max
-    );
+    void (*remap_set)(int index, const u8 table[256]);
+    orb_entity_id_list (*query_rect)(orb_rect rect, u32 mask, orb_entity_id except);
+    orb_entity_id_list (*query_circle)(orb_vec2 center, int radius, u32 mask, orb_entity_id except);
+    orb_entity_id_list (*query_point)(orb_vec2 at, u32 mask, orb_entity_id except);
     bool (*query_ray)(
         orb_vec2 from,
         orb_vec2 to,
-        uint32_t mask,
-        uint32_t flags,
+        u32 mask,
+        u32 flags,
         orb_entity_id except,
         orb_hit* hit
     );
 
     orb_font (*font_find)(const char* stem);
     orb_size (*text_measure)(orb_font font, const char* text);
-    void (*text_draw)(orb_font font, const char* text, orb_vec2 at, const uint8_t* remap);
+    void (*text_draw)(orb_font font, const char* text, orb_vec2 at, const u8* remap);
 
     orb_sample (*sample_find)(const char* stem);
     orb_voice (*sound_play)(orb_sample sample, orb_sound_params params, int priority);
@@ -614,13 +608,13 @@ typedef struct orb_api {
     orb_pad (*pad_pressed_any)(void);
     orb_vec2f (*pad_stick)(orb_pad stick);
     void (*pad_stick_dpad)(bool on);
-    float (*pad_trigger)(orb_pad trigger);
+    f32 (*pad_trigger)(orb_pad trigger);
     orb_pad_make (*pad_make)(void);
 
     [[gnu::format(gnu_printf, 1, 2)]] void (*log)(const char* fmt, ...);
 
-    void (*var_int)(const char* name, int32_t* at, const char* help);
-    void (*var_float)(const char* name, float* at, const char* help);
+    void (*var_int)(const char* name, i32* at, const char* help);
+    void (*var_float)(const char* name, f32* at, const char* help);
     void (*var_bool)(const char* name, bool* at, const char* help);
     void (*command)(const char* name, orb_command_fn fn, const char* help);
     bool (*console_open)(void);
@@ -640,6 +634,11 @@ static inline orb_tag* orb_tag_of(const orb_api* orb, orb_entity_id id) {
     return orb->entity_component(id, ORB_COMPONENT_TAG);
 }
 
+typedef struct orb_memory {
+    usize global; // orb->global_arena; 0 means 1 MB
+    usize frame;  // orb->frame_arena; 0 means 256 KB
+} orb_memory;
+
 // Reload rules. orb reloads game code and recasts art while the game runs, and
 // three rules keep that safe:
 //  1. State lives in the struct orb hands you. config() is read once at boot;
@@ -657,12 +656,13 @@ static inline orb_tag* orb_tag_of(const orb_api* orb, orb_entity_id id) {
 // nothing until reload finds it again. A find that misses logs the name and
 // returns ORB_NO_SPRITE, ORB_NO_ANIM, ORB_NO_SAMPLE, or ORB_NO_SONG.
 typedef struct orb_config {
-    size_t state_size;
-    uint32_t state_version;
-    uint32_t save_version;
-    uint32_t max_entities;                                        // 0 defaults to 256
-    uint16_t components[ORB_MAX_COMPONENTS - ORB_COMPONENT_GAME]; // byte sizes of the game's kinds;
-                                                                  // 0 ends the list
+    usize state_size;
+    u32 state_version;
+    u32 save_version;
+    u32 max_entities; // 0 defaults to 256
+    orb_memory memory;
+    u16 components[ORB_MAX_COMPONENTS - ORB_COMPONENT_GAME]; // byte sizes of the game's kinds;
+                                                             // 0 ends the list
 } orb_config;
 
 typedef struct orb_game {

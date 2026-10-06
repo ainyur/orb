@@ -10,15 +10,15 @@ static void ignore_line(const char* line) {
     (void)line;
 }
 
-static orb_span span(const char* text) {
-    return (orb_span) {(uint8_t*)text, strlen(text)};
+static u8_span text_span(const char* text) {
+    return (u8_span) {(u8*)text, strlen(text)};
 }
 
 int main(void) {
-    uint8_t byte_a[] = "a", byte_b[] = "b";
+    u8 byte_a[] = "a", byte_b[] = "b";
     const char* path = "build/scratch/watch.txt";
 
-    CHECK(orb_os_write_file(path, (orb_span) {byte_a, 1}));
+    CHECK(orb_os_write_file(path, (u8_span) {byte_a, 1}));
 
     orb_watch watch;
     orb_watch_init(&watch, path);
@@ -27,7 +27,7 @@ int main(void) {
 
     orb_os_sleep(10000000); // 10 ms so the new mtime differs
 
-    CHECK(orb_os_write_file(path, (orb_span) {byte_b, 1}));
+    CHECK(orb_os_write_file(path, (u8_span) {byte_b, 1}));
     CHECK(!orb_watch_poll(&watch, 1000000000)); // first seen: pending
     CHECK(!orb_watch_poll(&watch, 1100000000)); // 100 ms: not settled
     CHECK(orb_watch_poll(&watch, 1300000000));  // 300 ms: fires
@@ -35,12 +35,12 @@ int main(void) {
 
     orb_os_sleep(10000000);
 
-    CHECK(orb_os_write_file(path, (orb_span) {byte_a, 1}));
+    CHECK(orb_os_write_file(path, (u8_span) {byte_a, 1}));
     CHECK(!orb_watch_poll(&watch, 2000000000));
 
     orb_os_sleep(10000000);
 
-    CHECK(orb_os_write_file(path, (orb_span) {byte_b, 1}));
+    CHECK(orb_os_write_file(path, (u8_span) {byte_b, 1}));
     CHECK(!orb_watch_poll(&watch, 2150000000));
     CHECK(!orb_watch_poll(&watch, 2300000000));
     CHECK(orb_watch_poll(&watch, 2400000000));
@@ -52,7 +52,7 @@ int main(void) {
 
     orb_os_sleep(10000000);
 
-    CHECK(orb_os_write_file(path, (orb_span) {byte_a, 1}));
+    CHECK(orb_os_write_file(path, (u8_span) {byte_a, 1}));
     CHECK(!orb_watch_poll(&watch, 3400000000));
     CHECK(orb_watch_poll(&watch, 3700000000));
     const char* build_argv[] = {"make", "-s", "build/game" ORB_OS_LIB_SUFFIX, nullptr};
@@ -66,7 +66,7 @@ int main(void) {
 
     snprintf(copy_name, sizeof copy_name, ".orb-game-%u-0" ORB_OS_LIB_SUFFIX, orb_os_pid());
     orb_path_join(leftover, "examples/demo/build", copy_name);
-    CHECK(orb_os_write_file(leftover, (orb_span) {byte_a, 1}));
+    CHECK(orb_os_write_file(leftover, (u8_span) {byte_a, 1}));
 #ifndef _WIN32
     // Held open across the boot. Inode numbers cannot express this: a freed one may be
     // reused, so an equal number proves nothing either way.
@@ -97,7 +97,7 @@ int main(void) {
 #ifndef _WIN32
     // orb_os_copy_file opens with "wb", so without the loader's remove() this descriptor
     // would read the new library instead of the byte the leftover was written with.
-    uint8_t held_byte = 0;
+    u8 held_byte = 0;
 
     CHECK_EQ(pread(held, &held_byte, 1, 0), 1);
     CHECK_EQ(held_byte, byte_a[0]);
@@ -124,7 +124,7 @@ int main(void) {
 
     const char* makefile = "all:\n\t@false\nbuild/game" ORB_OS_LIB_SUFFIX ":\n\t@true\n";
     CHECK(orb_os_write_file(
-        "build/scratch/with space/Makefile", (orb_span) {(uint8_t*)makefile, strlen(makefile)}
+        "build/scratch/with space/Makefile", (u8_span) {(u8*)makefile, strlen(makefile)}
     ));
 
     snprintf(debug_dir, sizeof debug_dir, "%s", "build/scratch/with space");
@@ -143,8 +143,8 @@ int main(void) {
     CHECK(orb_os_make_dir("build/scratch/deps/build"));
 
     const char *dep_a = "build/a.o: a.c ../inc/h.h\n", *dep_b = "build/b.o: b.c \\\n ../inc/h.h\n";
-    CHECK(orb_os_write_file("build/scratch/deps/build/a.d", span(dep_a)));
-    CHECK(orb_os_write_file("build/scratch/deps/build/b.d", span(dep_b)));
+    CHECK(orb_os_write_file("build/scratch/deps/build/a.d", text_span(dep_a)));
+    CHECK(orb_os_write_file("build/scratch/deps/build/b.d", text_span(dep_b)));
     CHECK(debug_watch_sources());
     CHECK_EQ(debug_sources.count, 3);
     CHECK(strcmp(debug_sources.at[0].path, "build/scratch/deps/a.c") == 0);
@@ -159,7 +159,7 @@ int main(void) {
 
     snprintf(debug_dir, sizeof debug_dir, "%s", "game");
     debug_sources.count = 0;
-    debug_watch_depfile(span(text));
+    debug_watch_depfile(text_span(text));
 
     CHECK_EQ(debug_sources.count, 6);
     CHECK(strcmp(debug_sources.at[0].path, "game/demo.c") == 0);
@@ -169,11 +169,11 @@ int main(void) {
     CHECK(strcmp(debug_sources.at[4].path, "game/other.c") == 0);
     CHECK(strcmp(debug_sources.at[5].path, "/abs/x.h") == 0);
 
-    debug_watch_depfile(span("build/z.o: other.c z.c\n"));
+    debug_watch_depfile(text_span("build/z.o: other.c z.c\n"));
     CHECK_EQ(debug_sources.count, 7);
     CHECK(strcmp(debug_sources.at[6].path, "game/z.c") == 0);
 
-    debug_watch_depfile(span("  \n\n"));
+    debug_watch_depfile(text_span("  \n\n"));
     CHECK_EQ(debug_sources.count, 7);
 
     return 0;

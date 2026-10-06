@@ -24,13 +24,13 @@ static bool write_manifest(const char* size) {
         size
     );
 
-    return orb_os_write_file(DIR "/orb.json", (orb_span) {(uint8_t*)text, (size_t)n});
+    return orb_os_write_file(DIR "/orb.json", (u8_span) {(u8*)text, (usize)n});
 }
 
 static bool copy_player(const char* to) {
-    static alignas(16) uint8_t copy_mem[1 << 16];
-    orb_arena copy;
-    orb_span player;
+    static alignas(16) u8 copy_mem[1 << 16];
+    arena copy;
+    u8_span player;
 
     orb_arena_init(&copy, "copy", copy_mem, sizeof copy_mem);
 
@@ -48,8 +48,8 @@ int main(void) {
     orb_error err;
 
     // "world" defaults to levels/world.ldtk and can be overridden like art or sfx
-    static alignas(16) uint8_t world_mem[1 << 16];
-    orb_arena world_arena;
+    static alignas(16) u8 world_mem[1 << 16];
+    arena world_arena;
     orb_arena_init(&world_arena, "world manifest", world_mem, sizeof world_mem);
 
     orb_manifest manifest;
@@ -60,23 +60,23 @@ int main(void) {
         "{\"id\": \"m\", \"name\": \"m\", \"size\": [64, 32],\n"
         " \"palette\": " ART
         "art/palette.aseprite\", \"art\": \".\", \"world\": \"maps/w.ldtk\"}\n";
-    CHECK(orb_os_write_file(
-        DIR "/orb.json", (orb_span) {(uint8_t*)world_override, strlen(world_override)}
-    ));
-    orb_arena_reset(&world_arena);
+    CHECK(
+        orb_os_write_file(DIR "/orb.json", (u8_span) {(u8*)world_override, strlen(world_override)})
+    );
+    arena_clear(&world_arena);
     CHECK(orb_manifest_load(&world_arena, DIR, &manifest, &err));
     CHECK(strcmp(manifest.world, "maps/w.ldtk") == 0);
 
     CHECK(write_manifest("[64, 32]")); // restore for orb_boot below
 
-    if (!orb_boot(&test_game, DIR, (orb_span) {}, &err)) {
+    if (!orb_boot(&test_game, DIR, (u8_span) {}, &err)) {
         fprintf(stderr, "boot: %s\n", err.text);
         return 1;
     }
 
     const orb_api* api = orb_api_table();
 
-    api->clear(0);
+    api->clear_screen(0);
     api->sprite_draw(ORB_SPRITE(2), (orb_vec2) {0, 0}, 0, nullptr);
     CHECK_EQ(orb_api_fb()->px[4 * 64 + 4], 0);
 
@@ -87,8 +87,8 @@ int main(void) {
     orb_assets assets;
 
     CHECK(orb_file_load(orb_last_cast()->file, &assets, &err));
-    CHECK_EQ(assets.sprite_count, 4); // two frames from each of two files
-    api->clear(0);
+    CHECK_EQ(assets.sprites.len, 4); // two frames from each of two files
+    api->clear_screen(0);
     api->sprite_draw(ORB_SPRITE(2), (orb_vec2) {0, 0}, 0, nullptr);
     CHECK_EQ(orb_api_fb()->px[4 * 64 + 4], 2);
 
@@ -97,14 +97,14 @@ int main(void) {
     CHECK(copy_player(DIR "/hero.aseprite"));
     CHECK(orb_recast(&err));
 
-    api->clear(0);
+    api->clear_screen(0);
     api->sprite_draw(ORB_SPRITE(0), (orb_vec2) {0, 0}, 0, nullptr);
 
     CHECK_EQ(orb_api_fb()->px[4 * 64 + 4], 0);
     CHECK_EQ(api->sprite_find("player", 0).v, ORB_NO_SPRITE.v); // gone by that name
 
     // finding by the new name, as reload does, yields the live handle
-    api->clear(0);
+    api->clear_screen(0);
     api->sprite_draw(api->sprite_find("hero", 0), (orb_vec2) {0, 0}, 0, nullptr);
 
     CHECK_EQ(orb_api_fb()->px[4 * 64 + 4], 2);

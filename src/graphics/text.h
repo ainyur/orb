@@ -10,5 +10,5 @@ void orb_text_draw(
     orb_font font,
     const char* text,
     orb_vec2 at,
-    const uint8_t* remap
+    const u8* remap
 );

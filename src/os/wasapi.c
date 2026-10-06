@@ -113,7 +113,7 @@ static HRESULT wasapi_fill(void) {
 
     if (FAILED(result)) return result;
 
-    orb_audio_render((int16_t*)data, (int)frames);
+    orb_audio_render((i16*)data, (int)frames);
     return IAudioRenderClient_ReleaseBuffer(wasapi_render, frames, 0);
 }
 
@@ -123,7 +123,7 @@ static HRESULT wasapi_fill(void) {
 // first retry waits a full second so an endpoint that opens but fails at once
 // cannot spin the thread through open and release.
 static HRESULT wasapi_outage(void) {
-    uint64_t start = orb_os_ticks(), rendered = 0;
+    u64 start = orb_os_ticks(), rendered = 0;
     HRESULT result = E_FAIL;
 
     while (!atomic_load(&wasapi_stop)) {

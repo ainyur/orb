@@ -6,16 +6,19 @@
 
 constexpr int ORB_CAST_MAX_READS = 1024;
 
+list(reads, const char*);
+
 typedef struct orb_cast_result {
-    orb_span file;
-    const char** reads; // every file the cast read, relative to game_dir, once each, in order
-    int read_count;
+    u8_span file;
+    reads_list reads; // every file the cast read, relative to game_dir, once each, in order
 } orb_cast_result;
 
 typedef struct orb_manifest_song {
-    float bpm;
+    f32 bpm;
     const char* stem;
 } orb_manifest_song;
+
+list(orb_manifest_song);
 
 // orb.json. id, name, and size are required; the rest default to the layout
 // art/palette.aseprite, art/, fonts/, sfx/, music/, and levels/world.ldtk. The
@@ -30,21 +33,20 @@ typedef struct orb_manifest {
     const char* sfx;
     const char* music;
     const char* world;
-    const orb_manifest_song* songs;
-    int song_count;
+    orb_manifest_song_span songs;
     orb_size size;
 } orb_manifest;
 
 [[nodiscard]] bool orb_cast_game(
-    orb_arena* scratch,
-    orb_arena* out,
+    arena* scratch,
+    arena* out,
     const char* game_dir,
     orb_manifest* manifest, // loaded by the cast, so the caller reads what it cast from
     orb_cast_result* result,
     orb_error* err
 );
 [[nodiscard]] bool orb_manifest_load(
-    orb_arena* arena,
+    arena* out,
     const char* game_dir,
     orb_manifest* manifest,
     orb_error* err

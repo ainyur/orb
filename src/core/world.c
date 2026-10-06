@@ -2,19 +2,19 @@
 #include "../graphics/pal.h"
 #include "../graphics/sprite.h"
 #include "../graphics/tilemap.h"
+#include "../orb_math.h"
 #include "api.h"
 #include "entity.h"
 #include "log.h"
-#include "macros.h"
 
 #include <stdlib.h>
 #include <string.h>
 
-static uint64_t world_layer_id; // 0 until world_collision names a layer
-static uint8_t world_kinds[256];
-static int16_t world_layers[ORB_MAX_LEVELS]; // each level's collision layer index, or -1
+static u64 world_layer_id; // 0 until world_collision names a layer
+static u8 world_kinds[256];
+static i16 world_layers[ORB_MAX_LEVELS]; // each level's collision layer index, or -1
 static orb_vec2f world_gravity_value;
-static uint8_t world_remaps[ORB_MAX_REMAPS][256];
+static u8 world_remaps[ORB_MAX_REMAPS][256];
 static bool world_remap_live[ORB_MAX_REMAPS];
 
 typedef struct world_box {
@@ -22,10 +22,6 @@ typedef struct world_box {
 } world_box;
 
 typedef bool (*world_cell_fn)(void* context, orb_cell_kind kind, world_box cell);
-
-static int world_floor_div(int a, int b) {
-    return a >= 0 ? a / b : -((-a + b - 1) / b);
-}
 
 static bool world_overlaps(world_box a, world_box b) {
     return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
@@ -39,7 +35,7 @@ static world_box world_body_box(const orb_entity* entity, const orb_body* body) 
 }
 
 // A live, non-despawning entity with a body, or nullptr.
-static orb_entity* world_bodied(uint32_t slot, orb_body** body) {
+static orb_entity* world_bodied(u32 slot, orb_body** body) {
     orb_entity* entity = orb_entity_at(slot);
 
     if (!entity || entity->flags & ORB_ENTITY_DESPAWNING ||
@@ -55,7 +51,7 @@ static bool world_moves(const orb_entity* entity) {
     return !(entity->flags & ORB_ENTITY_PAUSED) && orb_entity_get(entity->parent) == nullptr;
 }
 
-static uint16_t world_oneways(const orb_body* body) {
+static u16 world_oneways(const orb_body* body) {
     return body->flags &
            (ORB_BODY_ONEWAY_N | ORB_BODY_ONEWAY_S | ORB_BODY_ONEWAY_E | ORB_BODY_ONEWAY_W);
 }
@@ -71,7 +67,7 @@ static orb_cell_kind world_oneway_kind(int axis, int dir) {
     return dir > 0 ? ORB_CELL_ONEWAY_N : ORB_CELL_ONEWAY_S;
 }
 
-static uint16_t world_oneway_flag(int axis, int dir) {
+static u16 world_oneway_flag(int axis, int dir) {
     if (axis == 0) return dir > 0 ? ORB_BODY_ONEWAY_W : ORB_BODY_ONEWAY_E;
 
     return dir > 0 ? ORB_BODY_ONEWAY_N : ORB_BODY_ONEWAY_S;
@@ -80,15 +76,15 @@ static uint16_t world_oneway_flag(int axis, int dir) {
 void orb_world_revalidate(void) {
     const orb_assets* assets = orb_entity_assets();
 
-    for (uint32_t level = 0; level < assets->level_count; level++) {
-        const orb_level_desc* desc = &assets->levels[level];
+    for (u32 level = 0; level < assets->levels.len; level++) {
+        const orb_level_desc* desc = &assets->levels.elems[level];
 
         world_layers[level] = -1;
 
         for (int i = 0; world_layer_id && i < desc->layer_count; i++) {
             if (assets->layer_ids[desc->first_layer + i] != world_layer_id) continue;
-            if (assets->layers[desc->first_layer + i].cells != ORB_NO_INDEX)
-                world_layers[level] = (int16_t)i;
+            if (assets->layers.elems[desc->first_layer + i].cells != ORB_NO_INDEX)
+                world_layers[level] = (i16)i;
 
             break;
         }
@@ -99,7 +95,7 @@ orb_cell_kind orb_world_cell_kind(orb_vec2 at) {
     if (!world_layer_id) return ORB_CELL_OPEN;
 
     const orb_assets* assets = orb_entity_assets();
-    uint32_t level = orb_tilemap_level_at(assets, at);
+    u32 level = orb_tilemap_level_at(assets, at);
 
     if (level == ORB_NO_INDEX) return ORB_CELL_OPEN;
 
@@ -107,7 +103,7 @@ orb_cell_kind orb_world_cell_kind(orb_vec2 at) {
 
     if (layer < 0) return ORB_CELL_OPEN;
 
-    orb_level handle = ORB_LEVEL(level | (uint32_t)assets->level_gens[level] << 24);
+    orb_level handle = ORB_LEVEL(level | (u32)assets->level_gens[level] << 24);
 
     return (orb_cell_kind)world_kinds[orb_tilemap_cell(assets, handle, layer, at)];
 }
@@ -119,8 +115,8 @@ static void world_cells(world_box box, world_cell_fn visit, void* context) {
 
     const orb_assets* assets = orb_entity_assets();
 
-    for (uint32_t i = 0; i < assets->level_count; i++) {
-        const orb_level_desc* desc = &assets->levels[i];
+    for (u32 i = 0; i < assets->levels.len; i++) {
+        const orb_level_desc* desc = &assets->levels.elems[i];
         world_box bounds = {
             desc->world_x, desc->world_y, desc->world_x + desc->width, desc->world_y + desc->height
         };
@@ -131,18 +127,19 @@ static void world_cells(world_box box, world_cell_fn visit, void* context) {
 
         if (layer < 0) continue;
 
-        const orb_layer_desc* layer_desc = &assets->layers[desc->first_layer + layer];
+        const orb_layer_desc* layer_desc = &assets->layers.elems[desc->first_layer + layer];
         int ox = desc->world_x + layer_desc->offset_x, oy = desc->world_y + layer_desc->offset_y,
             grid = layer_desc->grid;
-        int c0 = orb_max(0, world_floor_div(box.left - ox, grid));
-        int c1 = orb_min(layer_desc->columns - 1, world_floor_div(box.right - 1 - ox, grid));
-        int r0 = orb_max(0, world_floor_div(box.top - oy, grid));
-        int r1 = orb_min(layer_desc->rows - 1, world_floor_div(box.bottom - 1 - oy, grid));
+        int c0 = orb_max(0, orb_floor_div(box.left - ox, grid));
+        int c1 = orb_min(layer_desc->columns - 1, orb_floor_div(box.right - 1 - ox, grid));
+        int r0 = orb_max(0, orb_floor_div(box.top - oy, grid));
+        int r1 = orb_min(layer_desc->rows - 1, orb_floor_div(box.bottom - 1 - oy, grid));
 
         for (int row = r0; row <= r1; row++) {
             for (int column = c0; column <= c1; column++) {
-                orb_cell_kind kind = (orb_cell_kind)world_kinds
-                    [assets->cells[layer_desc->cells + row * layer_desc->columns + column]];
+                orb_cell_kind kind = (orb_cell_kind)
+                    world_kinds[assets->cells
+                                    .elems[layer_desc->cells + row * layer_desc->columns + column]];
 
                 if (kind == ORB_CELL_OPEN) continue;
 
@@ -211,13 +208,13 @@ static int world_first_blocker(
 
     orb_pool* pool = orb_entity_pool();
 
-    for (uint32_t i = 0; i < pool->solid_count; i++) {
+    for (u32 i = 0; i < pool->solids.len; i++) {
         orb_body* other_body;
-        const orb_entity* other = world_bodied(pool->solids[i], &other_body);
+        const orb_entity* other = world_bodied(pool->solids.elems[i], &other_body);
 
         if (!other || other == self) continue;
 
-        uint16_t oneways = world_oneways(other_body);
+        u16 oneways = world_oneways(other_body);
 
         if (oneways && (drop || !(oneways & world_oneway_flag(axis, dir)))) continue;
 
@@ -248,12 +245,12 @@ static bool world_move_axis(
     orb_entity* entity,
     orb_body* body,
     int axis,
-    float delta,
+    f32 delta,
     bool against_solids
 ) {
     if (delta == 0) return false;
 
-    float* pos = axis == 0 ? &entity->at.x : &entity->at.y;
+    f32* pos = axis == 0 ? &entity->at.x : &entity->at.y;
     int box_at = axis == 0 ? body->box.at.x : body->box.at.y;
     int extent = axis == 0 ? body->box.size.width : body->box.size.height;
     int dir = delta > 0 ? 1 : -1, lead = dir > 0 ? extent : 0;
@@ -271,7 +268,7 @@ static bool world_move_axis(
         return false;
     }
 
-    *pos = (float)(limit - box_at - lead);
+    *pos = (f32)(limit - box_at - lead);
     return true;
 }
 
@@ -282,7 +279,7 @@ static void world_move_solid(orb_entity* entity, orb_body* body) {
     body->impact = (orb_vec2f) {};
 
     for (int axis = 1; axis >= 0; axis--) {
-        float* velocity = axis ? &body->velocity.y : &body->velocity.x;
+        f32* velocity = axis ? &body->velocity.y : &body->velocity.x;
 
         if (!world_move_axis(entity, body, axis, *velocity, false)) continue;
 
@@ -299,7 +296,7 @@ static void world_push(
     const orb_body* solid_body
 ) {
     for (int axis = 1; axis >= 0; axis--) {
-        float moved = axis ? solid_body->moved.y : solid_body->moved.x;
+        f32 moved = axis ? solid_body->moved.y : solid_body->moved.x;
         world_box box = world_body_box(entity, body), other = world_body_box(solid, solid_body);
 
         if (moved == 0 || !world_overlaps(box, other)) continue;
@@ -307,7 +304,7 @@ static void world_push(
         int amount = axis ? (moved > 0 ? other.bottom - box.top : other.top - box.bottom)
                           : (moved > 0 ? other.right - box.left : other.left - box.right);
 
-        world_move_axis(entity, body, axis, (float)amount, true);
+        world_move_axis(entity, body, axis, (f32)amount, true);
     }
 }
 
@@ -321,13 +318,12 @@ static void world_carry(orb_entity* entity, orb_body* body, const orb_body* soli
 static void world_sweep(orb_entity* entity, orb_body* body) {
     body->velocity.x += world_gravity_value.x * body->gravity;
     body->velocity.y += world_gravity_value.y * body->gravity;
-    body->flags &= (uint16_t)~(
-        ORB_BODY_GROUNDED | ORB_BODY_CEILING | ORB_BODY_WALL_LEFT | ORB_BODY_WALL_RIGHT
-    );
+    body->flags &=
+        (u16) ~(ORB_BODY_GROUNDED | ORB_BODY_CEILING | ORB_BODY_WALL_LEFT | ORB_BODY_WALL_RIGHT);
     body->impact = (orb_vec2f) {};
 
     for (int axis = 1; axis >= 0; axis--) {
-        float* velocity = axis ? &body->velocity.y : &body->velocity.x;
+        f32* velocity = axis ? &body->velocity.y : &body->velocity.x;
 
         if (!world_move_axis(entity, body, axis, *velocity, true)) continue;
 
@@ -342,7 +338,7 @@ static void world_sweep(orb_entity* entity, orb_body* body) {
         *velocity = 0;
     }
 
-    body->flags &= (uint16_t)~ORB_BODY_DROP;
+    body->flags &= (u16)~ORB_BODY_DROP;
 }
 
 // The solid whose top touches the body's bottom with x overlap, or ORB_NO_ENTITY.
@@ -350,9 +346,9 @@ static orb_entity_id world_support(const orb_entity* entity, const orb_body* bod
     world_box box = world_body_box(entity, body);
     orb_pool* pool = orb_entity_pool();
 
-    for (uint32_t i = 0; i < pool->solid_count; i++) {
+    for (u32 i = 0; i < pool->solids.len; i++) {
         orb_body* other_body;
-        const orb_entity* other = world_bodied(pool->solids[i], &other_body);
+        const orb_entity* other = world_bodied(pool->solids.elems[i], &other_body);
 
         if (!other || other == entity) continue;
 
@@ -385,9 +381,9 @@ static bool world_crushed(const orb_entity* entity, const orb_body* body) {
 
     orb_pool* pool = orb_entity_pool();
 
-    for (uint32_t i = 0; i < pool->solid_count; i++) {
+    for (u32 i = 0; i < pool->solids.len; i++) {
         orb_body* other_body;
-        const orb_entity* other = world_bodied(pool->solids[i], &other_body);
+        const orb_entity* other = world_bodied(pool->solids.elems[i], &other_body);
 
         if (other && other != entity && world_full_solid(other_body) &&
             world_overlaps(box, world_body_box(other, other_body)))
@@ -412,7 +408,7 @@ static const orb_body* world_mover_of(const orb_body* body) {
     return nullptr;
 }
 
-void orb_world_collision(const char* layer, const uint8_t kinds[256]) {
+void orb_world_collision(const char* layer, const u8 kinds[256]) {
     world_layer_id = orb_asset_id(layer, "");
     memcpy(world_kinds, kinds, sizeof world_kinds);
     orb_world_revalidate();
@@ -424,13 +420,13 @@ void orb_world_gravity(orb_vec2f gravity) {
 
 // Live solid slots, gathered after the type updates, the last code this tick that can change them.
 static void world_gather_solids(orb_pool* pool) {
-    pool->solid_count = 0;
+    pool->solids.len = 0;
 
-    for (uint32_t slot = 0; slot < pool->max; slot++) {
+    for (u32 slot = 0; slot < pool->max; slot++) {
         orb_body* body;
 
         if (world_bodied(slot, &body) && (body->flags & ORB_BODY_SOLID))
-            pool->solids[pool->solid_count++] = slot;
+            pool->solids.elems[pool->solids.len++] = slot;
     }
 }
 
@@ -444,7 +440,7 @@ void orb_world_update(void) {
 
     orb_entity_updating = true;
 
-    for (uint32_t slot = 0; slot < pool->max; slot++) {
+    for (u32 slot = 0; slot < pool->max; slot++) {
         entity = orb_entity_at(slot);
 
         if (!entity || entity->flags & (ORB_ENTITY_PAUSED | ORB_ENTITY_DESPAWNING | ORB_ENTITY_NEW))
@@ -457,8 +453,8 @@ void orb_world_update(void) {
 
     world_gather_solids(pool);
 
-    for (uint32_t i = 0; i < pool->solid_count; i++) {
-        if (!(entity = world_bodied(pool->solids[i], &body))) continue;
+    for (u32 i = 0; i < pool->solids.len; i++) {
+        if (!(entity = world_bodied(pool->solids.elems[i], &body))) continue;
         if (world_moves(entity)) world_move_solid(entity, body);
 
         orb_vec2f at = orb_entity_world_at(entity->self);
@@ -466,13 +462,13 @@ void orb_world_update(void) {
         body->moved = (orb_vec2f) {at.x - body->last_at.x, at.y - body->last_at.y};
     }
 
-    for (uint32_t slot = 0; slot < pool->max; slot++) {
+    for (u32 slot = 0; slot < pool->max; slot++) {
         if (!(entity = world_bodied(slot, &body)) || !world_full_solid(body)) continue;
         if (body->moved.x == 0 && body->moved.y == 0) continue;
 
         world_box other = world_body_box(entity, body);
 
-        for (uint32_t other_slot = 0; other_slot < pool->max; other_slot++) {
+        for (u32 other_slot = 0; other_slot < pool->max; other_slot++) {
             orb_body* target_body;
             orb_entity* target = world_bodied(other_slot, &target_body);
 
@@ -485,7 +481,7 @@ void orb_world_update(void) {
         }
     }
 
-    for (uint32_t slot = 0; slot < pool->max; slot++) {
+    for (u32 slot = 0; slot < pool->max; slot++) {
         if (!(entity = world_bodied(slot, &body)) || body->flags & ORB_BODY_SOLID ||
             !world_moves(entity))
             continue;
@@ -495,7 +491,7 @@ void orb_world_update(void) {
         if (solid_body) world_carry(entity, body, solid_body);
     }
 
-    for (uint32_t slot = 0; slot < pool->max; slot++) {
+    for (u32 slot = 0; slot < pool->max; slot++) {
         if (!(entity = world_bodied(slot, &body)) || body->flags & ORB_BODY_SOLID ||
             !world_moves(entity))
             continue;
@@ -504,20 +500,20 @@ void orb_world_update(void) {
         body->standing_on = world_support(entity, body);
     }
 
-    for (uint32_t slot = 0; slot < pool->max; slot++) {
+    for (u32 slot = 0; slot < pool->max; slot++) {
         if (!(entity = world_bodied(slot, &body))) continue;
 
         if (!(body->flags & ORB_BODY_SOLID) && !(entity->flags & ORB_ENTITY_PAUSED)) {
             if (world_crushed(entity, body))
                 body->flags |= ORB_BODY_CRUSHED;
             else
-                body->flags &= (uint16_t)~ORB_BODY_CRUSHED;
+                body->flags &= (u16)~ORB_BODY_CRUSHED;
         }
 
         body->last_at = orb_entity_world_at(entity->self);
     }
 
-    for (uint32_t slot = 0; slot < pool->max; slot++) {
+    for (u32 slot = 0; slot < pool->max; slot++) {
         entity = orb_entity_at(slot);
 
         if (!entity || entity->flags & (ORB_ENTITY_PAUSED | ORB_ENTITY_DESPAWNING)) continue;
@@ -531,19 +527,14 @@ void orb_world_update(void) {
 
     orb_entity_free_despawning();
 
-    for (uint32_t slot = 0; slot < pool->max; slot++)
-        if ((entity = orb_entity_at(slot))) entity->flags &= (uint16_t)~ORB_ENTITY_NEW;
+    for (u32 slot = 0; slot < pool->max; slot++)
+        if ((entity = orb_entity_at(slot))) entity->flags &= (u16)~ORB_ENTITY_NEW;
 
     orb_entity_updating = false;
 }
 
 // A query's entity: live with a body, not the exception, and tagged by the mask.
-static orb_entity* world_query_match(
-    uint32_t slot,
-    uint32_t mask,
-    orb_entity_id except,
-    orb_body** body
-) {
+static orb_entity* world_query_match(u32 slot, u32 mask, orb_entity_id except, orb_body** body) {
     orb_entity* entity = world_bodied(slot, body);
 
     if (!entity || entity->self.v == except.v) return nullptr;
@@ -553,75 +544,100 @@ static orb_entity* world_query_match(
     return (tag ? tag->bits : 0) & mask ? entity : nullptr;
 }
 
-int orb_query_rect(
-    orb_rect rect,
-    uint32_t mask,
+static bool world_rect_hit(world_box box, const void* shape) {
+    return world_overlaps(box, *(const world_box*)shape);
+}
+
+typedef struct world_circle {
+    orb_vec2 center;
+    int radius;
+} world_circle;
+
+static bool world_circle_hit(world_box box, const void* shape) {
+    const world_circle* circle = shape;
+    int dx = circle->center.x < box.left     ? box.left - circle->center.x
+             : circle->center.x >= box.right ? circle->center.x - (box.right - 1)
+                                             : 0;
+    int dy = circle->center.y < box.top       ? box.top - circle->center.y
+             : circle->center.y >= box.bottom ? circle->center.y - (box.bottom - 1)
+                                              : 0;
+
+    return (i64)dx * dx + (i64)dy * dy <= (i64)circle->radius * circle->radius;
+}
+
+static orb_entity_id_list world_query(
+    arena* out,
+    const char* call,
+    u32 mask,
     orb_entity_id except,
-    orb_entity_id* out,
-    int max
+    bool (*hit)(world_box box, const void* shape),
+    const void* shape
 ) {
+    orb_pool* pool = orb_entity_pool();
+    u32 count = 0;
+
+    for (u32 slot = 0; slot < pool->max; slot++) {
+        orb_body* body;
+        const orb_entity* entity = world_query_match(slot, mask, except, &body);
+
+        count += entity && hit(world_body_box(entity, body), shape);
+    }
+
+    if (count == 0) return (orb_entity_id_list) {};
+
+    orb_entity_id_list list = {
+        .elems = orb_arena_list_alloc(out, call, orb_entity_id, count), .cap = count
+    };
+
+    if (!list.elems) return (orb_entity_id_list) {};
+
+    for (u32 slot = 0; slot < pool->max; slot++) {
+        orb_body* body;
+        const orb_entity* entity = world_query_match(slot, mask, except, &body);
+
+        if (entity && hit(world_body_box(entity, body), shape))
+            list.elems[list.len++] = entity->self;
+    }
+
+    return list;
+}
+
+orb_entity_id_list orb_query_rect(arena* out, orb_rect rect, u32 mask, orb_entity_id except) {
     world_box box = {
         rect.at.x, rect.at.y, rect.at.x + rect.size.width, rect.at.y + rect.size.height
     };
-    orb_pool* pool = orb_entity_pool();
-    int n = 0;
 
-    for (uint32_t slot = 0; slot < pool->max && n < max; slot++) {
-        orb_body* body;
-        const orb_entity* entity = world_query_match(slot, mask, except, &body);
-
-        if (entity && world_overlaps(world_body_box(entity, body), box)) out[n++] = entity->self;
-    }
-
-    return n;
+    return world_query(out, "query_rect", mask, except, world_rect_hit, &box);
 }
 
-int orb_query_circle(
+orb_entity_id_list orb_query_circle(
+    arena* out,
     orb_vec2 center,
     int radius,
-    uint32_t mask,
-    orb_entity_id except,
-    orb_entity_id* out,
-    int max
+    u32 mask,
+    orb_entity_id except
 ) {
-    orb_pool* pool = orb_entity_pool();
-    int n = 0;
+    world_circle circle = {center, radius};
 
-    for (uint32_t slot = 0; slot < pool->max && n < max; slot++) {
-        orb_body* body;
-        const orb_entity* entity = world_query_match(slot, mask, except, &body);
-
-        if (!entity) continue;
-
-        world_box box = world_body_box(entity, body);
-        int dx = center.x < box.left     ? box.left - center.x
-                 : center.x >= box.right ? center.x - (box.right - 1)
-                                         : 0;
-        int dy = center.y < box.top       ? box.top - center.y
-                 : center.y >= box.bottom ? center.y - (box.bottom - 1)
-                                          : 0;
-
-        if ((int64_t)dx * dx + (int64_t)dy * dy <= (int64_t)radius * radius)
-            out[n++] = entity->self;
-    }
-
-    return n;
+    return world_query(out, "query_circle", mask, except, world_circle_hit, &circle);
 }
 
-int orb_query_point(orb_vec2 at, uint32_t mask, orb_entity_id except, orb_entity_id* out, int max) {
-    return orb_query_rect((orb_rect) {at, {1, 1}}, mask, except, out, max);
+orb_entity_id_list orb_query_point(arena* out, orb_vec2 at, u32 mask, orb_entity_id except) {
+    world_box box = {at.x, at.y, at.x + 1, at.y + 1};
+
+    return world_query(out, "query_point", mask, except, world_rect_hit, &box);
 }
 
 typedef struct world_slab_hit {
     bool hit;
-    float t;
+    f32 t;
     int axis;
 } world_slab_hit;
 
 // Where the segment from + t * delta enters the box, t in [0, 1], and through which axis. No
 // hit when it misses or starts inside.
 static world_slab_hit world_slab(orb_vec2 from, orb_vec2 delta, world_box box) {
-    float t0 = 0, t1 = 1;
+    f32 t0 = 0, t1 = 1;
     int axis = -1;
 
     for (int k = 0; k < 2; k++) {
@@ -634,10 +650,10 @@ static world_slab_hit world_slab(orb_vec2 from, orb_vec2 delta, world_box box) {
             continue;
         }
 
-        float ta = (float)(low - origin) / (float)step, tb = (float)(high - origin) / (float)step;
+        f32 ta = (f32)(low - origin) / (f32)step, tb = (f32)(high - origin) / (f32)step;
 
         if (ta > tb) {
-            float swap = ta;
+            f32 swap = ta;
 
             ta = tb;
             tb = swap;
@@ -660,8 +676,8 @@ static world_slab_hit world_slab(orb_vec2 from, orb_vec2 delta, world_box box) {
 bool orb_query_ray(
     orb_vec2 from,
     orb_vec2 to,
-    uint32_t mask,
-    uint32_t flags,
+    u32 mask,
+    u32 flags,
     orb_entity_id except,
     orb_hit* hit
 ) {
@@ -669,7 +685,7 @@ bool orb_query_ray(
     orb_hit best = {.fraction = 2};
     orb_pool* pool = orb_entity_pool();
 
-    for (uint32_t slot = 0; slot < pool->max; slot++) {
+    for (u32 slot = 0; slot < pool->max; slot++) {
         orb_body* body;
         const orb_entity* entity = world_bodied(slot, &body);
 
@@ -691,7 +707,7 @@ bool orb_query_ray(
         if (!slab.hit) continue;
 
         int dir = (slab.axis ? delta.y : delta.x) > 0 ? 1 : -1;
-        uint16_t oneways = world_oneways(body);
+        u16 oneways = world_oneways(body);
 
         if (oneways && (body->flags & ORB_BODY_SOLID) &&
             (!(flags & ORB_RAY_ONEWAY) || !(oneways & world_oneway_flag(slab.axis, dir))))
@@ -702,8 +718,8 @@ bool orb_query_ray(
         best = (orb_hit) {
             .entity = entity->self,
             .at =
-                {from.x + orb_floor(slab.t * (float)delta.x),
-                 from.y + orb_floor(slab.t * (float)delta.y)},
+                {from.x + orb_floor(slab.t * (f32)delta.x),
+                 from.y + orb_floor(slab.t * (f32)delta.y)},
             .normal = slab.axis ? (orb_vec2) {0, -dir} : (orb_vec2) {-dir, 0},
             .fraction = slab.t
         };
@@ -736,7 +752,7 @@ bool orb_query_ray(
                 (!(flags & ORB_RAY_ONEWAY) || kind != world_oneway_kind(axis, dir)))
                 continue;
 
-            float t = (float)i / (float)steps;
+            f32 t = (f32)i / (f32)steps;
 
             if (t < best.fraction)
                 best = (orb_hit) {
@@ -764,7 +780,7 @@ static int world_sort_compare(const void* a, const void* b) {
     return left->slot < right->slot ? -1 : left->slot > right->slot;
 }
 
-void orb_world_remap_set(int index, const uint8_t table[256]) {
+void orb_world_remap_set(int index, const u8 table[256]) {
     if (index < 0 || index >= ORB_MAX_REMAPS) {
         orb_log("remap_set: index %d is not 0 to %d", index, ORB_MAX_REMAPS - 1);
         return;
@@ -779,7 +795,7 @@ void orb_world_draw(orb_fb* fb, orb_vec2f cam, int layer) {
     const orb_assets* assets = orb_entity_assets();
     int n = 0;
 
-    for (uint32_t slot = 0; slot < pool->max; slot++) {
+    for (u32 slot = 0; slot < pool->max; slot++) {
         const orb_entity* entity = orb_entity_at(slot);
 
         if (!entity || !(entity->flags & ORB_ENTITY_VISIBLE) ||
@@ -798,7 +814,7 @@ void orb_world_draw(orb_fb* fb, orb_vec2f cam, int layer) {
         };
     }
 
-    qsort(pool->sort, (size_t)n, sizeof *pool->sort, world_sort_compare);
+    qsort(pool->sort, (usize)n, sizeof *pool->sort, world_sort_compare);
 
     for (int i = 0; i < n; i++) {
         const orb_entity* entity = &pool->entities[pool->sort[i].slot];
@@ -822,26 +838,26 @@ void orb_world_draw(orb_fb* fb, orb_vec2f cam, int layer) {
     }
 }
 
-static void world_plot(uint32_t* rgb, orb_size size, int x, int y, uint32_t color) {
+static void world_plot(u32* rgb, orb_size size, int x, int y, u32 color) {
     if (x >= 0 && y >= 0 && x < size.width && y < size.height) rgb[y * size.width + x] = color;
 }
 
-void orb_world_debug_draw(uint32_t* rgb, orb_size size, orb_vec2f cam) {
+void orb_world_debug_draw(u32* rgb, orb_size size, orb_vec2f cam) {
     if (!orb_entity_debug) return;
 
-    uint32_t dark = 0, bright = 0;
+    u32 dark = 0, bright = 0;
     orb_pool* pool = orb_entity_pool();
 
     orb_pal_extremes(orb_api_pal_base(), &dark, &bright);
 
-    for (uint32_t slot = 0; slot < pool->max; slot++) {
+    for (u32 slot = 0; slot < pool->max; slot++) {
         orb_body* body;
         const orb_entity* entity = world_bodied(slot, &body);
 
         if (!entity) continue;
 
         world_box box = world_body_box(entity, body);
-        uint32_t color = body->flags & ORB_BODY_SOLID ? dark : bright;
+        u32 color = body->flags & ORB_BODY_SOLID ? dark : bright;
         int cx = orb_floor(cam.x), cy = orb_floor(cam.y);
 
         for (int x = box.left; x < box.right; x++) {

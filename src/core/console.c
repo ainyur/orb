@@ -1,12 +1,12 @@
 #include "console.h"
 #include "../graphics/pal.h"
+#include "../orb_math.h"
 #include "api.h"
 #include "bytes.h"
 #include "console_font.h"
 #include "host.h"
 #include "input.h"
 #include "log.h"
-#include "macros.h"
 
 #include <errno.h>
 #include <stdint.h>
@@ -42,11 +42,13 @@ typedef struct console_bind {
 
 static void* console_state;
 static const orb_api* console_api;
-static console_var console_vars[ORB_CONSOLE_VARS];
-static console_command console_commands[ORB_CONSOLE_COMMANDS];
-static console_bind console_binds[ORB_CONSOLE_BINDS];
-static int console_var_count, console_command_count;
-static int console_bind_count;
+array(console_vars, console_var, ORB_CONSOLE_VARS);
+array(console_commands, console_command, ORB_CONSOLE_COMMANDS);
+array(console_binds, console_bind, ORB_CONSOLE_BINDS);
+
+static console_vars_array console_vars;
+static console_commands_array console_commands;
+static console_binds_array console_binds;
 static int console_fixed_vars = -1, console_fixed_commands = -1; // orb's own; -1 before boot
 static bool console_registering = true; // until boot, then between a clear and the next step
 static bool console_is_open;
@@ -61,11 +63,11 @@ static int console_height; // frame height from the last draw, for the bottom-ro
 static int console_held, console_held_ticks;
 
 static bool console_name_ok(const char* name) {
-    size_t n = strlen(name);
+    usize n = strlen(name);
 
     if (n == 0 || n >= ORB_CONSOLE_NAME || name[0] < 'a' || name[0] > 'z') return false;
 
-    for (size_t i = 0; i < n; i++) {
+    for (usize i = 0; i < n; i++) {
         char c = name[i];
 
         if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '.' || c == '_'))
@@ -76,15 +78,15 @@ static bool console_name_ok(const char* name) {
 }
 
 static console_var* console_var_find(const char* name) {
-    for (int i = 0; i < console_var_count; i++)
-        if (strcmp(console_vars[i].name, name) == 0) return &console_vars[i];
+    for (u32 i = 0; i < console_vars.len; i++)
+        if (strcmp(console_vars.elems[i].name, name) == 0) return &console_vars.elems[i];
 
     return nullptr;
 }
 
 static console_command* console_command_find(const char* name) {
-    for (int i = 0; i < console_command_count; i++)
-        if (strcmp(console_commands[i].name, name) == 0) return &console_commands[i];
+    for (u32 i = 0; i < console_commands.len; i++)
+        if (strcmp(console_commands.elems[i].name, name) == 0) return &console_commands.elems[i];
 
     return nullptr;
 }
@@ -92,10 +94,10 @@ static console_command* console_command_find(const char* name) {
 static void console_var_write(const console_var* var, const char* separator) {
     switch (var->kind) {
     case CONSOLE_INT:
-        orb_log("%s%s%d", var->name, separator, *(int32_t*)var->at);
+        orb_log("%s%s%d", var->name, separator, *(i32*)var->at);
         break;
     case CONSOLE_FLOAT:
-        orb_log("%s%s%g", var->name, separator, (double)*(float*)var->at);
+        orb_log("%s%s%g", var->name, separator, (f64)(*(f32*)var->at));
         break;
     case CONSOLE_BOOL:
         orb_log("%s%s%s", var->name, separator, *(bool*)var->at ? "true" : "false");
@@ -104,8 +106,8 @@ static void console_var_write(const console_var* var, const char* separator) {
 }
 
 static console_bind* console_bind_find(int key) {
-    for (int i = 0; i < console_bind_count; i++)
-        if (console_binds[i].key == key) return &console_binds[i];
+    for (u32 i = 0; i < console_binds.len; i++)
+        if (console_binds.elems[i].key == key) return &console_binds.elems[i];
 
     return nullptr;
 }
@@ -130,18 +132,20 @@ static void console_bind_add(int argc, const char* const* argv) {
 
     console_bind* bind = console_bind_find(key);
 
-    if (!bind && console_bind_count == ORB_CONSOLE_BINDS) {
-        orb_log("binds are full");
-        return;
-    }
+    if (!bind) {
+        if (!push(&console_binds, (console_bind) {})) {
+            orb_log("binds are full");
+            return;
+        }
 
-    if (!bind) bind = &console_binds[console_bind_count++];
+        bind = &last(console_binds);
+    }
 
     bind->key = key;
     bind->line[0] = 0;
 
     for (int i = 2; i < argc; i++) {
-        size_t n = strlen(bind->line);
+        usize n = strlen(bind->line);
 
         snprintf(bind->line + n, sizeof bind->line - n, "%s%s", i > 2 ? " " : "", argv[i]);
     }
@@ -152,17 +156,19 @@ static void console_bind_remove(int argc, const char* const* argv) {
 
     if (!bind) return;
 
-    *bind = console_binds[--console_bind_count];
+    (void)remove_swap(&console_binds, bind - console_binds.elems);
 }
 
 static void console_bind_list(int, const char* const*) {
-    for (int i = 0; i < console_bind_count; i++)
-        orb_log("bind %s \"%s\"", orb_key_name(console_binds[i].key), console_binds[i].line);
+    for (u32 i = 0; i < console_binds.len; i++)
+        orb_log(
+            "bind %s \"%s\"", orb_key_name(console_binds.elems[i].key), console_binds.elems[i].line
+        );
 }
 
 static void console_dump(int, const char* const*) {
-    for (int i = 0; i < console_var_count; i++)
-        console_var_write(&console_vars[i], " ");
+    for (u32 i = 0; i < console_vars.len; i++)
+        console_var_write(&console_vars.elems[i], " ");
 }
 
 static void console_clear_log(int, const char* const*) {
@@ -193,7 +199,7 @@ static const console_builtin* console_builtin_find(const char* name) {
     return nullptr;
 }
 
-static bool console_may_register(const char* name, int count, int cap) {
+static bool console_may_register(const char* name) {
     if (!console_registering) {
         orb_log("console: \"%s\" registered outside reload", name);
         return false;
@@ -205,23 +211,18 @@ static bool console_may_register(const char* name, int count, int cap) {
         return false;
     }
 
-    if (count == cap) {
-        orb_log("console: no room for \"%s\"", name);
-        return false;
-    }
-
     return true;
 }
 
 static void console_var_add(const char* name, console_kind kind, void* at, const char* help) {
-    if (!console_may_register(name, console_var_count, ORB_CONSOLE_VARS)) return;
+    if (!console_may_register(name)) return;
 
-    console_var* var = &console_vars[console_var_count++];
+    console_var var = {.kind = kind, .at = at};
 
-    snprintf(var->name, sizeof var->name, "%s", name);
-    snprintf(var->help, sizeof var->help, "%s", help ? help : "");
-    var->kind = kind;
-    var->at = at;
+    snprintf(var.name, sizeof var.name, "%s", name);
+    snprintf(var.help, sizeof var.help, "%s", help ? help : "");
+
+    if (!push(&console_vars, var)) orb_log("console: no room for \"%s\"", name);
 }
 
 static bool console_var_set(console_var* var, const char* text) {
@@ -235,15 +236,15 @@ static bool console_var_set(console_var* var, const char* text) {
 
         if (!*text || *end || errno || value < INT32_MIN || value > INT32_MAX) return false;
 
-        *(int32_t*)var->at = (int32_t)value;
+        *(i32*)var->at = (i32)value;
         return true;
     }
     case CONSOLE_FLOAT: {
-        float value = strtof(text, &end);
+        f32 value = strtof(text, &end);
 
         if (!*text || *end || !(value - value == 0)) return false; // NaN and infinity fail the test
 
-        *(float*)var->at = value;
+        *(f32*)var->at = value;
         return true;
     }
     case CONSOLE_BOOL: {
@@ -317,7 +318,7 @@ static void console_set_line(const char* text) {
 // as itself.
 static void console_insert(const char* text) {
     while (*text) {
-        uint32_t codepoint;
+        u32 codepoint;
         int len = orb_bytes_utf8_decode(text, &codepoint);
 
         if (len == 0) len = 1;
@@ -325,9 +326,9 @@ static void console_insert(const char* text) {
 
         memmove(
             console_line + console_cursor + len, console_line + console_cursor,
-            (size_t)(console_len - console_cursor + 1)
+            (usize)(console_len - console_cursor + 1)
         );
-        memcpy(console_line + console_cursor, text, (size_t)len);
+        memcpy(console_line + console_cursor, text, (usize)len);
         console_cursor += len;
         console_len += len;
         text += len;
@@ -335,7 +336,7 @@ static void console_insert(const char* text) {
 }
 
 static void console_erase(int from, int to) {
-    memmove(console_line + from, console_line + to, (size_t)(console_len - to + 1));
+    memmove(console_line + from, console_line + to, (usize)(console_len - to + 1));
     console_len -= to - from;
     console_cursor = from;
 }
@@ -383,22 +384,22 @@ static void console_history_walk(int direction) {
 // The longest common prefix of every name starting with the line, filled in; a unique
 // match gets a trailing space; several are listed.
 static void console_complete(void) {
-    if (memchr(console_line, ' ', (size_t)console_len)) return;
+    if (memchr(console_line, ' ', (usize)console_len)) return;
 
     const char* matches[ORB_CONSOLE_VARS + ORB_CONSOLE_COMMANDS + 8];
     int n = 0;
-    size_t len = (size_t)console_len;
+    usize len = (usize)console_len;
 
     for (const console_builtin* builtin = console_builtins; builtin->name; builtin++)
         if (strncmp(builtin->name, console_line, len) == 0) matches[n++] = builtin->name;
 
-    for (int i = 0; i < console_command_count; i++)
-        if (strncmp(console_commands[i].name, console_line, len) == 0)
-            matches[n++] = console_commands[i].name;
+    for (u32 i = 0; i < console_commands.len; i++)
+        if (strncmp(console_commands.elems[i].name, console_line, len) == 0)
+            matches[n++] = console_commands.elems[i].name;
 
-    for (int i = 0; i < console_var_count; i++)
-        if (strncmp(console_vars[i].name, console_line, len) == 0)
-            matches[n++] = console_vars[i].name;
+    for (u32 i = 0; i < console_vars.len; i++)
+        if (strncmp(console_vars.elems[i].name, console_line, len) == 0)
+            matches[n++] = console_vars.elems[i].name;
 
     if (n == 0) return;
 
@@ -410,10 +411,10 @@ static void console_complete(void) {
         return;
     }
 
-    size_t common = strlen(matches[0]);
+    usize common = strlen(matches[0]);
 
     for (int i = 1; i < n; i++) {
-        size_t k = 0;
+        usize k = 0;
 
         while (k < common && matches[i][k] == matches[0][k])
             k++;
@@ -495,22 +496,22 @@ static void console_edit(const orb_input* raw) {
 
 static void console_help(int argc, const char* const* argv) {
     const char* prefix = argc > 1 ? argv[1] : nullptr;
-    size_t n = prefix ? strlen(prefix) : 0;
+    usize n = prefix ? strlen(prefix) : 0;
 
     for (const console_builtin* builtin = console_builtins; builtin->name; builtin++)
         if (!prefix || strncmp(builtin->name, prefix, n) == 0)
             orb_log("%s  %s", builtin->name, builtin->help);
 
-    for (int i = 0; i < console_command_count; i++)
-        if (!prefix || strncmp(console_commands[i].name, prefix, n) == 0)
-            orb_log("%s  %s", console_commands[i].name, console_commands[i].help);
+    for (u32 i = 0; i < console_commands.len; i++)
+        if (!prefix || strncmp(console_commands.elems[i].name, prefix, n) == 0)
+            orb_log("%s  %s", console_commands.elems[i].name, console_commands.elems[i].help);
 
     if (prefix) {
-        for (int i = 0; i < console_var_count; i++)
-            if (strncmp(console_vars[i].name, prefix, n) == 0)
-                orb_log("%s  %s", console_vars[i].name, console_vars[i].help);
+        for (u32 i = 0; i < console_vars.len; i++)
+            if (strncmp(console_vars.elems[i].name, prefix, n) == 0)
+                orb_log("%s  %s", console_vars.elems[i].name, console_vars.elems[i].help);
     } else
-        orb_log("%d variables", console_var_count);
+        orb_log("%u variables", console_vars.len);
 }
 
 void orb_console_run(const char* line) {
@@ -553,11 +554,11 @@ bool orb_console_open(void) {
     return console_is_open;
 }
 
-void orb_console_var_int(const char* name, int32_t* at, const char* help) {
+void orb_console_var_int(const char* name, i32* at, const char* help) {
     console_var_add(name, CONSOLE_INT, at, help);
 }
 
-void orb_console_var_float(const char* name, float* at, const char* help) {
+void orb_console_var_float(const char* name, f32* at, const char* help) {
     console_var_add(name, CONSOLE_FLOAT, at, help);
 }
 
@@ -566,13 +567,14 @@ void orb_console_var_bool(const char* name, bool* at, const char* help) {
 }
 
 void orb_console_command(const char* name, orb_command_fn fn, const char* help) {
-    if (!console_may_register(name, console_command_count, ORB_CONSOLE_COMMANDS)) return;
+    if (!console_may_register(name)) return;
 
-    console_command* command = &console_commands[console_command_count++];
+    console_command command = {.fn = fn};
 
-    snprintf(command->name, sizeof command->name, "%s", name);
-    snprintf(command->help, sizeof command->help, "%s", help ? help : "");
-    command->fn = fn;
+    snprintf(command.name, sizeof command.name, "%s", name);
+    snprintf(command.help, sizeof command.help, "%s", help ? help : "");
+
+    if (!push(&console_commands, command)) orb_log("console: no room for \"%s\"", name);
 }
 
 void orb_console_boot(void* state, const orb_api* api) {
@@ -581,8 +583,8 @@ void orb_console_boot(void* state, const orb_api* api) {
     console_is_open = false;
 
     if (console_fixed_vars < 0) {
-        console_fixed_vars = console_var_count;
-        console_fixed_commands = console_command_count;
+        console_fixed_vars = (int)console_vars.len;
+        console_fixed_commands = (int)console_commands.len;
     }
 
     console_registering = false;
@@ -609,11 +611,12 @@ void orb_console_step(orb_input* input) {
     // A press while the console is closed runs the bind; a bind may rebind, so the keys
     // are hidden from the game in a second pass over the table as it stands after.
     if (!console_is_open)
-        for (int i = 0; i < console_bind_count; i++)
-            if (console_pressed(&raw, console_binds[i].key)) orb_console_run(console_binds[i].line);
+        for (u32 i = 0; i < console_binds.len; i++)
+            if (console_pressed(&raw, console_binds.elems[i].key))
+                orb_console_run(console_binds.elems[i].line);
 
-    for (int i = 0; i < console_bind_count; i++)
-        input->keys[console_binds[i].key] = false;
+    for (u32 i = 0; i < console_binds.len; i++)
+        input->keys[console_binds.elems[i].key] = false;
 
     if (console_is_open) {
         console_edit(&raw);
@@ -627,15 +630,8 @@ void orb_console_step(orb_input* input) {
     console_before = raw;
 }
 
-static void console_glyph(
-    uint32_t* rgb,
-    int width,
-    int x,
-    int y,
-    unsigned char character,
-    uint32_t color
-) {
-    const uint8_t* glyph =
+static void console_glyph(u32* rgb, int width, int x, int y, unsigned char character, u32 color) {
+    const u8* glyph =
         ORB_CONSOLE_FONT[character < 32 || character > 126 ? '?' - 32 : character - 32];
 
     for (int row = 0; row < 6 && y + row < console_height; row++)
@@ -643,21 +639,14 @@ static void console_glyph(
             if (glyph[row] & 0x80 >> col) rgb[(y + row) * width + x + col] = color;
 }
 
-static void console_text(
-    uint32_t* rgb,
-    int width,
-    int row,
-    const char* text,
-    int n,
-    uint32_t color
-) {
+static void console_text(u32* rgb, int width, int row, const char* text, int n, u32 color) {
     for (int i = 0; i < n && text[i]; i++)
         console_glyph(rgb, width, i * 4, row * 6, (unsigned char)text[i], color);
 }
 
 // The prompt, the part of the line around the cursor that fits after it, and a filled
 // cursor cell.
-static void console_editor_row(uint32_t* rgb, int width, int row, uint32_t color) {
+static void console_editor_row(u32* rgb, int width, int row, u32 color) {
     int fit = console_columns - 1;
     int first = orb_max(0, console_cursor - (fit - 1));
 
@@ -671,14 +660,14 @@ static void console_editor_row(uint32_t* rgb, int width, int row, uint32_t color
             rgb[(row * 6 + y) * width + x + col] = color;
 }
 
-void orb_console_draw(uint32_t* rgb, orb_size size) {
+void orb_console_draw(u32* rgb, orb_size size) {
     if (!console_is_open) return;
 
     console_columns = size.width / 4;
     console_rows = orb_max(1, size.height / 2 / 6);
     console_height = size.height;
 
-    uint32_t dark = 0, bright = 0;
+    u32 dark = 0, bright = 0;
 
     orb_pal_extremes(orb_api_pal_base(), &dark, &bright);
 
@@ -711,7 +700,7 @@ void orb_console_draw(uint32_t* rgb, orb_size size) {
 }
 
 void orb_console_clear(void) {
-    console_var_count = orb_max(console_fixed_vars, 0);
-    console_command_count = orb_max(console_fixed_commands, 0);
+    console_vars.len = (u32)orb_max(console_fixed_vars, 0);
+    console_commands.len = (u32)orb_max(console_fixed_commands, 0);
     console_registering = true;
 }

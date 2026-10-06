@@ -3,13 +3,13 @@
 #include <stdint.h>
 
 typedef struct orb_pal {
-    uint32_t base[256], live[256];
+    u32 base[256], live[256];
 } orb_pal;
 
 void orb_pal_load(orb_pal* pal,
-                  const uint8_t* rgba); // 256 * 4 bytes; sets base and live
-void orb_pal_reset(orb_pal* pal);       // live = base
-uint32_t orb_pal_get(const orb_pal* pal, int index);
-void orb_pal_set(orb_pal* pal, int index, uint8_t r, uint8_t g, uint8_t b);
+                  const u8* rgba); // 256 * 4 bytes; sets base and live
+void orb_pal_reset(orb_pal* pal);  // live = base
+u32 orb_pal_get(const orb_pal* pal, int index);
+void orb_pal_set(orb_pal* pal, int index, u8 r, u8 g, u8 b);
 // The darkest and brightest of 256 entries by luminance.
-void orb_pal_extremes(const uint32_t* base, uint32_t* dark, uint32_t* bright);
+void orb_pal_extremes(const u32* base, u32* dark, u32* bright);

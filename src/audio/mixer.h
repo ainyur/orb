@@ -13,8 +13,8 @@ constexpr int ORB_VOICE_COUNT = ORB_GAME_VOICE_FIRST + ORB_GAME_VOICE_COUNT;
 constexpr int ORB_MIXER_CHUNK = 512;
 constexpr int ORB_MIXER_RING = 256;
 
-constexpr uint32_t ORB_MIXER_FADE_ONE = 1u << 31;
-constexpr int32_t ORB_MIXER_ONE = 1 << 15;
+constexpr u32 ORB_MIXER_FADE_ONE = 1u << 31;
+constexpr i32 ORB_MIXER_ONE = 1 << 15;
 
 typedef enum orb_mixer_kind {
     ORB_MIXER_PLAY,
@@ -27,25 +27,25 @@ typedef enum orb_mixer_kind {
 } orb_mixer_kind;
 
 typedef struct orb_mixer_params {
-    int32_t volume, pan; // 0..ONE, -ONE..ONE
-    int32_t pitch_cents;
+    i32 volume, pan; // 0..ONE, -ONE..ONE
+    i32 pitch_cents;
 } orb_mixer_params;
 
 typedef struct orb_mixer_volumes {
-    int32_t master, song, sound;
+    i32 master, song, sound;
 } orb_mixer_volumes;
 
 typedef struct orb_mixer_command {
-    uint8_t kind;
-    uint8_t voice;
-    uint16_t gen;   // play, set, stop: the handle's
-    uint32_t index; // play: the sample; song_play: the song, resolved on the audio thread
-    uint64_t id;    // its id, so a swapped asset is caught
+    u8 kind;
+    u8 voice;
+    u16 gen;   // play, set, stop: the handle's
+    u32 index; // play: the sample; song_play: the song, resolved on the audio thread
+    u64 id;    // its id, so a swapped asset is caught
     union {
         orb_mixer_params params; // play, set
         bool loop;               // song_play
         bool paused;             // song_pause
-        int32_t fade_ms;         // song_stop
+        i32 fade_ms;             // song_stop
         orb_mixer_volumes volumes;
     };
 } orb_mixer_command;
@@ -57,26 +57,26 @@ static_assert(sizeof(orb_mixer_command) == 32, "orb_mixer_command layout");
 // thread's, written only while rendering.
 typedef struct orb_voice_state {
     atomic_uint playing;
-    uint16_t gen; // from the last play this voice applied
-    uint32_t sample;
-    uint64_t sample_id;
-    uint32_t song; // the song voice: what it streams
-    uint64_t song_id;
-    uint64_t position; // 32.32 fixed-point frame
-    uint64_t step;     // 32.32 frames per output frame
-    int32_t volume, pan;
-    uint32_t fade, fade_gain; // fade is the per-frame decrement, 0 when not fading
+    u16 gen; // from the last play this voice applied
+    u32 sample;
+    u64 sample_id;
+    u32 song; // the song voice: what it streams
+    u64 song_id;
+    u64 position; // 32.32 fixed-point frame
+    u64 step;     // 32.32 frames per output frame
+    i32 volume, pan;
+    u32 fade, fade_gain; // fade is the per-frame decrement, 0 when not fading
     bool loop, paused;
 } orb_voice_state;
 
 typedef struct orb_mixer {
     orb_voice_state voices[ORB_VOICE_COUNT];
     // The main thread's book for game voices, never read by the audio thread.
-    uint16_t issued[ORB_VOICE_COUNT]; // per voice: the last generation handed out; wraps skipping 0
-    uint8_t priority[ORB_VOICE_COUNT];
-    uint32_t age[ORB_VOICE_COUNT];
-    uint32_t next_age;
-    uint32_t dropped; // commands a full ring refused; api.c reads and logs it
+    u16 issued[ORB_VOICE_COUNT]; // per voice: the last generation handed out; wraps skipping 0
+    u8 priority[ORB_VOICE_COUNT];
+    u32 age[ORB_VOICE_COUNT];
+    u32 next_age;
+    u32 dropped; // commands a full ring refused; api.c reads and logs it
     orb_mixer_command ring[ORB_MIXER_RING];
     atomic_uint head, tail; // the main thread writes head, the audio thread tail
     _Atomic(const orb_assets*) assets;
@@ -90,11 +90,15 @@ typedef struct orb_mixer {
 // published to it before anything else runs.
 #define ORB_MIXER_INIT                                                                             \
     {                                                                                              \
-        .song_position = {-1, -1}, .volumes = { ORB_MIXER_ONE, ORB_MIXER_ONE, ORB_MIXER_ONE }      \
+        .song_position = ORB_NO_SONG_POSITION, .volumes = {                                        \
+            ORB_MIXER_ONE,                                                                         \
+            ORB_MIXER_ONE,                                                                         \
+            ORB_MIXER_ONE                                                                          \
+        }                                                                                          \
     }
 
 // Returns the render to wait for, 0 if none.
-[[nodiscard]] uint32_t orb_mixer_set_assets(orb_mixer* mixer, const orb_assets* assets);
+[[nodiscard]] u32 orb_mixer_set_assets(orb_mixer* mixer, const orb_assets* assets);
 orb_voice orb_mixer_sound_play(
     orb_mixer* mixer,
     orb_sample sample,
@@ -109,13 +113,10 @@ void orb_mixer_song_pause(orb_mixer* mixer, bool paused);
 orb_song_position orb_mixer_song_position(const orb_mixer* mixer);
 void orb_mixer_volume_set(orb_mixer* mixer, orb_volumes volumes);
 
-void orb_mixer_render(
-    orb_mixer* mixer,
-    int16_t* out,
-    int frames
-); // the audio thread; the rest is main
-bool orb_mixer_rendered(const orb_mixer* mixer, uint32_t render);
+// The audio thread; the rest is main.
+void orb_mixer_render(orb_mixer* mixer, i16* out, int frames);
+bool orb_mixer_rendered(const orb_mixer* mixer, u32 render);
 // With no device: renders silence in chunks until *rendered frames cover
 // elapsed_ns, so sounds end, the ring drains, and song_position keeps real time.
 // True once a second, when the OS layer should try its device again.
-bool orb_mixer_idle(orb_mixer* mixer, uint64_t elapsed_ns, uint64_t* rendered);
+bool orb_mixer_idle(orb_mixer* mixer, u64 elapsed_ns, u64* rendered);

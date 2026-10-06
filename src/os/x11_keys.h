@@ -1,7 +1,7 @@
 #pragma once
 
 // evdev code to HID position; an X11 keycode is the evdev code plus 8.
-static const uint8_t x11_keys[256] = {
+static const u8 x11_keys[256] = {
     [1] = 41,                                                       // esc
     [2] = 30,   [3] = 31,    [4] = 32,    [5] = 33,    [6] = 34,    // 1..5
     [7] = 35,   [8] = 36,    [9] = 37,    [10] = 38,   [11] = 39,   // 6..0

@@ -8,7 +8,7 @@
 constexpr int JSON_MAX_DEPTH = 256;
 
 typedef struct {
-    orb_arena* arena;
+    arena* out;
     const char* cursor;
     const char* end;
     orb_error* err;
@@ -29,7 +29,7 @@ static bool json_fail(json_parser* parser, const char* msg) {
 }
 
 static orb_json* json_node(json_parser* parser, orb_json_kind kind) {
-    orb_json* node = orb_arena_push(parser->arena, sizeof *node, alignof(orb_json));
+    orb_json* node = orb_arena_push(parser->out, sizeof *node, alignof(orb_json));
     node->kind = kind;
 
     return node;
@@ -79,7 +79,7 @@ static bool json_string(json_parser* parser, const char** out) {
     if (parser->cursor >= parser->end || *parser->cursor != '"')
         return json_fail(parser, "expected string");
 
-    char* start = (char*)parser->arena->base + parser->arena->used;
+    char* start = (char*)parser->out->base + parser->out->used;
 
     parser->cursor++;
 
@@ -112,23 +112,23 @@ static bool json_string(json_parser* parser, const char** out) {
 
                 if (code_point < 0) return json_fail(parser, "bad \\u escape");
 
-                n = orb_bytes_utf8((uint32_t)code_point, buf);
+                n = orb_bytes_utf8((u32)code_point, buf);
             } else
                 buf[0] = c;
         }
 
-        memcpy(orb_arena_push(parser->arena, (size_t)n, 1), buf, (size_t)n);
+        memcpy(orb_arena_push(parser->out, (usize)n, 1), buf, (usize)n);
     }
 
-    orb_arena_push(parser->arena, 1, 1); // the terminator, since pushes are zeroed
+    orb_arena_push(parser->out, 1, 1); // the terminator, since pushes are zeroed
     *out = start;
     return true;
 }
 
 static bool json_literal(json_parser* parser, const char* lit) {
-    size_t n = strlen(lit);
+    usize n = strlen(lit);
 
-    if ((size_t)(parser->end - parser->cursor) < n || memcmp(parser->cursor, lit, n) != 0)
+    if ((usize)(parser->end - parser->cursor) < n || memcmp(parser->cursor, lit, n) != 0)
         return false;
 
     parser->cursor += n;
@@ -236,7 +236,7 @@ static bool json_value(json_parser* parser, orb_json** out) {
 
     if (c == '-' || (c >= '0' && c <= '9')) {
         char* after;
-        double value = strtod(parser->cursor, &after);
+        f64 value = strtod(parser->cursor, &after);
 
         if (after == parser->cursor) return json_fail(parser, "bad number");
 
@@ -251,8 +251,8 @@ static bool json_value(json_parser* parser, orb_json** out) {
     return json_fail(parser, "unexpected character");
 }
 
-orb_json* orb_json_parse(orb_arena* arena, const char* text, size_t len, orb_error* err) {
-    json_parser parser = {.arena = arena, .cursor = text, .end = text + len, .err = err, .line = 1};
+orb_json* orb_json_parse(arena* out, const char* text, usize len, orb_error* err) {
+    json_parser parser = {.out = out, .cursor = text, .end = text + len, .err = err, .line = 1};
     orb_json* root;
 
     if (!json_value(&parser, &root)) return nullptr;

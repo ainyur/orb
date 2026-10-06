@@ -1,5 +1,5 @@
 #include "../core/log.h"
-#include "../core/macros.h"
+#include "../orb_math.h"
 #include "os.h"
 
 #include <xinput.h>
@@ -25,10 +25,10 @@ static const struct {
 };
 
 static int xinput_slot = -1;
-static uint64_t xinput_next_scan;
+static u64 xinput_next_scan;
 
-static int16_t xinput_axis(int value) {
-    return (int16_t)orb_clamp(value, -32767, 32767);
+static i16 xinput_axis(int value) {
+    return (i16)orb_clamp(value, -32767, 32767);
 }
 
 static void xinput_pump(orb_pad_input* out, bool focused) {
@@ -61,7 +61,7 @@ static void xinput_pump(orb_pad_input* out, bool focused) {
 
     if (!focused) return;
 
-    for (size_t i = 0; i < sizeof xinput_buttons / sizeof *xinput_buttons; i++)
+    for (usize i = 0; i < sizeof xinput_buttons / sizeof *xinput_buttons; i++)
         out->buttons[xinput_buttons[i].pad - ORB_PAD_NONE] =
             gamepad->wButtons & xinput_buttons[i].bit;
 
@@ -69,6 +69,6 @@ static void xinput_pump(orb_pad_input* out, bool focused) {
     out->left_stick.y = xinput_axis(-gamepad->sThumbLY);
     out->right_stick.x = xinput_axis(gamepad->sThumbRX);
     out->right_stick.y = xinput_axis(-gamepad->sThumbRY);
-    out->left_trigger = (int16_t)(gamepad->bLeftTrigger * 32767 / 255);
-    out->right_trigger = (int16_t)(gamepad->bRightTrigger * 32767 / 255);
+    out->left_trigger = (i16)(gamepad->bLeftTrigger * 32767 / 255);
+    out->right_trigger = (i16)(gamepad->bRightTrigger * 32767 / 255);
 }

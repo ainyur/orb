@@ -74,8 +74,8 @@ static int alsa_start(void) {
 // One period: render, then write it through underrun and suspend recovery.
 // Returns the error that ends the device, which is also where a stop during a
 // suspend lands; the caller checks the flag.
-static int alsa_fill(int16_t* buffer) {
-    const int16_t* at = buffer;
+static int alsa_fill(i16* buffer) {
+    const i16* at = buffer;
     snd_pcm_uframes_t frames_left = ALSA_FRAMES;
 
     orb_audio_render(buffer, ALSA_FRAMES);
@@ -99,7 +99,7 @@ static int alsa_fill(int16_t* buffer) {
 // No device: keep the mixer's clock running and try the device again once a
 // second, the first time a full second after the loss.
 static int alsa_outage(void) {
-    uint64_t start = orb_os_ticks(), rendered = 0;
+    u64 start = orb_os_ticks(), rendered = 0;
     int err = -ENODEV;
 
     while (!atomic_load(&alsa_stop)) {
@@ -113,7 +113,7 @@ static int alsa_outage(void) {
 }
 
 static void* alsa_run(void* arg) {
-    static int16_t buffer[ALSA_FRAMES * ORB_AUDIO_CHANNELS];
+    static i16 buffer[ALSA_FRAMES * ORB_AUDIO_CHANNELS];
 
     (void)arg;
     orb_log_off_main = true;

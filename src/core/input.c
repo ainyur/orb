@@ -1,9 +1,9 @@
 #include "input.h"
 
+#include "../orb_math.h"
 #include "../os/os.h"
 #include "bytes.h"
 #include "log.h"
-#include "macros.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -119,26 +119,6 @@ static bool input_button_level(const orb_input* input, orb_button button) {
            input_source_down(input, input_pads[button]);
 }
 
-// The integer square root, rounded down.
-static uint32_t input_sqrt(uint32_t n) {
-    uint32_t root = 0;
-
-    for (uint32_t bit = 1u << 30; bit; bit >>= 2) {
-        if (n >= root + bit) {
-            n -= root + bit;
-            root = (root >> 1) + bit;
-        } else {
-            root >>= 1;
-        }
-    }
-
-    return root;
-}
-
-static int input_length(int x, int y) {
-    return (int)input_sqrt((uint32_t)(x * x) + (uint32_t)(y * y));
-}
-
 // Whether a stick points within 67.5° of an axis, past which it leaves that axis's three
 // sectors; 985/2378 is tan 22.5°.
 static bool input_toward(int along, int across) {
@@ -152,7 +132,7 @@ static void input_stick_dpad_step(orb_pad_input* pad) {
     int y = pad->left_stick.y;
     int threshold = input_stick_held ? INPUT_STICK_OFF : INPUT_HALF;
 
-    input_stick_held = input_stick_dpad && input_length(x, y) >= threshold;
+    input_stick_held = input_stick_dpad && orb_length(x, y) >= threshold;
 
     if (!input_stick_held) return;
 
@@ -164,7 +144,7 @@ static void input_stick_dpad_step(orb_pad_input* pad) {
 
 // A symbol is a named key's name, else one codepoint above space; returns the name's
 // position, 0 for a lone codepoint (with it in *codepoint), or -1 for neither.
-static int input_symbol_parse(const char* symbol, uint32_t* codepoint) {
+static int input_symbol_parse(const char* symbol, u32* codepoint) {
     for (int key = 1; key < ORB_KEY_COUNT; key++)
         if (input_names[key] && strcmp(input_names[key], symbol) == 0) return key;
 
@@ -196,7 +176,7 @@ const char* orb_key_name(int key) {
     if (!input_key_ok(key)) return "";
     if (input_names[key]) return input_names[key];
 
-    uint32_t codepoint = orb_os_key_symbol(key);
+    u32 codepoint = orb_os_key_symbol(key);
 
     if (!codepoint) return "";
 
@@ -205,7 +185,7 @@ const char* orb_key_name(int key) {
 }
 
 int orb_key_find(const char* symbol) {
-    uint32_t codepoint = 0;
+    u32 codepoint = 0;
     int key = input_symbol_parse(symbol, &codepoint);
 
     if (key != 0) return key > 0 ? key : ORB_KEY_NONE;
@@ -243,21 +223,21 @@ orb_vec2f orb_pad_stick(orb_pad stick) {
     const orb_pad_input* pad = &input_now.pad;
     int x = stick == ORB_PAD_LEFT_STICK ? pad->left_stick.x : pad->right_stick.x;
     int y = stick == ORB_PAD_LEFT_STICK ? pad->left_stick.y : pad->right_stick.y;
-    int length = input_length(x, y);
+    int length = orb_length(x, y);
 
     if (length <= INPUT_STICK_DEAD) return (orb_vec2f) {};
 
-    float scale = (float)(orb_min(length, INPUT_AXIS_MAX) - INPUT_STICK_DEAD) /
-                  (INPUT_AXIS_MAX - INPUT_STICK_DEAD) / (float)length;
+    f32 scale = (f32)(orb_min(length, INPUT_AXIS_MAX) - INPUT_STICK_DEAD) /
+                (INPUT_AXIS_MAX - INPUT_STICK_DEAD) / (f32)length;
 
-    return (orb_vec2f) {(float)x * scale, (float)y * scale};
+    return (orb_vec2f) {(f32)x * scale, (f32)y * scale};
 }
 
 void orb_pad_stick_dpad(bool on) {
     input_stick_dpad = on;
 }
 
-float orb_pad_trigger(orb_pad trigger) {
+f32 orb_pad_trigger(orb_pad trigger) {
     if (trigger != ORB_PAD_LEFT_TRIGGER && trigger != ORB_PAD_RIGHT_TRIGGER) return 0;
 
     const orb_pad_input* pad = &input_now.pad;
@@ -265,7 +245,7 @@ float orb_pad_trigger(orb_pad trigger) {
 
     if (value <= INPUT_TRIGGER_DEAD) return 0;
 
-    return (float)(value - INPUT_TRIGGER_DEAD) / (INPUT_AXIS_MAX - INPUT_TRIGGER_DEAD);
+    return (f32)(value - INPUT_TRIGGER_DEAD) / (INPUT_AXIS_MAX - INPUT_TRIGGER_DEAD);
 }
 
 void orb_button_bind(orb_button button, int source) {

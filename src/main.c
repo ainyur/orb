@@ -4,13 +4,13 @@
 #include <string.h>
 
 #ifdef ORB_RELEASE
-static const alignas(16) uint8_t main_sealed[] = {
+static const alignas(16) u8 main_sealed[] = {
 #embed "game.orb"
 };
 
 int main(void) {
     orb_error err;
-    orb_span sealed = {main_sealed, sizeof main_sealed};
+    u8_span sealed = {main_sealed, sizeof main_sealed};
 
     if (!orb_boot(orb_game_main(), nullptr, sealed, &err)) {
         orb_log("%s", err.text);

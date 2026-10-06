@@ -10,7 +10,7 @@ static char log_ring[ORB_LOG_LINES][ORB_LOG_LINE_MAX];
 static int log_total;
 
 // Cut at the last complete UTF-8 sequence that fits.
-static void log_append(const char* line, size_t len) {
+static void log_append(const char* line, usize len) {
     if (len > ORB_LOG_LINE_MAX - 1) {
         len = ORB_LOG_LINE_MAX - 1;
 
@@ -36,7 +36,7 @@ void orb_log(const char* fmt, ...) {
     int n = vsnprintf(line, sizeof line, fmt, ap);
     va_end(ap);
 
-    size_t len = n < 0 ? 0 : (size_t)n;
+    usize len = n < 0 ? 0 : (usize)n;
 
     if (len > sizeof line - 2) len = sizeof line - 2;
     if (!orb_log_off_main) log_append(line, len);
@@ -69,7 +69,7 @@ bool orb_error_set(orb_error* err, const char* fmt, ...) {
     return false;
 }
 
-orb_bytes orb_bytes_format(size_t bytes) {
+orb_bytes orb_bytes_format(usize bytes) {
     static const char* units[] = {"KB", "MB", "GB", "TB"};
     orb_bytes out;
 
@@ -78,7 +78,7 @@ orb_bytes orb_bytes_format(size_t bytes) {
         return out;
     }
 
-    double value = (double)bytes / 1024;
+    f64 value = (f64)bytes / 1024;
     int unit = 0;
 
     // 1023.95 and up would print as "1024.0", so it moves to the next unit.

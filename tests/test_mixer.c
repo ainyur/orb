@@ -3,31 +3,28 @@
 
 // Sample 0: 8 mono frames of 1000. Sample 1: 4 stereo frames, left 2000 and right
 // -2000, looping over all four. Sample 2: the mono frames with an empty loop.
-static const int16_t pcm[16] = {1000, 1000,  1000, 1000,  1000, 1000,  1000, 1000,
-                                2000, -2000, 2000, -2000, 2000, -2000, 2000, -2000};
+static const i16 pcm[16] = {1000, 1000,  1000, 1000,  1000, 1000,  1000, 1000,
+                            2000, -2000, 2000, -2000, 2000, -2000, 2000, -2000};
 static const orb_sample_desc samples[3] = {
     {.first = 0, .count = 8, .rate = 48000, .channels = 1},
     {.first = 8, .count = 4, .loop_start = 0, .loop_end = 4, .rate = 48000, .channels = 2},
     {.first = 0, .count = 8, .loop_start = 2, .loop_end = 2, .rate = 48000, .channels = 1},
 };
-static const uint64_t sample_ids[3] = {11, 22, 33};
+static const u64 sample_ids[3] = {11, 22, 33};
 static const orb_song_desc songs[2] = {
     {.sample = 1, .millibpm = 120000},
     {.sample = 2, .millibpm = 90000}
 };
-static const uint64_t song_ids[2] = {44, 55};
+static const u64 song_ids[2] = {44, 55};
 static orb_assets assets = {
-    .samples = samples,
-    .sample_count = 3,
-    .pcm = pcm,
-    .pcm_count = 16,
-    .songs = songs,
-    .song_count = 2,
+    .samples = {samples, 3},
+    .pcm = {pcm, 16},
+    .songs = {songs, 2},
     .sample_ids = sample_ids,
     .song_ids = song_ids
 };
 static orb_mixer mixer;
-static int16_t out[1024 * 2];
+static i16 out[1024 * 2];
 
 static void render(int frames) {
     orb_mixer_render(&mixer, out, frames);
@@ -239,7 +236,7 @@ int main(void) {
     };
     static orb_assets slowed;
     slowed = assets;
-    slowed.samples = slow;
+    slowed.samples = (orb_sample_desc_span) {slow, 3};
     (void)orb_mixer_set_assets(&mixer, &slowed);
     CHECK(orb_mixer_song_position(&mixer).ms == -1);
     CHECK(orb_mixer_song_position(&mixer).millibeats == -1);
@@ -260,13 +257,13 @@ int main(void) {
     (void)orb_mixer_set_assets(&mixer, &assets);
 
     // whole octaves are exact, and a fade over seconds still steps every frame
-    CHECK_EQ(mixer_step(48000, 1200), (uint64_t)2 << 32);
-    CHECK_EQ(mixer_step(48000, 0), (uint64_t)1 << 32);
-    CHECK_EQ(mixer_step(48000, -1200), (uint64_t)1 << 31);
+    CHECK_EQ(mixer_step(48000, 1200), (u64)2 << 32);
+    CHECK_EQ(mixer_step(48000, 0), (u64)1 << 32);
+    CHECK_EQ(mixer_step(48000, -1200), (u64)1 << 31);
     orb_mixer_song_play(&mixer, ORB_SONG(0), true);
     orb_mixer_song_stop(&mixer, 10000);
     render(1);
-    uint32_t fade_before = mixer.voices[ORB_SONG_VOICE].fade_gain;
+    u32 fade_before = mixer.voices[ORB_SONG_VOICE].fade_gain;
     render(1);
     CHECK(mixer.voices[ORB_SONG_VOICE].fade_gain < fade_before);
     CHECK(song_playing());
@@ -279,7 +276,7 @@ int main(void) {
     render(1);
     CHECK_EQ(playing_count(), 1);
 
-    static const uint64_t sound_changed[3] = {99, 22, 33};
+    static const u64 sound_changed[3] = {99, 22, 33};
     static orb_assets swapped;
     swapped = assets;
     swapped.sample_ids = sound_changed;
@@ -300,7 +297,7 @@ int main(void) {
     };
     static orb_assets shorter;
     shorter = assets;
-    shorter.samples = shrunk;
+    shorter.samples = (orb_sample_desc_span) {shrunk, 3};
     (void)orb_mixer_set_assets(&mixer, &shorter);
     render(1);
     CHECK(song_playing());
@@ -308,7 +305,7 @@ int main(void) {
     CHECK_EQ(orb_mixer_song_position(&mixer).ms, 0); // and then to 0 after advancing
     (void)orb_mixer_set_assets(&mixer, &assets);
 
-    static const uint64_t song_changed[3] = {11, 98, 33};
+    static const u64 song_changed[3] = {11, 98, 33};
     static orb_assets swapped_song;
     swapped_song = assets;
     swapped_song.sample_ids = song_changed;
@@ -318,7 +315,7 @@ int main(void) {
     CHECK_EQ(out[0], 0);
 
     // handles carry generations: one from before a recast plays nothing
-    static const uint8_t gens[3] = {0, 1, 0};
+    static const u8 gens[3] = {0, 1, 0};
     assets.sample_gens = gens;
     (void)orb_mixer_set_assets(&mixer, &assets);
     CHECK_EQ(orb_mixer_sound_play(&mixer, ORB_SAMPLE(1), full, 0).v, ORB_NO_VOICE.v);

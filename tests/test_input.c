@@ -2,7 +2,7 @@
 #define ORB_OS_HEADLESS 1
 #include "../src/orb.c"
 
-static bool close_to(float value, float want) {
+static bool close_to(f32 value, f32 want) {
     return value - want < 0.001f && want - value < 0.001f;
 }
 
@@ -25,8 +25,8 @@ static int dpad_down(void) {
 static int stick_step(int x, int y) {
     orb_input input = {0};
 
-    input.pad.left_stick.x = (int16_t)x;
-    input.pad.left_stick.y = (int16_t)y;
+    input.pad.left_stick.x = (i16)x;
+    input.pad.left_stick.y = (i16)y;
     orb_input_step(&input);
     return dpad_down();
 }

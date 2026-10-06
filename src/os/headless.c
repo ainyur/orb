@@ -8,15 +8,15 @@
 #include <string.h>
 
 static orb_input headless_input;
-static uint32_t* headless_frame;
-static size_t headless_pixels;
+static u32* headless_frame;
+static usize headless_pixels;
 
 // The US layout, unshifted: ORB_KEY_A..ORB_KEY_0 and ORB_KEY_MINUS..ORB_KEY_SLASH.
 static const char headless_letters[] = "abcdefghijklmnopqrstuvwxyz1234567890";
 static const char headless_marks[] = "-=[]\\#;'`,./";
 
 bool orb_os_open(const orb_os_config* config) {
-    headless_pixels = (size_t)config->size.width * config->size.height;
+    headless_pixels = (usize)config->size.width * config->size.height;
     headless_frame = calloc(headless_pixels, sizeof *headless_frame);
 
     return headless_frame != nullptr;
@@ -29,19 +29,19 @@ bool orb_os_pump(orb_input* out) {
     return true;
 }
 
-void orb_os_present(const uint32_t* rgb) {
+void orb_os_present(const u32* rgb) {
     memcpy(headless_frame, rgb, headless_pixels * sizeof *rgb);
 }
 
-uint32_t orb_os_key_symbol(int key) {
-    if (key >= ORB_KEY_A && key <= ORB_KEY_0) return (uint32_t)headless_letters[key - ORB_KEY_A];
+u32 orb_os_key_symbol(int key) {
+    if (key >= ORB_KEY_A && key <= ORB_KEY_0) return (u32)headless_letters[key - ORB_KEY_A];
     if (key >= ORB_KEY_MINUS && key <= ORB_KEY_SLASH)
-        return (uint32_t)headless_marks[key - ORB_KEY_MINUS];
+        return (u32)headless_marks[key - ORB_KEY_MINUS];
 
     return 0;
 }
 
-int orb_os_key_position(uint32_t codepoint) {
+int orb_os_key_position(u32 codepoint) {
     if (!codepoint || codepoint > 0x7f) return ORB_KEY_NONE;
 
     const char* letter = strchr(headless_letters, (int)codepoint);
@@ -57,7 +57,7 @@ void orb_os_close(void) {
     headless_frame = nullptr;
 }
 
-const uint32_t* orb_os_headless_frame(void) {
+const u32* orb_os_headless_frame(void) {
     return headless_frame;
 }
 

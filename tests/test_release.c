@@ -1,6 +1,10 @@
 #include "test.h"
 #define ORB_OS_HEADLESS 1
 #define ORB_RELEASE 1
+
+static bool test_trapped;
+#define std_trap(message) ((void)(message), test_trapped = true)
+
 #include "../src/orb.c"
 // clang-format off
 #include "../src/cast/json.c"
@@ -13,9 +17,11 @@
 // clang-format on
 #include "fixtures/game.c"
 
+array(u32, 8);
+
 int main(void) {
-    static alignas(16) uint8_t scratch_mem[4 << 20], out_mem[1 << 20];
-    orb_arena scratch, out;
+    static alignas(16) u8 scratch_mem[4 << 20], out_mem[1 << 20];
+    arena scratch, out;
     orb_manifest manifest;
     orb_cast_result result;
     orb_error err;
@@ -35,7 +41,44 @@ int main(void) {
     }
 
     CHECK(orb_frame());
+
+    // filling the exactly sized block is not a warning
+    for (int i = 0; i < orb_log_line_count(); i++) {
+        const char* line = orb_log_line(i);
+        const char* at = strstr(line, " at ");
+
+        CHECK(!(at && strstr(at, "% of")));
+    }
+
+    // the release block holds both game arenas at their configured sizes
+    arena* global = orb_api_global();
+    arena* frame = orb_api_frame();
+
+    CHECK_EQ(global->size, MB);
+    CHECK_EQ(frame->size, 256 * KB);
+    CHECK(
+        global->base >= host_arena.base &&
+        global->base + global->size <= host_arena.base + host_arena.size
+    );
+    CHECK(
+        frame->base >= host_arena.base &&
+        frame->base + frame->size <= host_arena.base + host_arena.size
+    );
+    CHECK(global->hooks == &orb_arena_hooks);
     CHECK(host_arena.used <= host_arena.size);
+
+    // a result that does not fit comes back empty, with failed set
+    arena none;
+
+    orb_arena_init(&none, "none", nullptr, 0);
+    CHECK_EQ(orb_entity_all(&none).len, 0);
+    CHECK(none.failed);
+
+    // ORB_RELEASE compiles the checks out: an index past len inside the storage reads
+    u32_array numbers = {.len = 2};
+
+    (void)get(numbers, 5);
+    CHECK(!test_trapped);
 
     orb_quit();
 

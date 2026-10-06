@@ -10,12 +10,12 @@ static int expect_advance(int n) {
     return (int[]) {2, 4, 5, 2}[n % 4];
 }
 
-static orb_arena scratch, out;
+static arena scratch, out;
 
 // dir names the fonts directory, relative to DIR (as orb.json's "fonts" key is).
 static bool cast_fonts(const char* dir, orb_assets* assets, orb_error* err) {
-    orb_arena_reset(&scratch);
-    orb_arena_reset(&out);
+    arena_clear(&scratch);
+    arena_clear(&out);
 
     static char json[512];
 
@@ -27,7 +27,7 @@ static bool cast_fonts(const char* dir, orb_assets* assets, orb_error* err) {
         dir
     );
 
-    if (!orb_os_write_file(DIR "/orb.json", (orb_span) {(const uint8_t*)json, strlen(json)}))
+    if (!orb_os_write_file(DIR "/orb.json", (u8_span) {(const u8*)json, strlen(json)}))
         return orb_error_set(err, "cannot write " DIR "/orb.json");
 
     orb_manifest manifest;
@@ -38,7 +38,7 @@ static bool cast_fonts(const char* dir, orb_assets* assets, orb_error* err) {
 }
 
 int main(void) {
-    static alignas(16) uint8_t scratch_mem[8 << 20], out_mem[1 << 20];
+    static alignas(16) u8 scratch_mem[8 << 20], out_mem[1 << 20];
 
     orb_arena_init(&scratch, "scratch", scratch_mem, sizeof scratch_mem);
     orb_arena_init(&out, "out", out_mem, sizeof out_mem);
@@ -49,34 +49,34 @@ int main(void) {
     CHECK(orb_os_make_dir(DIR));
 
     CHECK(cast_fonts(ART "fonts", &assets, &err));
-    CHECK_EQ(assets.font_count, 1);
-    CHECK_EQ(assets.glyph_count, ORB_FONT_GLYPHS);
-    CHECK_EQ(assets.fonts[0].line_height, 6);
+    CHECK_EQ(assets.fonts.len, 1);
+    CHECK_EQ(assets.glyphs.len, ORB_FONT_GLYPHS);
+    CHECK_EQ(assets.fonts.elems[0].line_height, 6);
 
     // Cell 0 is the space: no ink, and a third of the 4-wide cell, rounded up.
-    CHECK_EQ(assets.glyphs[0].width, 0);
-    CHECK_EQ(assets.glyphs[0].advance, 2);
+    CHECK_EQ(assets.glyphs.elems[0].width, 0);
+    CHECK_EQ(assets.glyphs.elems[0].advance, 2);
 
     for (int n = 1; n < (int)ORB_FONT_GLYPHS; n++)
-        CHECK_EQ(assets.glyphs[n].advance, expect_advance(n));
+        CHECK_EQ(assets.glyphs.elems[n].advance, expect_advance(n));
 
-    CHECK_EQ(assets.glyphs[2].x, 8); // cell 2 sits at column 2 of a 4-wide grid
-    CHECK_EQ(assets.glyphs[2].width, 4);
-    CHECK_EQ(assets.glyphs[1].x, 4);
-    CHECK_EQ(assets.glyphs[1].width, 3); // columns 0 and 2 inked, the rect spans the gap
+    CHECK_EQ(assets.glyphs.elems[2].x, 8); // cell 2 sits at column 2 of a 4-wide grid
+    CHECK_EQ(assets.glyphs.elems[2].width, 4);
+    CHECK_EQ(assets.glyphs.elems[1].x, 4);
+    CHECK_EQ(assets.glyphs.elems[1].width, 3); // columns 0 and 2 inked, the rect spans the gap
 
     // nogrid is not a fixture, since Aseprite clamps a zero grid to 1x1 on save;
     // patch a copy of the real fixture's header instead.
-    orb_span original;
+    u8_span original;
     CHECK(orb_os_read_file("tests/fixtures/fonts/body.aseprite", &scratch, &original));
 
-    uint8_t* patched = orb_arena_push(&scratch, original.len, 1);
+    u8* patched = orb_arena_push(&scratch, original.len, 1);
 
-    memcpy(patched, original.ptr, original.len);
+    memcpy(patched, original.elems, original.len);
     memset(patched + 40, 0, 4); // grid width and height, header bytes 40 and 42
 
     CHECK(orb_os_make_dir(DIR "/nogrid"));
-    CHECK(orb_os_write_file(DIR "/nogrid/body.aseprite", (orb_span) {patched, original.len}));
+    CHECK(orb_os_write_file(DIR "/nogrid/body.aseprite", (u8_span) {patched, original.len}));
 
     CHECK(!cast_fonts("nogrid", &assets, &err));
     CHECK(strstr(err.text, "grid is 0x0") != nullptr);

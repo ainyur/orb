@@ -13,16 +13,16 @@ static void run_line(const char* line) {
 }
 
 int main(int argc, char** argv) {
-    static uint8_t mem[1 << 16];
+    static u8 mem[1 << 16];
 
     // test-wine passes a UTF-8 argument
     orb_os_args(&argc, &argv);
 
     if (argc > 1) CHECK(strcmp(argv[1], "h\xc3\xa9llo") == 0);
 
-    orb_arena arena;
+    arena out;
 
-    orb_arena_init(&arena, "test", mem, sizeof mem);
+    orb_arena_init(&out, "test", mem, sizeof mem);
 
     // the key tables: evdev codes and set-1 scancodes land on HID positions
     CHECK_EQ(x11_keys[30], 4);   // KEY_A
@@ -61,30 +61,30 @@ int main(int argc, char** argv) {
     CHECK(!evdev_is_pad_bitmap(system_control_bitmap));
 
     // files
-    uint8_t bytes[] = {1, 2, 3};
-    CHECK(orb_os_write_file("build/scratch/os.bin", (orb_span) {bytes, 3}));
-    orb_span back;
+    u8 bytes[] = {1, 2, 3};
+    CHECK(orb_os_write_file("build/scratch/os.bin", (u8_span) {bytes, 3}));
+    u8_span back;
 
-    CHECK(orb_os_read_file("build/scratch/os.bin", &arena, &back));
+    CHECK(orb_os_read_file("build/scratch/os.bin", &out, &back));
     CHECK_EQ(back.len, 3);
-    CHECK_EQ(back.ptr[2], 3);
-    CHECK_EQ(back.ptr[3], 0); // NUL after the data
-    CHECK(!orb_os_read_file("build/scratch/does-not-exist", &arena, &back));
+    CHECK_EQ(back.elems[2], 3);
+    CHECK_EQ(back.elems[3], 0); // NUL after the data
+    CHECK(!orb_os_read_file("build/scratch/does-not-exist", &out, &back));
     CHECK(orb_os_file_mtime("build/scratch/os.bin") > 0);
     CHECK_EQ(orb_os_file_mtime("build/scratch/does-not-exist"), 0);
 
     // copy a file byte for byte: how scry loads a copy of the game library
     CHECK(orb_os_copy_file("build/scratch/os.bin", "build/scratch/os-copy.bin"));
-    CHECK(orb_os_read_file("build/scratch/os-copy.bin", &arena, &back));
+    CHECK(orb_os_read_file("build/scratch/os-copy.bin", &out, &back));
     CHECK_EQ(back.len, 3);
-    CHECK_EQ(back.ptr[1], 2);
+    CHECK_EQ(back.elems[1], 2);
     CHECK(!orb_os_copy_file("build/scratch/does-not-exist", "build/scratch/nope"));
     CHECK_EQ(orb_os_file_mtime("build/scratch/nope"), 0); // no half-made target
 
     // UTF-8 paths
     CHECK(orb_os_make_dir("build/scratch/h\xc3\xa9llo"));
-    CHECK(orb_os_write_file("build/scratch/h\xc3\xa9llo/\xc3\xbc.bin", (orb_span) {bytes, 3}));
-    CHECK(orb_os_read_file("build/scratch/h\xc3\xa9llo/\xc3\xbc.bin", &arena, &back));
+    CHECK(orb_os_write_file("build/scratch/h\xc3\xa9llo/\xc3\xbc.bin", (u8_span) {bytes, 3}));
+    CHECK(orb_os_read_file("build/scratch/h\xc3\xa9llo/\xc3\xbc.bin", &out, &back));
     CHECK_EQ(back.len, 3);
     CHECK(orb_os_file_mtime("build/scratch/h\xc3\xa9llo/\xc3\xbc.bin") > 0);
     CHECK(orb_os_copy_file(
@@ -106,10 +106,10 @@ int main(int argc, char** argv) {
     CHECK(orb_os_make_dir("build/scratch/long"));
 
     for (int i = 0; i < 120; i++)
-        offset += snprintf(longname + offset, sizeof longname - (size_t)offset, "\xc3\xa9");
+        offset += snprintf(longname + offset, sizeof longname - (usize)offset, "\xc3\xa9");
 
-    snprintf(longname + offset, sizeof longname - (size_t)offset, ".bin");
-    CHECK(orb_os_write_file(longname, (orb_span) {bytes, 3}));
+    snprintf(longname + offset, sizeof longname - (usize)offset, ".bin");
+    CHECK(orb_os_write_file(longname, (u8_span) {bytes, 3}));
     CHECK_EQ(orb_os_list_dir("build/scratch/long", names, 8), 1);
 #endif
 
@@ -120,13 +120,13 @@ int main(int argc, char** argv) {
 
     CHECK(orb_os_make_dir("build/scratch/walk"));
     CHECK(orb_os_make_dir("build/scratch/walk/dir"));
-    CHECK(orb_os_write_file("build/scratch/walk/a.txt", (orb_span) {bytes, 3}));
+    CHECK(orb_os_write_file("build/scratch/walk/a.txt", (u8_span) {bytes, 3}));
     CHECK_EQ(orb_os_list_dir("build/scratch/walk", names, 8), 2);
     CHECK(strcmp(names[0].name, "a.txt") == 0 && !names[0].dir);
     CHECK(strcmp(names[1].name, "dir") == 0 && names[1].dir);
 
     // clock
-    uint64_t start = orb_os_ticks();
+    u64 start = orb_os_ticks();
 
     orb_os_sleep(2000000);
     CHECK(orb_os_ticks() - start >= 2000000);
@@ -144,7 +144,7 @@ int main(int argc, char** argv) {
     CHECK(orb_os_pump(&pumped));
     CHECK(pumped.keys[ORB_KEY_RIGHT]);
 
-    uint32_t rgb[8] = {0xff0000, 1, 2, 3, 4, 5, 6, 0x0000ff};
+    u32 rgb[8] = {0xff0000, 1, 2, 3, 4, 5, 6, 0x0000ff};
 
     orb_os_present(rgb);
     CHECK_EQ(orb_os_headless_frame()[0], 0xff0000);
@@ -153,7 +153,7 @@ int main(int argc, char** argv) {
     // create a directory for outputs; succeeding when it already exists
     CHECK(orb_os_make_dir("build/scratch/made"));
     CHECK(orb_os_make_dir("build/scratch/made"));
-    CHECK(orb_os_write_file("build/scratch/made/x", (orb_span) {(uint8_t*)"x", 1}));
+    CHECK(orb_os_write_file("build/scratch/made/x", (u8_span) {(u8*)"x", 1}));
 
     // run a command in a directory and receive its combined output one line at a
     // time, plus its status
@@ -196,8 +196,8 @@ int main(int argc, char** argv) {
     CHECK(strcmp(joined, "/abs/x.h") == 0);
 
     // reserved address space: commit part of it in two pieces, write both, give it back
-    size_t reserve = (size_t)64 << 20, step = (size_t)1 << 20;
-    uint8_t* space = orb_os_reserve(reserve);
+    usize reserve = (usize)64 << 20, step = (usize)1 << 20;
+    u8* space = orb_os_reserve(reserve);
 
     CHECK(space != nullptr);
     CHECK(orb_os_commit(space, step));
@@ -208,6 +208,27 @@ int main(int argc, char** argv) {
     CHECK_EQ(space[0] + space[step - 1] + space[2 * step - 1], 6);
     orb_os_release(space, reserve);
     CHECK(orb_os_reserve(SIZE_MAX) == nullptr);
+
+#ifndef _WIN32
+    // a file of 4 GB or more is refused before anything is allocated
+    {
+        FILE* big = fopen("build/scratch/big.bin", "wb");
+
+        CHECK(big != nullptr);
+        CHECK(fseeko(big, (off_t)4 << 30, SEEK_SET) == 0);
+        CHECK(fputc(0, big) != EOF);
+        fclose(big);
+
+        static alignas(16) u8 small_mem[64];
+        arena small;
+        u8_span read;
+
+        orb_arena_init(&small, "small", small_mem, sizeof small_mem);
+        CHECK(!orb_os_read_file("build/scratch/big.bin", &small, &read));
+        CHECK_EQ(small.used, 0);
+        remove("build/scratch/big.bin");
+    }
+#endif
 
     return 0;
 }

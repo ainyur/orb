@@ -1,6 +1,6 @@
 #include "../core/bytes.h"
 #include "../core/log.h"
-#include "../core/macros.h"
+#include "../orb_math.h"
 #include "gdi_keys.h"
 #include "os.h"
 #include "win32.c"
@@ -16,14 +16,14 @@ static orb_size gdi_fb, gdi_win;
 static bool gdi_down[ORB_KEY_COUNT];
 static bool gdi_closed;
 static bool gdi_focused;
-static const uint32_t* gdi_last_frame; // the frame most recently presented, for WM_PAINT
+static const u32* gdi_last_frame; // the frame most recently presented, for WM_PAINT
 static char gdi_text[ORB_INPUT_TEXT];
 static int gdi_text_len;
-static uint32_t gdi_high_surrogate;
+static u32 gdi_high_surrogate;
 
 // Integer-scale the frame into the client area, centered, borders left to the
 // class background brush.
-static void gdi_blit(HDC device_context, const uint32_t* rgb) {
+static void gdi_blit(HDC device_context, const u32* rgb) {
     int scale = orb_max(1, orb_min(gdi_win.width / gdi_fb.width, gdi_win.height / gdi_fb.height));
 
     int width = gdi_fb.width * scale, height = gdi_fb.height * scale;
@@ -48,8 +48,8 @@ static void gdi_blit(HDC device_context, const uint32_t* rgb) {
 
 // One WM_CHAR unit: a surrogate pair is joined, a high surrogate not immediately
 // followed by a low one is dropped, control characters are dropped.
-static void gdi_char(uint32_t unit) {
-    uint32_t codepoint = unit;
+static void gdi_char(u32 unit) {
+    u32 codepoint = unit;
 
     if (unit < 0xdc00 || unit >= 0xe000) gdi_high_surrogate = 0;
 
@@ -71,7 +71,7 @@ static void gdi_char(uint32_t unit) {
 static LRESULT CALLBACK gdi_proc(HWND window, UINT msg, WPARAM wparam, LPARAM lparam) {
     switch (msg) {
     case WM_CHAR:
-        gdi_char((uint32_t)wparam);
+        gdi_char((u32)wparam);
         return 0;
     case WM_KEYDOWN:
     case WM_KEYUP:
@@ -195,7 +195,7 @@ bool orb_os_pump(orb_input* out) {
     return !gdi_closed;
 }
 
-void orb_os_present(const uint32_t* rgb) {
+void orb_os_present(const u32* rgb) {
     HDC dc = GetDC(gdi_window);
 
     gdi_last_frame = rgb;
@@ -203,7 +203,7 @@ void orb_os_present(const uint32_t* rgb) {
     ReleaseDC(gdi_window, dc);
 }
 
-uint32_t orb_os_key_symbol(int key) {
+u32 orb_os_key_symbol(int key) {
     int code = orb_os_key_code(gdi_keys, key);
 
     if (code < 0) return 0;
@@ -215,10 +215,10 @@ uint32_t orb_os_key_symbol(int key) {
     // Flag 4 leaves any dead-key state alone.
     int n = ToUnicode(virtual_key, scan, state, text, 4, 4);
 
-    return n == 1 && text[0] > 0x20 ? (uint32_t)text[0] : 0;
+    return n == 1 && text[0] > 0x20 ? (u32)text[0] : 0;
 }
 
-int orb_os_key_position(uint32_t codepoint) {
+int orb_os_key_position(u32 codepoint) {
     if (codepoint > 0xffff) return ORB_KEY_NONE;
 
     SHORT scan = VkKeyScan((WCHAR)codepoint);

@@ -25,4 +25,4 @@ bool orb_error_set(orb_error* err, const char* fmt, ...);
 [[noreturn]] void orb_fatal(const char* fmt, ...);
 
 // The largest 1024-based unit reached, one decimal: "512 B", "1.2 KB", "3.0 GB".
-orb_bytes orb_bytes_format(size_t bytes);
+orb_bytes orb_bytes_format(usize bytes);

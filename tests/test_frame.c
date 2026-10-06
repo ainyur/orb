@@ -11,11 +11,11 @@
 #define WHITE 0xffffffu      // tile 7's body, master index 5
 #define YELLOW 0xffff00u     // tile 7's marker pixel, master index 6
 
-static uint32_t pixel(int x, int y) {
+static u32 pixel(int x, int y) {
     return orb_os_headless_frame()[y * W + x];
 }
 
-static bool find(uint32_t color, int* x, int* y) {
+static bool find_color(u32 color, int* x, int* y) {
     for (*y = 0; *y < H; (*y)++)
         for (*x = 0; *x < W; (*x)++)
             if (pixel(*x, *y) == color) return true;
@@ -26,7 +26,7 @@ static bool find(uint32_t color, int* x, int* y) {
 int main(void) {
     orb_error err;
 
-    if (!orb_boot(orb_game_main(), "tests/fixtures", (orb_span) {}, &err)) {
+    if (!orb_boot(orb_game_main(), "tests/fixtures", (u8_span) {}, &err)) {
         fprintf(stderr, "boot: %s\n", err.text);
         return 1;
     }
@@ -48,6 +48,23 @@ int main(void) {
     // checked after the walk below moves the body away.
     CHECK_EQ(pixel(4 * 8, 2 * 8 + 7), YELLOW);
     CHECK_EQ(pixel(4 * 8, 2 * 8), WHITE);
+
+    // frame_arena is cleared before each update, and draw's allocations are released
+    arena* frame = orb_api_frame();
+
+    CHECK(alloc(frame, u8, 64) != nullptr);
+    CHECK(host_tick());
+    CHECK_EQ(frame->used, 0);
+    CHECK(alloc(frame, u8, 32) != nullptr);
+    host_render();
+    CHECK_EQ(frame->used, 32);
+    CHECK(((game_state*)host_state.base)->drawn > 0);
+
+    // a paused frame runs no update and keeps the last update's allocations
+    orb_clock_get()->paused = true;
+    CHECK(orb_frame());
+    CHECK_EQ(frame->used, 32);
+    orb_clock_get()->paused = false;
 
     // the fixture's init binds select to key_find("m"), the M of the headless US layout
     input.keys[ORB_KEY_M] = true;
@@ -91,7 +108,7 @@ int main(void) {
     orb_voice voice = api->sound_play(beep, (orb_sound_params) {.volume = 1}, 0);
     CHECK(voice.v != ORB_NO_VOICE.v);
 
-    static int16_t audio[8192 * 2];
+    static i16 audio[8192 * 2];
     orb_audio_render(audio, 1024);
 
     bool left = false, right = false;
@@ -109,7 +126,7 @@ int main(void) {
     CHECK_EQ(at.millibeats, 1024 * 2000 / 48000);
 
     // idle rendering covers the elapsed time
-    uint64_t rendered = 0;
+    u64 rendered = 0;
     orb_audio_idle(1000000000u, &rendered);
     CHECK_EQ(rendered, 48000 / ORB_MIXER_CHUNK * ORB_MIXER_CHUNK);
     orb_audio_idle(1000000000u, &rendered); // nothing more is owed for the same second
@@ -127,7 +144,7 @@ int main(void) {
     }
 
     int body_x, body_y;
-    CHECK(find(RED, &body_x, &body_y));
+    CHECK(find_color(RED, &body_x, &body_y));
 
     CHECK_EQ(pixel(body_x + 7, body_y + 7), RED);
     CHECK_EQ(pixel(body_x - 1, body_y), BACKGROUND);
@@ -182,8 +199,8 @@ int main(void) {
     host_render();
 
     int x, y;
-    bool is_red = find(RED, &x, &y);
-    CHECK(is_red || find(GREEN, &x, &y));
+    bool is_red = find_color(RED, &x, &y);
+    CHECK(is_red || find_color(GREEN, &x, &y));
     // the body's left edge stops against the wall cells; flipped, walk frame 0's body sits
     // symmetric in its 16-wide sprite (edge at x+4) but frame 1's does not (edge at x+2)
     CHECK_EQ(x, is_red ? 8 : 6);
@@ -198,8 +215,8 @@ int main(void) {
 
     orb_quit();
 
-    static alignas(16) uint8_t scratch_mem[4 << 20], out_mem[1 << 20];
-    orb_arena scratch, out;
+    static alignas(16) u8 scratch_mem[4 << 20], out_mem[1 << 20];
+    arena scratch, out;
     orb_manifest manifest;
     orb_cast_result result;
 
@@ -216,7 +233,7 @@ int main(void) {
 
     CHECK_EQ(pixel(0, 0), WHITE);
     CHECK_EQ(pixel(1, 0), BACKGROUND);
-    CHECK(find(RED, &body_x, &body_y));
+    CHECK(find_color(RED, &body_x, &body_y));
 
     orb_quit();
 

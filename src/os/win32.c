@@ -27,10 +27,10 @@ static int win32_narrow(const wchar_t* wide, char* out, int cap) {
     return WideCharToMultiByte(CP_UTF8, 0, wide, -1, out, cap, nullptr, nullptr);
 }
 
-static uint64_t win32_filetime_ns(FILETIME filetime) {
+static u64 win32_filetime_ns(FILETIME filetime) {
     ULARGE_INTEGER value = {.LowPart = filetime.dwLowDateTime, .HighPart = filetime.dwHighDateTime};
 
-    return (uint64_t)value.QuadPart * 100u; // 100 ns ticks since 1601
+    return (u64)value.QuadPart * 100u; // 100 ns ticks since 1601
 }
 
 void orb_os_args(int* argc, char*** argv) {
@@ -42,7 +42,7 @@ void orb_os_args(int* argc, char*** argv) {
     if (!wide) return;
     if (n > 64) orb_fatal("too many arguments");
 
-    size_t used = 0;
+    usize used = 0;
 
     for (int i = 0; i < n; i++) {
         int cap = (int)(sizeof text - used); // a cap of 0 would ask for the size, not fail
@@ -51,7 +51,7 @@ void orb_os_args(int* argc, char*** argv) {
         if (len == 0) orb_fatal("command line too long");
 
         args[i] = text + used;
-        used += (size_t)len;
+        used += (usize)len;
     }
 
     args[n] = nullptr;
@@ -68,7 +68,7 @@ bool orb_os_stat(const char* path, orb_os_info* out) {
         return false;
 
     *out = (orb_os_info) {
-        .size = (uint64_t)info.nFileSizeHigh << 32 | info.nFileSizeLow,
+        .size = (u64)info.nFileSizeHigh << 32 | info.nFileSizeLow,
         .mtime = win32_filetime_ns(info.ftLastWriteTime),
         .dir = info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY
     };
@@ -142,7 +142,7 @@ void* orb_os_dlsym(orb_os_library* lib, const char* name) {
 // A high-resolution waitable timer (Windows 10 1803) sleeps to within tens of
 // microseconds; Sleep rounds to the scheduler tick, up to 16 ms, which would
 // jitter every frame at 60 Hz.
-void orb_os_sleep(uint64_t duration_ns) {
+void orb_os_sleep(u64 duration_ns) {
     static HANDLE timer;
 
     if (!timer) {
@@ -165,38 +165,38 @@ void orb_os_sleep(uint64_t duration_ns) {
     WaitForSingleObject(timer, INFINITE);
 }
 
-uint64_t orb_os_ticks(void) {
-    static uint64_t ticks_per_second;
+u64 orb_os_ticks(void) {
+    static u64 ticks_per_second;
     LARGE_INTEGER count;
 
     if (!ticks_per_second) {
         LARGE_INTEGER freq;
 
         QueryPerformanceFrequency(&freq);
-        ticks_per_second = (uint64_t)freq.QuadPart;
+        ticks_per_second = (u64)freq.QuadPart;
     }
 
     QueryPerformanceCounter(&count);
 
-    uint64_t raw = (uint64_t)count.QuadPart;
+    u64 raw = (u64)count.QuadPart;
 
     return raw / ticks_per_second * ORB_NS_PER_SECOND +
            raw % ticks_per_second * ORB_NS_PER_SECOND / ticks_per_second;
 }
 
-uint32_t orb_os_pid(void) {
+u32 orb_os_pid(void) {
     return GetCurrentProcessId();
 }
 
-void* orb_os_reserve(size_t size) {
+void* orb_os_reserve(usize size) {
     return VirtualAlloc(nullptr, size, MEM_RESERVE, PAGE_NOACCESS);
 }
 
-bool orb_os_commit(void* at, size_t size) {
+bool orb_os_commit(void* at, usize size) {
     return VirtualAlloc(at, size, MEM_COMMIT, PAGE_READWRITE) != nullptr;
 }
 
-void orb_os_release(void* base, size_t) {
+void orb_os_release(void* base, usize) {
     VirtualFree(base, 0, MEM_RELEASE);
 }
 
@@ -214,7 +214,7 @@ int orb_os_run(const char* dir, const char* const* argv, void (*line)(const char
     int at = snprintf(utf8, sizeof utf8, "cmd.exe /c");
 
     for (int i = 0; argv[i] && at < (int)sizeof utf8; i++)
-        at += snprintf(utf8 + at, sizeof utf8 - (size_t)at, " %s", argv[i]);
+        at += snprintf(utf8 + at, sizeof utf8 - (usize)at, " %s", argv[i]);
 
     if (at >= (int)sizeof utf8) {
         CloseHandle(read_end);
@@ -244,7 +244,7 @@ int orb_os_run(const char* dir, const char* const* argv, void (*line)(const char
     }
 
     char text[1024];
-    size_t fill = 0;
+    usize fill = 0;
     char chunk[1024];
 
     for (DWORD got; ReadFile(read_end, chunk, sizeof chunk, &got, nullptr) && got > 0;) {

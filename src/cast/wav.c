@@ -7,18 +7,18 @@
 
 // The fmt chunk: format tag, channels, rate, and bit depth, with an extensible
 // tag resolved to its subformat, whose GUID starts with the plain format tag.
-static bool wav_format(orb_span chunk, orb_wav* out, orb_error* err) {
+static bool wav_format(u8_span chunk, orb_wav* out, orb_error* err) {
     if (chunk.len < 16) return orb_error_set(err, "wav: fmt chunk too short");
 
-    uint16_t format = orb_bytes_u16(chunk.ptr);
-    uint16_t channels = orb_bytes_u16(chunk.ptr + 2), bits = orb_bytes_u16(chunk.ptr + 14);
+    u16 format = orb_bytes_u16(chunk.elems);
+    u16 channels = orb_bytes_u16(chunk.elems + 2), bits = orb_bytes_u16(chunk.elems + 14);
 
-    out->rate = orb_bytes_u32(chunk.ptr + 4);
+    out->rate = orb_bytes_u32(chunk.elems + 4);
 
     if (format == 0xFFFE) {
         if (chunk.len < 40) return orb_error_set(err, "wav: extensible fmt chunk too short");
 
-        format = orb_bytes_u16(chunk.ptr + 24);
+        format = orb_bytes_u16(chunk.elems + 24);
     }
 
     if (format == 3)
@@ -31,24 +31,25 @@ static bool wav_format(orb_span chunk, orb_wav* out, orb_error* err) {
     if (out->rate < 1 || out->rate > ORB_MAX_RATE)
         return orb_error_set(err, "wav: rate %u, must be 1 to %u", out->rate, ORB_MAX_RATE);
 
-    out->channels = (uint8_t)channels;
-    out->bits = (uint8_t)bits;
+    out->channels = (u8)channels;
+    out->bits = (u8)bits;
     return true;
 }
 
-bool orb_wav_parse(orb_span file, orb_wav* out, orb_error* err) {
+bool orb_wav_parse(u8_span file, orb_wav* out, orb_error* err) {
     memset(out, 0, sizeof *out);
 
-    if (file.len < 12 || memcmp(file.ptr, "RIFF", 4) != 0 || memcmp(file.ptr + 8, "WAVE", 4) != 0)
+    if (file.len < 12 || memcmp(file.elems, "RIFF", 4) != 0 ||
+        memcmp(file.elems + 8, "WAVE", 4) != 0)
         return orb_error_set(err, "wav: not a RIFF WAVE file");
 
-    orb_span data = {};
+    u8_span data = {};
     bool have_format = false;
 
-    for (size_t at = 12; at + 8 <= file.len;) {
-        const uint8_t* head = file.ptr + at;
-        uint32_t size = orb_bytes_u32(head + 4);
-        orb_span chunk = {head + 8, size};
+    for (usize at = 12; at + 8 <= file.len;) {
+        const u8* head = file.elems + at;
+        u32 size = orb_bytes_u32(head + 4);
+        u8_span chunk = {head + 8, size};
 
         if (size > file.len - at - 8)
             return orb_error_set(
@@ -62,34 +63,34 @@ bool orb_wav_parse(orb_span file, orb_wav* out, orb_error* err) {
         } else if (memcmp(head, "data", 4) == 0) {
             data = chunk;
         } else if (
-            memcmp(head, "smpl", 4) == 0 && size >= 60 && orb_bytes_u32(chunk.ptr + 28) >= 1
+            memcmp(head, "smpl", 4) == 0 && size >= 60 && orb_bytes_u32(chunk.elems + 28) >= 1
         ) {
             // 36 bytes of header, then loops of 24: cue, type, start, end, fraction, count
-            uint64_t end_inclusive = orb_bytes_u32(chunk.ptr + 48);
+            u64 end_inclusive = orb_bytes_u32(chunk.elems + 48);
 
             out->has_loop = true;
-            out->loop_start = orb_bytes_u32(chunk.ptr + 44);
-            out->loop_end = (uint32_t)(end_inclusive < UINT32_MAX ? end_inclusive + 1 : UINT32_MAX);
+            out->loop_start = orb_bytes_u32(chunk.elems + 44);
+            out->loop_end = (u32)(end_inclusive < UINT32_MAX ? end_inclusive + 1 : UINT32_MAX);
         }
 
         at += 8 + size + (size & 1);
     }
 
     if (!have_format) return orb_error_set(err, "wav: no fmt chunk");
-    if (!data.ptr) return orb_error_set(err, "wav: no data chunk");
+    if (!data.elems) return orb_error_set(err, "wav: no data chunk");
 
     out->data = data;
-    out->count = (uint32_t)(data.len / ((size_t)out->channels * out->bits / 8));
+    out->count = (u32)(data.len / ((usize)out->channels * out->bits / 8));
 
     if (out->has_loop && out->loop_end > out->count) out->loop_end = out->count;
 
     return true;
 }
 
-void orb_wav_decode(const orb_wav* wav, int16_t* out) {
-    size_t total = (size_t)wav->count * wav->channels;
+void orb_wav_decode(const orb_wav* wav, i16* out) {
+    usize total = (usize)wav->count * wav->channels;
 
-    for (size_t i = 0; i < total; i++)
-        out[i] = wav->bits == 8 ? (int16_t)((wav->data.ptr[i] - 128) * 256)
-                                : orb_bytes_i16(wav->data.ptr + i * 2);
+    for (usize i = 0; i < total; i++)
+        out[i] = wav->bits == 8 ? (i16)((wav->data.elems[i] - 128) * 256)
+                                : orb_bytes_i16(wav->data.elems + i * 2);
 }

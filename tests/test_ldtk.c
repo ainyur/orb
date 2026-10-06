@@ -73,7 +73,7 @@
 
 static char text[16384];
 
-static orb_span project(
+static u8_span project(
     const char* external,
     const char* worlds,
     const char* tileset_path,
@@ -86,7 +86,7 @@ static orb_span project(
         text, sizeof text, PROJECT_HEAD, external, worlds, tileset_path, parallax_x, parallax_y,
         scaling, levels
     );
-    return (orb_span) {(const uint8_t*)text, strlen(text)};
+    return (u8_span) {(const u8*)text, strlen(text)};
 }
 
 static char level_text[8192];
@@ -125,66 +125,66 @@ static const char* level_a(
 
 #define GOOD_A level_a("null", INSTANCES, "1", "7", "0, 1", "5", "1", "<")
 
-static bool fails_with(orb_arena* arena, orb_span json, const char* needle) {
+static bool fails_with(arena* scratch, u8_span json, const char* needle) {
     orb_ldtk parsed;
     orb_error err;
 
-    if (orb_ldtk_parse(arena, json, "world.ldtk", &parsed, &err)) return false;
+    if (orb_ldtk_parse(scratch, json, "world.ldtk", &parsed, &err)) return false;
 
     return strstr(err.text, needle) != nullptr && strncmp(err.text, "world.ldtk", 10) == 0;
 }
 
 int main(void) {
-    static alignas(16) uint8_t mem[4 << 20];
-    orb_arena arena;
-    orb_arena_init(&arena, "test", mem, sizeof mem);
+    static alignas(16) u8 mem[4 << 20];
+    arena scratch;
+    orb_arena_init(&scratch, "test", mem, sizeof mem);
     orb_ldtk world;
     orb_error err;
 
     char both[12288];
     snprintf(both, sizeof both, "%s, %s", GOOD_A, LEVEL_B);
     CHECK(orb_ldtk_parse(
-        &arena, project("true", "", "tiles.aseprite", "0.5", "0.25", "false", both), "world.ldtk",
+        &scratch, project("true", "", "tiles.aseprite", "0.5", "0.25", "false", both), "world.ldtk",
         &world, &err
     ));
 
     // the tileset with a path is kept, the internal one dropped
-    CHECK_EQ(world.tileset_count, 1);
-    CHECK(strcmp(world.tilesets[0].path, "tiles.aseprite") == 0);
-    CHECK_EQ(world.tilesets[0].uid, 7);
-    CHECK_EQ(world.tilesets[0].columns, 4);
-    CHECK_EQ(world.tilesets[0].rows, 2);
-    CHECK_EQ(world.tilesets[0].width, 32);
-    CHECK_EQ(world.layer_def_count, 3);
-    CHECK_EQ(world.level_count, 2);
+    CHECK_EQ(world.tilesets.len, 1);
+    CHECK(strcmp(world.tilesets.elems[0].path, "tiles.aseprite") == 0);
+    CHECK_EQ(world.tilesets.elems[0].uid, 7);
+    CHECK_EQ(world.tilesets.elems[0].columns, 4);
+    CHECK_EQ(world.tilesets.elems[0].rows, 2);
+    CHECK_EQ(world.tilesets.elems[0].width, 32);
+    CHECK_EQ(world.layer_defs.len, 3);
+    CHECK_EQ(world.levels.len, 2);
 
     // level A: world placement, layers bottom to top with Entities skipped
-    const orb_ldtk_level* room = &world.levels[0];
+    const orb_ldtk_level* room = &world.levels.elems[0];
     CHECK(strcmp(room->name, "Room") == 0);
     CHECK_EQ(room->world_y, -8);
     CHECK_EQ(room->width, 16);
     CHECK(room->external_path == nullptr);
-    CHECK_EQ(room->layer_count, 2);
-    CHECK(strcmp(room->layers[0].name, "Floor") == 0);
-    CHECK(strcmp(room->layers[1].name, "Collision") == 0);
-    CHECK_EQ(room->neighbor_count, 2);
-    CHECK(strcmp(room->neighbors[0].level_iid, "bbb") == 0);
-    CHECK_EQ(room->neighbors[0].dir, ORB_LEVEL_E);
-    CHECK_EQ(room->neighbors[1].dir, ORB_LEVEL_LOWER);
+    CHECK_EQ(room->layers.len, 2);
+    CHECK(strcmp(room->layers.elems[0].name, "Floor") == 0);
+    CHECK(strcmp(room->layers.elems[1].name, "Collision") == 0);
+    CHECK_EQ(room->neighbors.len, 2);
+    CHECK(strcmp(room->neighbors.elems[0].level_iid, "bbb") == 0);
+    CHECK_EQ(room->neighbors.elems[0].dir, ORB_LEVEL_E);
+    CHECK_EQ(room->neighbors.elems[1].dir, ORB_LEVEL_LOWER);
 
     // the tiles layer: one flipped tile, no cells
-    const orb_ldtk_layer* floor = &room->layers[0];
+    const orb_ldtk_layer* floor = &room->layers.elems[0];
     CHECK_EQ(floor->tileset, 0);
     CHECK_EQ(floor->grid, 8);
     CHECK_EQ(floor->columns, 2);
     CHECK(floor->cells == nullptr);
-    CHECK_EQ(floor->tile_count, 1);
-    CHECK_EQ(floor->tiles[0].cell_x, 0);
-    CHECK_EQ(floor->tiles[0].id, 2);
-    CHECK_EQ(floor->tiles[0].flip, 1);
+    CHECK_EQ(floor->tiles.len, 1);
+    CHECK_EQ(floor->tiles.elems[0].cell_x, 0);
+    CHECK_EQ(floor->tiles.elems[0].id, 2);
+    CHECK_EQ(floor->tiles.elems[0].flip, 1);
 
     // the intgrid layer: cells, offset, parallax from its definition, two tiles in one cell
-    const orb_ldtk_layer* collision = &room->layers[1];
+    const orb_ldtk_layer* collision = &room->layers.elems[1];
     CHECK_EQ(collision->offset_x, 3);
     CHECK_EQ(collision->offset_y, -1);
     CHECK(collision->parallax_x == 0.5f);
@@ -192,75 +192,75 @@ int main(void) {
     CHECK(collision->cells != nullptr);
     CHECK_EQ(collision->cells[0], 0);
     CHECK_EQ(collision->cells[1], 1);
-    CHECK_EQ(collision->tile_count, 2);
-    CHECK_EQ(collision->tiles[0].cell_x, 1);
-    CHECK_EQ(collision->tiles[0].id, 5);
-    CHECK_EQ(collision->tiles[0].flip, 3);
-    CHECK_EQ(collision->tiles[1].id, 1);
+    CHECK_EQ(collision->tiles.len, 2);
+    CHECK_EQ(collision->tiles.elems[0].cell_x, 1);
+    CHECK_EQ(collision->tiles.elems[0].id, 5);
+    CHECK_EQ(collision->tiles.elems[0].flip, 3);
+    CHECK_EQ(collision->tiles.elems[1].id, 1);
 
     // level B is external: placement known, layers to come from its own file
-    CHECK(strcmp(world.levels[1].external_path, "world/Annex.ldtkl") == 0);
-    CHECK_EQ(world.levels[1].layer_count, 0);
-    CHECK_EQ(world.levels[1].world_x, 16);
+    CHECK(strcmp(world.levels.elems[1].external_path, "world/Annex.ldtkl") == 0);
+    CHECK_EQ(world.levels.elems[1].layers.len, 0);
+    CHECK_EQ(world.levels.elems[1].world_x, 16);
 
     // entity definitions: two types; the crate's defaults are the two non-null ones, the color
     // definition is skipped, and every declared name is kept for the instance check
-    CHECK_EQ(world.entity_def_count, 2);
-    const orb_ldtk_entity_def* crate = &world.entity_defs[0];
+    CHECK_EQ(world.entity_defs.len, 2);
+    const orb_ldtk_entity_def* crate = &world.entity_defs.elems[0];
     CHECK(strcmp(crate->name, "Crate") == 0);
     CHECK_EQ(crate->uid, 20);
     CHECK_EQ(crate->width, 8);
-    CHECK_EQ(crate->field_count, 2);
-    CHECK(strcmp(crate->fields[0].name, "hp") == 0);
-    CHECK_EQ(crate->fields[0].kind, ORB_FIELD_INT);
-    CHECK_EQ(crate->fields[0].count, 1);
-    CHECK_EQ(crate->fields[0].values[0].integer, 10);
-    CHECK_EQ(crate->fields[1].kind, ORB_FIELD_STRING);
-    CHECK(strcmp(crate->fields[1].values[0].string, "box") == 0);
-    CHECK_EQ(crate->field_name_count, 8);
-    CHECK_EQ(world.entity_defs[1].field_count, 0);
+    CHECK_EQ(crate->fields.len, 2);
+    CHECK(strcmp(crate->fields.elems[0].name, "hp") == 0);
+    CHECK_EQ(crate->fields.elems[0].kind, ORB_FIELD_INT);
+    CHECK_EQ(crate->fields.elems[0].values.len, 1);
+    CHECK_EQ(crate->fields.elems[0].values.elems[0].integer, 10);
+    CHECK_EQ(crate->fields.elems[1].kind, ORB_FIELD_STRING);
+    CHECK(strcmp(crate->fields.elems[1].values.elems[0].string, "box") == 0);
+    CHECK_EQ(crate->field_names.len, 8);
+    CHECK_EQ(world.entity_defs.elems[1].fields.len, 0);
 
     // instances: world position is the level's plus px; the point is the layer's grid cell in
     // world pixels; the null label and the color are not read; the ref keeps its iid
-    CHECK_EQ(room->instance_count, 2);
-    const orb_ldtk_instance* a_crate = &room->instances[0];
+    CHECK_EQ(room->instances.len, 2);
+    const orb_ldtk_instance* a_crate = &room->instances.elems[0];
     CHECK(strcmp(a_crate->iid, "crate-a") == 0);
     CHECK_EQ(a_crate->def, 0);
     CHECK_EQ(a_crate->x, 8);
     CHECK_EQ(a_crate->y, -8);
     CHECK_EQ(a_crate->width, 8);
-    CHECK_EQ(a_crate->field_count, 6);
-    CHECK_EQ(a_crate->fields[0].values[0].integer, 3);
-    CHECK_EQ(a_crate->fields[1].kind, ORB_FIELD_BOOL);
-    CHECK(a_crate->fields[1].values[0].boolean);
-    CHECK_EQ(a_crate->fields[2].count, 3);
-    CHECK_EQ(a_crate->fields[2].values[2].integer, 3);
-    CHECK(strcmp(a_crate->fields[3].name, "kind") == 0);
-    CHECK(strcmp(a_crate->fields[3].values[0].string, "Wood") == 0);
-    CHECK_EQ(a_crate->fields[4].kind, ORB_FIELD_POINT);
-    CHECK_EQ(a_crate->fields[4].values[0].point.x, 8);
-    CHECK_EQ(a_crate->fields[4].values[0].point.y, -8);
-    CHECK_EQ(a_crate->fields[5].kind, ORB_FIELD_REF);
-    CHECK(strcmp(a_crate->fields[5].values[0].string, "marker-a") == 0);
-    CHECK_EQ(room->instances[1].def, 1);
-    CHECK_EQ(room->instances[1].field_count, 0);
+    CHECK_EQ(a_crate->fields.len, 6);
+    CHECK_EQ(a_crate->fields.elems[0].values.elems[0].integer, 3);
+    CHECK_EQ(a_crate->fields.elems[1].kind, ORB_FIELD_BOOL);
+    CHECK(a_crate->fields.elems[1].values.elems[0].boolean);
+    CHECK_EQ(a_crate->fields.elems[2].values.len, 3);
+    CHECK_EQ(a_crate->fields.elems[2].values.elems[2].integer, 3);
+    CHECK(strcmp(a_crate->fields.elems[3].name, "kind") == 0);
+    CHECK(strcmp(a_crate->fields.elems[3].values.elems[0].string, "Wood") == 0);
+    CHECK_EQ(a_crate->fields.elems[4].kind, ORB_FIELD_POINT);
+    CHECK_EQ(a_crate->fields.elems[4].values.elems[0].point.x, 8);
+    CHECK_EQ(a_crate->fields.elems[4].values.elems[0].point.y, -8);
+    CHECK_EQ(a_crate->fields.elems[5].kind, ORB_FIELD_REF);
+    CHECK(strcmp(a_crate->fields.elems[5].values.elems[0].string, "marker-a") == 0);
+    CHECK_EQ(room->instances.elems[1].def, 1);
+    CHECK_EQ(room->instances.elems[1].fields.len, 0);
 
     // an external level file is one level object
     char annex[8192];
     snprintf(annex, sizeof annex, "%s", GOOD_A);
     CHECK(orb_ldtk_parse_level(
-        &arena, (orb_span) {(const uint8_t*)annex, strlen(annex)}, "world/Annex.ldtkl", &world,
-        &world.levels[1], &err
+        &scratch, (u8_span) {(const u8*)annex, strlen(annex)}, "world/Annex.ldtkl", &world,
+        &world.levels.elems[1], &err
     ));
-    CHECK_EQ(world.levels[1].layer_count, 2);
+    CHECK_EQ(world.levels.elems[1].layers.len, 2);
     CHECK(
-        strcmp(world.levels[1].name, "Annex") == 0
+        strcmp(world.levels.elems[1].name, "Annex") == 0
     ); // identity comes from the project, not the file
-    CHECK_EQ(world.levels[1].world_x, 16);
+    CHECK_EQ(world.levels.elems[1].world_x, 16);
 
     // entity rejections name the level, the entity, and the field
     CHECK(fails_with(
-        &arena,
+        &scratch,
         project(
             "false", "", "tiles.aseprite", "0", "0", "true",
             level_a(
@@ -273,7 +273,7 @@ int main(void) {
         "level Room: layer Things: entity Ghost: defUid 99 has no definition"
     ));
     CHECK(fails_with(
-        &arena,
+        &scratch,
         project(
             "false", "", "tiles.aseprite", "0", "0", "true",
             level_a(
@@ -287,7 +287,7 @@ int main(void) {
         "entity Crate: field loot: null element"
     ));
     CHECK(fails_with(
-        &arena,
+        &scratch,
         project(
             "false", "", "tiles.aseprite", "0", "0", "true",
             level_a(
@@ -301,7 +301,7 @@ int main(void) {
         "field hp: is not a number"
     ));
     CHECK(fails_with(
-        &arena,
+        &scratch,
         project(
             "false", "", "tiles.aseprite", "0", "0", "true",
             level_a(
@@ -315,7 +315,7 @@ int main(void) {
         "field hp: is not an array"
     ));
     CHECK(fails_with(
-        &arena,
+        &scratch,
         project(
             "false", "", "tiles.aseprite", "0", "0", "true",
             level_a(
@@ -337,19 +337,19 @@ int main(void) {
         "    \"defaultOverride\": {\"id\": \"V_Int\", \"params\": [4]}}]}]},"
         " \"levels\": []}";
     CHECK(fails_with(
-        &arena, (orb_span) {(const uint8_t*)bad_default_project, strlen(bad_default_project)},
+        &scratch, (u8_span) {(const u8*)bad_default_project, strlen(bad_default_project)},
         "entity Crate: field label: is not a string"
     ));
 
     // rejections, each naming the file
     CHECK(fails_with(
-        &arena, project("false", "{}", "tiles.aseprite", "0", "0", "true", GOOD_A), "worlds"
+        &scratch, project("false", "{}", "tiles.aseprite", "0", "0", "true", GOOD_A), "worlds"
     ));
-    CHECK(
-        fails_with(&arena, project("false", "", "tiles.png", "0", "0", "true", GOOD_A), ".aseprite")
-    );
     CHECK(fails_with(
-        &arena, project("false", "", "tiles.png", "0", "0", "true", GOOD_A), "layer Collision"
+        &scratch, project("false", "", "tiles.png", "0", "0", "true", GOOD_A), ".aseprite"
+    ));
+    CHECK(fails_with(
+        &scratch, project("false", "", "tiles.png", "0", "0", "true", GOOD_A), "layer Collision"
     )); // a non-.aseprite relPath is only an error for the layer that actually uses it
 
     // a tileset definition no layer uses is skipped silently, non-.aseprite path included
@@ -386,10 +386,10 @@ int main(void) {
         "     \"entityInstances\": []}]}]}\n";
     orb_ldtk unused_ldtk;
     CHECK(orb_ldtk_parse(
-        &arena, (orb_span) {(const uint8_t*)unused_png_project, strlen(unused_png_project)},
+        &scratch, (u8_span) {(const u8*)unused_png_project, strlen(unused_png_project)},
         "world.ldtk", &unused_ldtk, &err
     ));
-    CHECK_EQ(unused_ldtk.tileset_count, 1);
+    CHECK_EQ(unused_ldtk.tilesets.len, 1);
 
     // a tile whose px lands outside its layer: cell (8, 0) on a 2-column layer
     const char* outside_project =
@@ -412,7 +412,7 @@ int main(void) {
         "     \"gridTiles\": [{\"px\": [64, 0], \"src\": [0, 0], \"f\": 0, \"t\": 0, \"a\": 1}],"
         "     \"autoLayerTiles\": [], \"entityInstances\": []}]}]}\n";
     CHECK(fails_with(
-        &arena, (orb_span) {(const uint8_t*)outside_project, strlen(outside_project)}, "outside"
+        &scratch, (u8_span) {(const u8*)outside_project, strlen(outside_project)}, "outside"
     ));
 
     // __gridSize 0 with a tile present: would divide by zero in ldtk_tiles if not caught first
@@ -436,8 +436,7 @@ int main(void) {
         "     \"gridTiles\": [{\"px\": [0, 0], \"src\": [0, 0], \"f\": 0, \"t\": 0, \"a\": 1}],"
         "     \"autoLayerTiles\": [], \"entityInstances\": []}]}]}\n";
     CHECK(fails_with(
-        &arena, (orb_span) {(const uint8_t*)zero_grid_project, strlen(zero_grid_project)},
-        "positive"
+        &scratch, (u8_span) {(const u8*)zero_grid_project, strlen(zero_grid_project)}, "positive"
     ));
 
     // __cWid 0 with a tile present: an empty layer
@@ -461,7 +460,7 @@ int main(void) {
         "     \"gridTiles\": [{\"px\": [0, 0], \"src\": [0, 0], \"f\": 0, \"t\": 0, \"a\": 1}],"
         "     \"autoLayerTiles\": [], \"entityInstances\": []}]}]}\n";
     CHECK(fails_with(
-        &arena, (orb_span) {(const uint8_t*)zero_cells_project, strlen(zero_cells_project)}, "empty"
+        &scratch, (u8_span) {(const u8*)zero_cells_project, strlen(zero_cells_project)}, "empty"
     ));
 
     // __cWid/__cHei of 65536 each overflows a signed 32-bit int product; refused before the
@@ -483,7 +482,7 @@ int main(void) {
         "    \"intGridCsv\": [], \"gridTiles\": [], \"autoLayerTiles\": [],"
         "    \"entityInstances\": []}]}]}";
     CHECK(fails_with(
-        &arena, (orb_span) {(const uint8_t*)huge_grid_project, strlen(huge_grid_project)},
+        &scratch, (u8_span) {(const u8*)huge_grid_project, strlen(huge_grid_project)},
         "larger than 65535x65535"
     ));
 
@@ -497,25 +496,25 @@ int main(void) {
         "  \"layers\": [], \"entities\": []},"
         " \"levels\": []}";
     CHECK(fails_with(
-        &arena, (orb_span) {(const uint8_t*)huge_tileset_project, strlen(huge_tileset_project)},
+        &scratch, (u8_span) {(const u8*)huge_tileset_project, strlen(huge_tileset_project)},
         "larger than 65535x65535"
     ));
 
     CHECK(fails_with(
-        &arena, project("false", "", "tiles.aseprite", "0.5", "0", "true", GOOD_A),
+        &scratch, project("false", "", "tiles.aseprite", "0.5", "0", "true", GOOD_A),
         "parallaxScaling"
     ));
     CHECK(orb_ldtk_parse(
-        &arena, project("false", "", "tiles.aseprite", "0", "0", "true", GOOD_A), "world.ldtk",
+        &scratch, project("false", "", "tiles.aseprite", "0", "0", "true", GOOD_A), "world.ldtk",
         &world,
         &err
     )); // both factors zero, scaling true: fine
     CHECK(fails_with(
-        &arena, project("false", "", "tiles.aseprite", "0", "0.25", "true", GOOD_A),
+        &scratch, project("false", "", "tiles.aseprite", "0", "0.25", "true", GOOD_A),
         "parallaxScaling"
     )); // the other axis alone triggers it
     CHECK(fails_with(
-        &arena,
+        &scratch,
         project(
             "false", "", "tiles.aseprite", "0", "0", "true",
             level_a("\"bg.png\"", INSTANCES, "1", "7", "0, 1", "5", "1", "<")
@@ -523,7 +522,7 @@ int main(void) {
         "background"
     ));
     CHECK(fails_with(
-        &arena,
+        &scratch,
         project(
             "false", "", "tiles.aseprite", "0", "0", "true",
             level_a("null", INSTANCES, "0.5", "7", "0, 1", "5", "1", "<")
@@ -531,7 +530,7 @@ int main(void) {
         "opacity"
     ));
     CHECK(fails_with(
-        &arena,
+        &scratch,
         project(
             "false", "", "tiles.aseprite", "0", "0", "true",
             level_a("null", INSTANCES, "1", "7", "0, 1", "5", "0.5", "<")
@@ -539,7 +538,7 @@ int main(void) {
         "alpha"
     ));
     CHECK(fails_with(
-        &arena,
+        &scratch,
         project(
             "false", "", "tiles.aseprite", "0", "0", "true",
             level_a("null", INSTANCES, "1", "9", "0, 1", "5", "1", "<")
@@ -547,7 +546,7 @@ int main(void) {
         "tileset"
     ));
     CHECK(fails_with(
-        &arena,
+        &scratch,
         project(
             "false", "", "tiles.aseprite", "0", "0", "true",
             level_a("null", INSTANCES, "1", "7", "0, 300", "5", "1", "<")
@@ -555,7 +554,7 @@ int main(void) {
         "255"
     ));
     CHECK(fails_with(
-        &arena,
+        &scratch,
         project(
             "false", "", "tiles.aseprite", "0", "0", "true",
             level_a("null", INSTANCES, "1", "7", "0, 1", "20000", "1", "<")
@@ -563,7 +562,7 @@ int main(void) {
         "tile id"
     ));
     CHECK(fails_with(
-        &arena,
+        &scratch,
         project(
             "false", "", "tiles.aseprite", "0", "0", "true",
             level_a("null", INSTANCES, "1", "7", "0, 1", "-1", "1", "<")
@@ -571,7 +570,7 @@ int main(void) {
         "does not fit"
     ));
     CHECK(fails_with(
-        &arena,
+        &scratch,
         project(
             "false", "", "tiles.aseprite", "0", "0", "true",
             level_a("null", INSTANCES, "1", "7", "0", "5", "1", "<")
@@ -582,7 +581,7 @@ int main(void) {
     // the error names the level and layer
     orb_error refusal;
     CHECK(!orb_ldtk_parse(
-        &arena,
+        &scratch,
         project(
             "false", "", "tiles.aseprite", "0", "0", "true",
             level_a("null", INSTANCES, "0.5", "7", "0, 1", "5", "1", "<")
@@ -594,7 +593,7 @@ int main(void) {
 
     // an unknown neighbour direction is rejected, naming the level
     CHECK(!orb_ldtk_parse(
-        &arena,
+        &scratch,
         project(
             "false", "", "tiles.aseprite", "0", "0", "true",
             level_a("null", INSTANCES, "1", "7", "0, 1", "5", "1", "x")
@@ -607,30 +606,31 @@ int main(void) {
     // a version outside 1.x and malformed JSON
     static const char v2[] = "{\"jsonVersion\": \"2.0.0\"}";
     CHECK(!orb_ldtk_parse(
-        &arena, (orb_span) {(const uint8_t*)v2, sizeof v2 - 1}, "world.ldtk", &world, &refusal
+        &scratch, (u8_span) {(const u8*)v2, sizeof v2 - 1}, "world.ldtk", &world, &refusal
     ));
     CHECK(strstr(refusal.text, "jsonVersion") != nullptr);
     static const char broken[] = "{\"jsonVersion\": ";
     CHECK(!orb_ldtk_parse(
-        &arena, (orb_span) {(const uint8_t*)broken, sizeof broken - 1}, "world.ldtk", &world,
-        &refusal
+        &scratch, (u8_span) {(const u8*)broken, sizeof broken - 1}, "world.ldtk", &world, &refusal
     ));
 
     // the generated fixture parses, external levels included
-    orb_span project_text, room_text;
-    CHECK(orb_os_read_file("tests/fixtures/levels/world.ldtk", &arena, &project_text));
-    CHECK(orb_ldtk_parse(&arena, project_text, "world.ldtk", &world, &err));
-    CHECK_EQ(world.level_count, 2);
-    CHECK(strcmp(world.levels[0].external_path, "world/Room.ldtkl") == 0);
-    CHECK(orb_os_read_file("tests/fixtures/levels/world/Room.ldtkl", &arena, &room_text));
-    CHECK(
-        orb_ldtk_parse_level(&arena, room_text, "world/Room.ldtkl", &world, &world.levels[0], &err)
-    );
-    CHECK_EQ(world.levels[0].layer_count, 3);
-    CHECK(strcmp(world.levels[0].layers[0].name, "floor") == 0);
-    CHECK(strcmp(world.levels[0].layers[2].name, "deco") == 0);
-    CHECK_EQ(world.levels[0].layers[1].tile_count, 23); // 20 border tiles + 2 seconds + 1 third
-    CHECK_EQ(world.levels[0].layers[2].offset_x, 2);
+    u8_span project_text, room_text;
+    CHECK(orb_os_read_file("tests/fixtures/levels/world.ldtk", &scratch, &project_text));
+    CHECK(orb_ldtk_parse(&scratch, project_text, "world.ldtk", &world, &err));
+    CHECK_EQ(world.levels.len, 2);
+    CHECK(strcmp(world.levels.elems[0].external_path, "world/Room.ldtkl") == 0);
+    CHECK(orb_os_read_file("tests/fixtures/levels/world/Room.ldtkl", &scratch, &room_text));
+    CHECK(orb_ldtk_parse_level(
+        &scratch, room_text, "world/Room.ldtkl", &world, &world.levels.elems[0], &err
+    ));
+    CHECK_EQ(world.levels.elems[0].layers.len, 3);
+    CHECK(strcmp(world.levels.elems[0].layers.elems[0].name, "floor") == 0);
+    CHECK(strcmp(world.levels.elems[0].layers.elems[2].name, "deco") == 0);
+    CHECK_EQ(
+        world.levels.elems[0].layers.elems[1].tiles.len, 23
+    ); // 20 border tiles + 2 seconds + 1 third
+    CHECK_EQ(world.levels.elems[0].layers.elems[2].offset_x, 2);
 
     return 0;
 }

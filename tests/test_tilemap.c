@@ -5,24 +5,24 @@
 #define W 8
 #define H 6
 
-static uint8_t at(const orb_fb* fb, int x, int y) {
+static u8 at(const orb_fb* fb, int x, int y) {
     return fb->px[y * W + x];
 }
 
 int main(void) {
-    static alignas(16) uint8_t mem[1 << 20];
-    orb_arena arena;
-    orb_arena_init(&arena, "test", mem, sizeof mem);
+    static alignas(16) u8 mem[1 << 20];
+    arena out;
+    orb_arena_init(&out, "test", mem, sizeof mem);
 
     orb_fb fb;
-    orb_fb_init(&fb, &arena, (orb_size) {W, H});
+    orb_fb_init(&fb, &out, (orb_size) {W, H});
 
-    uint8_t pixels[8] = {1, 1, 2, 3, 1, 1, 4, 5}; // 4x2 sheet: tile 0 at x 0, tile 1 at x 2
+    u8 pixels[8] = {1, 1, 2, 3, 1, 1, 4, 5}; // 4x2 sheet: tile 0 at x 0, tile 1 at x 2
     orb_sheet_desc sheets[1] = {{.width = 4, .height = 2, .pixels = 0}};
     orb_tileset_desc tilesets[1] = {{.sheet = 0, .grid = 2, .columns = 2, .count = 2}};
     // layer 0: 3x2 cells, one sub-layer; layer 1: 1x1 with two sub-layers, offset and parallax
-    uint16_t tiles[6 + 2] = {1, 2, 0, 2 | ORB_TILE_FLIP_X, 2 | ORB_TILE_FLIP_Y, 1, 1, 2};
-    uint8_t cells[6] = {0, 7, 0, 0, 0, 9};
+    u16 tiles[6 + 2] = {1, 2, 0, 2 | ORB_TILE_FLIP_X, 2 | ORB_TILE_FLIP_Y, 1, 1, 2};
+    u8 cells[6] = {0, 7, 0, 0, 0, 9};
     orb_layer_desc layers[2] = {
         {.tiles = 0, .cells = 0, .tileset = 0, .grid = 2, .columns = 3, .rows = 2, .sublayers = 1},
         {.tiles = 6,
@@ -41,20 +41,13 @@ int main(void) {
         {.world_x = 10, .world_y = -4, .width = 6, .height = 4, .first_layer = 0, .layer_count = 2}
     };
     orb_assets assets = {
-        .sheets = sheets,
-        .sheet_count = 1,
-        .pixels = pixels,
-        .pixel_count = 8,
-        .tilesets = tilesets,
-        .tileset_count = 1,
-        .levels = levels,
-        .level_count = 1,
-        .layers = layers,
-        .layer_count = 2,
-        .tiles = tiles,
-        .tile_count = 8,
-        .cells = cells,
-        .cell_count = 6
+        .sheets = {sheets, 1},
+        .pixels = {pixels, 8},
+        .tilesets = {tilesets, 1},
+        .levels = {levels, 1},
+        .layers = {layers, 2},
+        .tiles = {tiles, 8},
+        .cells = {cells, 6}
     };
 
     // camera at the level's origin: the layer fills the top-left 6x4
@@ -178,19 +171,22 @@ int main(void) {
     CHECK(cam.at.x == -W / 2.0f && shown.x == -W / 2.0f + 1 && shown.y == -H / 2.0f - 2);
 
     // through the API: names, bounds, neighbors, draw, cells, camera
-    uint64_t level_ids[1] = {orb_asset_id("Cave", "")};
-    uint64_t layer_ids[2] = {orb_asset_id("floor", ""), orb_asset_id("Deco", "")};
+    u64 level_ids[1] = {orb_asset_id("Cave", "")};
+    u64 layer_ids[2] = {orb_asset_id("floor", ""), orb_asset_id("Deco", "")};
     orb_neighbor_desc neighbors[1] = {{.level = 0, .dir = ORB_LEVEL_OVERLAP}};
-    uint8_t pal[256 * 4] = {0}; // orb_api_set_assets always loads one
+    u8 pal[256 * 4] = {0}; // orb_api_set_assets always loads one
     assets.level_ids = level_ids;
     assets.layer_ids = layer_ids;
-    assets.neighbors = neighbors;
-    assets.neighbor_count = 1;
+    assets.neighbors = (orb_neighbor_desc_span) {neighbors, 1};
     assets.pal = pal;
     levels[0].neighbor_count = 1;
     layers[1].parallax_y = 0;
 
-    orb_api_boot(&arena, (orb_size) {W, H}, &assets);
+    orb_api_boot(&out, (orb_size) {W, H}, &assets);
+
+    static alignas(16) u8 frame_mem[256];
+
+    orb_arena_init(orb_api_frame(), "frame", frame_mem, sizeof frame_mem);
 
     const orb_api* api = orb_api_table();
     orb_level cave = api->level_find("cave");
@@ -214,15 +210,15 @@ int main(void) {
     CHECK(!api->layer_info(cave, 1).has_cells);
     CHECK_EQ(api->layer_info(cave, 5).grid, 0);
 
-    orb_level_neighbor links[4];
-    CHECK_EQ(api->level_neighbors(cave, links, 4), 1);
-    CHECK_EQ(links[0].dir, ORB_LEVEL_OVERLAP);
-    CHECK_EQ(links[0].level.v, cave.v);
-    CHECK_EQ(api->level_neighbors(cave, links, 0), 0);
-    CHECK_EQ(api->level_neighbors(ORB_NO_LEVEL, links, 4), 0);
+    orb_level_neighbor_list links = api->level_neighbors(cave);
+
+    CHECK_EQ(links.len, 1);
+    CHECK_EQ(get(links, 0).dir, ORB_LEVEL_OVERLAP);
+    CHECK_EQ(get(links, 0).level.v, cave.v);
+    CHECK_EQ(api->level_neighbors(ORB_NO_LEVEL).len, 0);
 
     api->camera_set((orb_vec2f) {10, -4});
-    api->clear(0);
+    api->clear_screen(0);
     api->layer_draw(cave, 0);
     CHECK_EQ(orb_api_fb()->px[0], 1);
     CHECK_EQ(orb_api_fb()->px[2], 2);
@@ -233,7 +229,7 @@ int main(void) {
     CHECK(
         follow.at.x == 9 && follow.at.y == -5
     ); // 6x4 bounds inside an 8x6 screen: centered on them
-    api->clear(0);
+    api->clear_screen(0);
     api->layer_draw(cave, 0); // camera_update set the shown origin from its result: (1,1)
     CHECK_EQ(orb_api_fb()->px[1 * W + 1], 1);
 

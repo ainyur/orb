@@ -1,5 +1,5 @@
 #include "../core/log.h"
-#include "../core/macros.h"
+#include "../orb_math.h"
 #include "evdev_pad.h"
 #include "os.h"
 
@@ -16,15 +16,15 @@ static const char* const evdev_make_names[] = {"none", "other", "xbox", "playsta
 static const int evdev_axes[] = {ABS_X, ABS_Y, ABS_Z, ABS_RX, ABS_RY, ABS_RZ, ABS_HAT0X, ABS_HAT0Y};
 
 static int evdev_fd = -1;
-static uint64_t evdev_next_scan;
+static u64 evdev_next_scan;
 static bool evdev_open_failed;
 static char evdev_name[64];
 static orb_pad_make evdev_make;
-static uint8_t evdev_abs_bits[ABS_CNT / 8];
+static u8 evdev_abs_bits[ABS_CNT / 8];
 static struct input_absinfo evdev_abs[ABS_HAT0Y + 1]; // each axis's value and range
 static bool evdev_buttons[ORB_PAD_BUTTONS];
 
-static bool evdev_bit(const uint8_t* bits, int code) {
+static bool evdev_bit(const u8* bits, int code) {
     return bits[code / 8] >> code % 8 & 1;
 }
 
@@ -83,29 +83,29 @@ static void evdev_key(int code, bool down) {
 // Every button and axis as the device holds them now, at open and after the kernel
 // dropped events.
 static void evdev_sync(void) {
-    uint8_t keys[KEY_CNT / 8] = {};
+    u8 keys[KEY_CNT / 8] = {};
 
     ioctl(evdev_fd, EVIOCGKEY(sizeof keys), keys);
 
     for (int code = BTN_SOUTH; code <= BTN_DPAD_RIGHT; code++)
         evdev_key(code, evdev_bit(keys, code));
 
-    for (size_t i = 0; i < sizeof evdev_axes / sizeof *evdev_axes; i++)
+    for (usize i = 0; i < sizeof evdev_axes / sizeof *evdev_axes; i++)
         if (evdev_bit(evdev_abs_bits, evdev_axes[i]))
             ioctl(evdev_fd, EVIOCGABS(evdev_axes[i]), &evdev_abs[evdev_axes[i]]);
 }
 
 // An axis across its range: -32767..32767 centered, else 0..32767.
-static int16_t evdev_axis(int code, bool centered) {
+static i16 evdev_axis(int code, bool centered) {
     const struct input_absinfo* axis = &evdev_abs[code];
-    int64_t low = axis->minimum, high = axis->maximum, raw = axis->value;
+    i64 low = axis->minimum, high = axis->maximum, raw = axis->value;
 
     if (high <= low) return 0;
 
-    int64_t value = centered ? (2 * raw - low - high) * 32767 / (high - low)
-                             : (raw - low) * 32767 / (high - low);
+    i64 value = centered ? (2 * raw - low - high) * 32767 / (high - low)
+                         : (raw - low) * 32767 / (high - low);
 
-    return (int16_t)orb_clamp(value, centered ? -32767 : 0, 32767);
+    return (i16)orb_clamp(value, centered ? -32767 : 0, 32767);
 }
 
 static void evdev_open(const char* node) {

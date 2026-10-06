@@ -77,7 +77,7 @@ static int boot(void) {
 
     debug_console_register();
 
-    if (!booted && !orb_boot(orb_game_main(), "tests/fixtures", (orb_span) {}, &err)) {
+    if (!booted && !orb_boot(orb_game_main(), "tests/fixtures", (u8_span) {}, &err)) {
         fprintf(stderr, "boot: %s\n", err.text);
         return 1;
     }
@@ -86,7 +86,7 @@ static int boot(void) {
     return 0;
 }
 
-static const char* last(void) {
+static const char* last_line(void) {
     return orb_log_line(0);
 }
 
@@ -97,38 +97,38 @@ static int test_run(void) {
 
     orb_log_clear();
     orb_console_run("early");
-    CHECK(strcmp(last(), "unknown: early") == 0);
+    CHECK(strcmp(last_line(), "unknown: early") == 0);
 
     orb_console_run("speed");
-    CHECK(strcmp(last(), "speed = 1") == 0);
+    CHECK(strcmp(last_line(), "speed = 1") == 0);
     orb_console_run("speed 3");
     CHECK_EQ(self->speed, 3);
-    CHECK(strcmp(last(), "speed = 1") == 0); // a set prints nothing
+    CHECK(strcmp(last_line(), "speed = 1") == 0); // a set prints nothing
     orb_console_run("speed 0x10");
     CHECK_EQ(self->speed, 16);
     orb_console_run("speed nope");
-    CHECK(strcmp(last(), "bad value for speed: nope") == 0);
+    CHECK(strcmp(last_line(), "bad value for speed: nope") == 0);
     CHECK_EQ(self->speed, 16);
     orb_console_run("speed 1 2");
-    CHECK(strcmp(last(), "speed takes one value") == 0);
+    CHECK(strcmp(last_line(), "speed takes one value") == 0);
     orb_console_run("scale 1.5");
     CHECK(self->scale == 1.5f);
     orb_console_run("scale inf");
-    CHECK(strcmp(last(), "bad value for scale: inf") == 0);
+    CHECK(strcmp(last_line(), "bad value for scale: inf") == 0);
     orb_console_run("scale");
-    CHECK(strcmp(last(), "scale = 1.5") == 0);
+    CHECK(strcmp(last_line(), "scale = 1.5") == 0);
     orb_console_run("god on");
     CHECK(self->god);
     orb_console_run("god");
-    CHECK(strcmp(last(), "god = true") == 0);
+    CHECK(strcmp(last_line(), "god = true") == 0);
     orb_console_run("god 0");
     CHECK(!self->god);
     orb_console_run("god maybe");
-    CHECK(strcmp(last(), "bad value for god: maybe") == 0);
+    CHECK(strcmp(last_line(), "bad value for god: maybe") == 0);
     orb_console_run("nothing");
-    CHECK(strcmp(last(), "unknown: nothing") == 0);
+    CHECK(strcmp(last_line(), "unknown: nothing") == 0);
     orb_console_run("   ");
-    CHECK(strcmp(last(), "unknown: nothing") == 0); // an empty line prints nothing
+    CHECK(strcmp(last_line(), "unknown: nothing") == 0); // an empty line prints nothing
 
     // commands get the split arguments; quotes group
     orb_console_run("teleport 5 \"7\"");
@@ -143,7 +143,7 @@ static int test_run(void) {
     CHECK(strstr(orb_log_line(0), "variables") != nullptr);
     CHECK(strncmp(orb_log_line(orb_log_line_count() - 1), "help", 4) == 0);
     orb_console_run("help sp");
-    CHECK(strncmp(last(), "speed", 5) == 0);
+    CHECK(strncmp(last_line(), "speed", 5) == 0);
     orb_console_run("dump");
     CHECK(strcmp(orb_log_line(3), "speed 16") == 0 || strcmp(orb_log_line(4), "speed 16") == 0);
     orb_console_run("clear");
@@ -154,17 +154,17 @@ static int test_run(void) {
 
     orb_console_step(&none);
     orb_console_var_int("late", &self->speed, nullptr);
-    CHECK(strcmp(last(), "console: \"late\" registered outside reload") == 0);
+    CHECK(strcmp(last_line(), "console: \"late\" registered outside reload") == 0);
     orb_console_run("late");
-    CHECK(strcmp(last(), "unknown: late") == 0);
+    CHECK(strcmp(last_line(), "unknown: late") == 0);
 
     // a bad name and a taken name refuse inside reload
     orb_console_clear();
     orb_console_var_int("Speed", &self->speed, nullptr);
-    CHECK(strcmp(last(), "console: bad or taken name \"Speed\"") == 0);
+    CHECK(strcmp(last_line(), "console: bad or taken name \"Speed\"") == 0);
     orb_console_var_int("speed", &self->speed, nullptr);
     orb_console_var_int("speed", &self->speed, nullptr);
-    CHECK(strcmp(last(), "console: bad or taken name \"speed\"") == 0);
+    CHECK(strcmp(last_line(), "console: bad or taken name \"speed\"") == 0);
 
     // the fixture registers again on reload, and quit ends the loop
     orb_console_clear();
@@ -184,30 +184,30 @@ static int test_entities(void) {
     // the fixture room spawned at boot: two crates, a marker, the player
     orb_log_clear();
     orb_console_run("entities");
-    CHECK(strcmp(last(), "4 entities") == 0);
+    CHECK(strcmp(last_line(), "4 entities") == 0);
     orb_console_run("entities crate");
-    CHECK(strcmp(last(), "2 entities") == 0);
+    CHECK(strcmp(last_line(), "2 entities") == 0);
     CHECK(strncmp(orb_log_line(1), "1 type 0 (32, 8) 8x8 v---", 25) == 0);
     orb_console_run("entities ghost");
-    CHECK(strcmp(last(), "no entity type \"ghost\"") == 0);
+    CHECK(strcmp(last_line(), "no entity type \"ghost\"") == 0);
     orb_console_run("entities a b");
-    CHECK(strcmp(last(), "entities [type]") == 0);
+    CHECK(strcmp(last_line(), "entities [type]") == 0);
 
     // spawn prints the slot; a bad type logs; despawn frees at the next update
     orb_console_run("spawn crate 20 10");
-    CHECK(strcmp(last(), "entity 4") == 0);
+    CHECK(strcmp(last_line(), "entity 4") == 0);
     orb_console_run("spawn ghost 0 0");
-    CHECK(strcmp(last(), "no entity type \"ghost\"") == 0);
+    CHECK(strcmp(last_line(), "no entity type \"ghost\"") == 0);
     orb_console_run("spawn crate");
-    CHECK(strcmp(last(), "spawn <type> <x> <y>") == 0);
+    CHECK(strcmp(last_line(), "spawn <type> <x> <y>") == 0);
     orb_console_run("despawn 4");
     CHECK(orb_entity_get(ORB_ENTITY(4 | 1u << 24))->flags & ORB_ENTITY_DESPAWNING);
     tick();
     CHECK(orb_entity_get(ORB_ENTITY(4 | 1u << 24)) == nullptr);
     orb_console_run("despawn 4");
-    CHECK(strcmp(last(), "no entity 4") == 0);
+    CHECK(strcmp(last_line(), "no entity 4") == 0);
     orb_console_run("despawn x");
-    CHECK(strcmp(last(), "no entity x") == 0);
+    CHECK(strcmp(last_line(), "no entity x") == 0);
 
     // entity: the record, the placement's fields, the type's defaults, the components
     orb_log_clear();
@@ -235,7 +235,7 @@ static int test_entities(void) {
         strstr(orb_log_line(0), "component 1, 64 bytes") || strncmp(orb_log_line(0), "  ", 2) == 0
     );
     orb_console_run("entity");
-    CHECK(strcmp(last(), "entity <index>") == 0);
+    CHECK(strcmp(last_line(), "entity <index>") == 0);
 
     // the debug variable is orb's own and survives a clear
     orb_console_run("entities.debug on");
@@ -243,7 +243,7 @@ static int test_entities(void) {
     orb_console_clear();
     reload(self, orb_api_table());
     orb_console_run("entities.debug");
-    CHECK(strcmp(last(), "entities.debug = true") == 0);
+    CHECK(strcmp(last_line(), "entities.debug = true") == 0);
     orb_console_run("entities.debug off");
     CHECK(!orb_entity_debug);
     (void)self;
@@ -285,7 +285,7 @@ static int test_editor(void) {
     keys.keys[ORB_KEY_GRAVE] = true;
     keys.keys[ORB_KEY_RIGHT] = true;
     snprintf(keys.text, sizeof keys.text, "`");
-    float x = orb_entity_get(self->player)->at.x;
+    f32 x = orb_entity_get(self->player)->at.x;
     tick(); // opens; the game sees nothing this tick
     CHECK(orb_console_open());
     CHECK(orb_entity_get(self->player)->at.x == x);
@@ -481,9 +481,9 @@ static int test_binds(void) {
     press(ORB_KEY_F5);
     CHECK_EQ(self->speed, 0);
     orb_console_run("bind nosuchkey speed 1");
-    CHECK(strcmp(last(), "no key \"nosuchkey\"") == 0);
+    CHECK(strcmp(last_line(), "no key \"nosuchkey\"") == 0);
     orb_console_run("bind ` dump");
-    CHECK(strcmp(last(), "` is the console's key") == 0);
+    CHECK(strcmp(last_line(), "` is the console's key") == 0);
 
     static const char* const sixteen[ORB_CONSOLE_BINDS] = {
         "f1", "f2",  "f3",  "f4",  "f5",   "f6",  "f7",     "f8",
@@ -498,7 +498,7 @@ static int test_binds(void) {
     }
 
     orb_console_run("bind delete dump");
-    CHECK(strcmp(last(), "binds are full") == 0);
+    CHECK(strcmp(last_line(), "binds are full") == 0);
     orb_console_clear(); // binds survive
     reload(self, orb_api_table());
     orb_console_run("binds");
@@ -506,14 +506,14 @@ static int test_binds(void) {
     return 0;
 }
 
-static uint32_t frame_pixel(int x, int y) {
+static u32 frame_pixel(int x, int y) {
     return orb_os_headless_frame()[y * 64 + x];
 }
 
 // Draws into a buffer with 16 sentinel words on each side and checks nothing past the
 // frame itself changed, and that the fill still ran.
-static int draw_stays_inside(orb_size size, uint32_t dark) {
-    uint32_t buf[16 + 65 * 13 + 16];
+static int draw_stays_inside(orb_size size, u32 dark) {
+    u32 buf[16 + 65 * 13 + 16];
     int n = size.width * size.height;
 
     for (int i = 0; i < 16 + n + 16; i++)
@@ -545,7 +545,7 @@ static int test_draw(void) {
     CHECK(orb_console_open());
     host_render();
 
-    uint32_t dark = 0, bright = 0;
+    u32 dark = 0, bright = 0;
 
     orb_pal_extremes(orb_api_pal_base(), &dark, &bright);
     CHECK(dark != bright);
@@ -577,16 +577,16 @@ static int test_draw(void) {
 
 // Renders text through ORB_CONSOLE_FONT and compares its 3 by 5 body to the frame's row.
 static bool row_text_matches(int row, const char* text) {
-    uint32_t dark, bright;
+    u32 dark, bright;
 
     orb_pal_extremes(orb_api_pal_base(), &dark, &bright);
 
     for (int i = 0; text[i]; i++) {
-        const uint8_t* glyph = ORB_CONSOLE_FONT[(unsigned char)text[i] - 32];
+        const u8* glyph = ORB_CONSOLE_FONT[(unsigned char)text[i] - 32];
 
         for (int j = 0; j < 5; j++)
             for (int col = 0; col < 3; col++) {
-                uint32_t want = glyph[j] & 0x80 >> col ? bright : dark;
+                u32 want = glyph[j] & 0x80 >> col ? bright : dark;
 
                 if (frame_pixel(i * 4 + col, row * 6 + j) != want) return false;
             }
@@ -701,6 +701,17 @@ static int test_clock(void) {
     CHECK(strstr(orb_log_line(0), " sealed; frame ") != nullptr);
     CHECK(strstr(orb_log_line(0), " B,") || strstr(orb_log_line(0), " KB,"));
     CHECK_EQ(stats.frame_ticks, 0);
+
+    arena* battle = alloc(orb_api_global(), arena, 1);
+
+    CHECK(arena_new(battle, orb_api_global(), "battle", 256));
+    orb_log_clear();
+    orb_console_run("memory");
+    CHECK_EQ(orb_log_line_count(), 3);
+    CHECK(strncmp(orb_log_line(2), "global: ", 8) == 0);
+    CHECK(strncmp(orb_log_line(1), "frame: ", 7) == 0);
+    CHECK(strncmp(orb_log_line(0), "battle: ", 8) == 0);
+    CHECK(strstr(orb_log_line(0), " used, ") != nullptr);
 
     orb_clock_get()->step = true; // outside a pause a step is dropped, not saved up
     CHECK(orb_frame());

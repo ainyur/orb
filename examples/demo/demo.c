@@ -50,11 +50,11 @@ static void init(void* state, const orb_api* orb) {
     if (music_key != ORB_KEY_NONE) orb->button_bind(ORB_BTN_SELECT, music_key);
 }
 
-static float clampf(float value, float low, float high) {
+static f32 clampf(f32 value, f32 low, f32 high) {
     return value < low ? low : value > high ? high : value;
 }
 
-static float absf(float value) {
+static f32 absf(f32 value) {
     return value < 0 ? -value : value;
 }
 
@@ -74,13 +74,12 @@ static void player_update(void* state, const orb_api* orb, orb_entity_id id) {
     orb_body* body = orb_body_of(orb, id);
     orb_sprite_component* sprite = orb_sprite_component_of(orb, id);
     orb_vec2f stick = orb->pad_stick(ORB_PAD_LEFT_STICK);
-    float dx =
+    f32 dx =
         clampf(stick.x + orb->button_down(ORB_BTN_RIGHT) - orb->button_down(ORB_BTN_LEFT), -1, 1);
-    float dy =
-        clampf(stick.y + orb->button_down(ORB_BTN_DOWN) - orb->button_down(ORB_BTN_UP), -1, 1);
+    f32 dy = clampf(stick.y + orb->button_down(ORB_BTN_DOWN) - orb->button_down(ORB_BTN_UP), -1, 1);
     bool wandering = demo->idle >= IDLE_TICKS;
-    float keep = wandering ? 1.0f : BOUNCE;
-    float hit =
+    f32 keep = wandering ? 1.0f : BOUNCE;
+    f32 hit =
         absf(body->impact.x) > absf(body->impact.y) ? absf(body->impact.x) : absf(body->impact.y);
 
     if (body->impact.x != 0)
@@ -117,7 +116,7 @@ static void player_update(void* state, const orb_api* orb, orb_entity_id id) {
 
     if (hit > 0 && (wandering || hit >= FLASH_SPEED)) {
         orb_vec2f at = orb->entity_world_at(id);
-        float pan = (at.x - demo->camera.at.x + BODY / 2) / (SCREEN_W / 2.0f) - 1;
+        f32 pan = (at.x - demo->camera.at.x + BODY / 2) / (SCREEN_W / 2.0f) - 1;
 
         demo->flash = FLASH_TICKS;
         orb->sound_play(demo->bounce, (orb_sound_params) {.volume = 0.8f, .pan = pan}, 0);
@@ -131,12 +130,12 @@ static void player_update(void* state, const orb_api* orb, orb_entity_id id) {
 
 static void reload(void* state, const orb_api* orb) {
     game_state* demo = state;
-    uint8_t kinds[256] = {0};
-    uint8_t remap[256];
+    u8 kinds[256] = {0};
+    u8 remap[256];
     const char* room = "room";
 
     for (int i = 0; i < 256; i++)
-        remap[i] = (uint8_t)i;
+        remap[i] = (u8)i;
 
     remap[WHITE] = RED;
     kinds[1] = ORB_CELL_SOLID;
@@ -156,8 +155,12 @@ static void reload(void* state, const orb_api* orb) {
     if (!orb->entity_get(demo->player)) {
         orb->level_spawn(demo->room);
 
-        if (orb->entity_of_type(demo->player_type, &demo->player, 1) == 0)
+        orb_entity_id_list players = orb->entity_of_type(demo->player_type);
+
+        if (players.len == 0)
             orb->log("no player placed in %s", room);
+        else
+            demo->player = get(players, 0);
     }
 }
 
@@ -185,7 +188,7 @@ static void update(void* state, const orb_api* orb) {
 static void draw(void* state, const orb_api* orb) {
     game_state* demo = state;
 
-    orb->clear(BG);
+    orb->clear_screen(BG);
     orb->layer_draw(demo->room, demo->floor);
     orb->layer_draw(demo->room, demo->walls);
     orb->layer_draw(demo->room, demo->shadow);

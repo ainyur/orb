@@ -8,7 +8,7 @@
 #include <string.h>
 
 typedef struct ldtk {
-    orb_arena* arena;
+    arena* scratch;
     const char* name;   // the file, for messages
     const char* level;  // identifier of the level being read, or nullptr
     const char* layer;  // identifier of the layer being read, or nullptr
@@ -29,19 +29,19 @@ static bool ldtk_fail(ldtk* reader, const char* fmt, ...) {
     va_end(args);
 
     if (reader->level)
-        n += snprintf(where + n, sizeof where - (size_t)n, ": level %s", reader->level);
+        n += snprintf(where + n, sizeof where - (usize)n, ": level %s", reader->level);
     if (reader->layer)
-        n += snprintf(where + n, sizeof where - (size_t)n, ": layer %s", reader->layer);
+        n += snprintf(where + n, sizeof where - (usize)n, ": layer %s", reader->layer);
     if (reader->entity)
-        n += snprintf(where + n, sizeof where - (size_t)n, ": entity %s", reader->entity);
+        n += snprintf(where + n, sizeof where - (usize)n, ": entity %s", reader->entity);
     if (reader->field)
-        n += snprintf(where + n, sizeof where - (size_t)n, ": field %s", reader->field);
+        n += snprintf(where + n, sizeof where - (usize)n, ": field %s", reader->field);
 
     return orb_error_set(reader->err, "%s%s: %s", reader->name, where, text);
 }
 
 // Typed getters: a missing or mistyped key is an error naming it.
-static bool ldtk_number(ldtk* reader, const orb_json* obj, const char* key, double* out) {
+static bool ldtk_number(ldtk* reader, const orb_json* obj, const char* key, f64* out) {
     const orb_json* value = orb_json_get(obj, key);
 
     if (!value || value->kind != ORB_JSON_NUMBER)
@@ -52,7 +52,7 @@ static bool ldtk_number(ldtk* reader, const orb_json* obj, const char* key, doub
 }
 
 static bool ldtk_int(ldtk* reader, const orb_json* obj, const char* key, int* out) {
-    double value;
+    f64 value;
 
     if (!ldtk_number(reader, obj, key, &value)) return false;
 
@@ -123,7 +123,7 @@ static bool ldtk_field_kind(
     bool* skip
 ) {
     constexpr char prefix[] = "Array<";
-    size_t n = strlen(type);
+    usize n = strlen(type);
     char inner[64];
 
     *is_array =
@@ -176,11 +176,11 @@ static bool ldtk_value(
     switch (kind) {
     case ORB_FIELD_INT:
         if (value->kind != ORB_JSON_NUMBER) return ldtk_fail(reader, "is not a number");
-        out->integer = (int32_t)value->num;
+        out->integer = (i32)value->num;
         return true;
     case ORB_FIELD_FLOAT:
         if (value->kind != ORB_JSON_NUMBER) return ldtk_fail(reader, "is not a number");
-        out->number = (float)value->num;
+        out->number = (f32)value->num;
         return true;
     case ORB_FIELD_BOOL:
         if (value->kind != ORB_JSON_BOOL) return ldtk_fail(reader, "is not a bool");
@@ -220,16 +220,19 @@ static bool ldtk_fields(
     bool defaults,
     const ldtk_geometry* geometry,
     const orb_ldtk_entity_def* def,
-    orb_ldtk_field** out,
-    int* out_count,
-    const char*** names,
-    int* name_count_out
+    orb_ldtk_field_list* out,
+    field_names_list* names
 ) {
-    int total = arr ? arr->count : 0, count = 0;
-    orb_ldtk_field* fields = orb_arena_push_array(reader->arena, orb_ldtk_field, total);
-    const char** name_list =
-        names ? orb_arena_push_array(reader->arena, const char*, total) : nullptr;
-    int name_count = 0;
+    u32 total = arr ? (u32)arr->count : 0;
+    orb_ldtk_field_list fields = {
+        .elems = orb_arena_push_array(reader->scratch, orb_ldtk_field, total), .cap = total
+    };
+    field_names_list name_list = {};
+
+    if (names)
+        name_list = (field_names_list) {
+            .elems = orb_arena_push_array(reader->scratch, const char*, total), .cap = total
+        };
 
     for (const orb_json* item = arr ? arr->first : nullptr; item; item = item->next) {
         const char* identifier;
@@ -239,7 +242,7 @@ static bool ldtk_fields(
 
         reader->field = identifier;
 
-        if (name_list) name_list[name_count++] = identifier;
+        if (names) (void)push(reader->scratch, &name_list, identifier);
 
         const char* type;
         if (!ldtk_string(reader, item, "__type", &type) || !type)
@@ -253,8 +256,8 @@ static bool ldtk_fields(
         if (def) {
             bool declared = false;
 
-            for (int i = 0; i < def->field_name_count && !declared; i++)
-                declared = strcmp(def->field_names[i], identifier) == 0;
+            for (u32 i = 0; i < def->field_names.len && !declared; i++)
+                declared = strcmp(def->field_names.elems[i], identifier) == 0;
 
             if (!declared) continue;
         }
@@ -275,7 +278,7 @@ static bool ldtk_fields(
             is_array = false;
         }
 
-        orb_ldtk_field* field = &fields[count];
+        orb_ldtk_field field = {};
         int n = 1;
 
         if (is_array) {
@@ -284,32 +287,30 @@ static bool ldtk_fields(
             n = value->count;
         }
 
-        field->name = identifier;
-        field->kind = kind;
-        field->count = n;
-        field->values = orb_arena_push_array(reader->arena, orb_ldtk_value, n);
+        field.name = identifier;
+        field.kind = kind;
+        field.values = (orb_ldtk_value_slice) {
+            .elems = orb_arena_push_array(reader->scratch, orb_ldtk_value, n), .len = (u32)n
+        };
 
         if (is_array) {
             int k = 0;
 
             for (const orb_json* element = value->first; element; element = element->next, k++) {
                 if (element->kind == ORB_JSON_NULL) return ldtk_fail(reader, "null element");
-                if (!ldtk_value(reader, element, kind, geometry, &field->values[k])) return false;
+                if (!ldtk_value(reader, element, kind, geometry, &field.values.elems[k]))
+                    return false;
             }
-        } else if (!ldtk_value(reader, value, kind, geometry, &field->values[0]))
+        } else if (!ldtk_value(reader, value, kind, geometry, &field.values.elems[0]))
             return false;
 
-        count++;
+        (void)push(reader->scratch, &fields, field);
     }
 
     reader->field = nullptr;
     *out = fields;
-    *out_count = count;
 
-    if (names) {
-        *names = name_list;
-        *name_count_out = name_count;
-    }
+    if (names) *names = name_list;
 
     return true;
 }
@@ -326,7 +327,7 @@ static bool ldtk_dir(ldtk* reader, const char* code, orb_level_dir* out) {
         {">", ORB_LEVEL_HIGHER}, {"o", ORB_LEVEL_OVERLAP},
     };
 
-    for (size_t i = 0; i < sizeof table / sizeof *table; i++) {
+    for (usize i = 0; i < sizeof table / sizeof *table; i++) {
         if (strcmp(code, table[i].code) != 0) continue;
 
         *out = table[i].dir;
@@ -344,10 +345,13 @@ static bool ldtk_defs_tilesets(ldtk* reader, const orb_json* defs, orb_ldtk* out
 
     if (!ldtk_array(reader, defs, "tilesets", &arr)) return false;
 
-    int total = arr ? arr->count : 0;
-    orb_ldtk_tileset* tilesets = orb_arena_push_array(reader->arena, orb_ldtk_tileset, total);
-    orb_ldtk_skipped* skipped = orb_arena_push_array(reader->arena, orb_ldtk_skipped, total);
-    int count = 0, skipped_count = 0;
+    u32 total = arr ? (u32)arr->count : 0;
+    orb_ldtk_tileset_list tilesets = {
+        .elems = orb_arena_push_array(reader->scratch, orb_ldtk_tileset, total), .cap = total
+    };
+    orb_ldtk_skipped_list skipped = {
+        .elems = orb_arena_push_array(reader->scratch, orb_ldtk_skipped, total), .cap = total
+    };
 
     for (const orb_json* entry = arr ? arr->first : nullptr; entry; entry = entry->next) {
         const char* path;
@@ -357,12 +361,12 @@ static bool ldtk_defs_tilesets(ldtk* reader, const orb_json* defs, orb_ldtk* out
         if (!ldtk_int(reader, entry, "uid", &uid)) return false;
 
         constexpr char suffix[] = ".aseprite";
-        constexpr size_t suffix_len = sizeof suffix - 1;
-        size_t plen = path ? strlen(path) : 0;
+        constexpr usize suffix_len = sizeof suffix - 1;
+        usize plen = path ? strlen(path) : 0;
         bool usable = path && plen >= suffix_len && strcmp(path + plen - suffix_len, suffix) == 0;
 
         if (!usable) {
-            skipped[skipped_count++] = (orb_ldtk_skipped) {.uid = uid, .path = path};
+            (void)push(reader->scratch, &skipped, ((orb_ldtk_skipped) {.uid = uid, .path = path}));
             continue;
         }
 
@@ -380,23 +384,24 @@ static bool ldtk_defs_tilesets(ldtk* reader, const orb_json* defs, orb_ldtk* out
         if (!ldtk_int(reader, entry, "pxWid", &width)) return false;
         if (!ldtk_int(reader, entry, "pxHei", &height)) return false;
 
-        tilesets[count++] = (orb_ldtk_tileset) {
-            .path = path,
-            .uid = uid,
-            .grid = grid,
-            .spacing = spacing,
-            .padding = padding,
-            .columns = columns,
-            .rows = rows,
-            .width = width,
-            .height = height
-        };
+        (void)push(
+            reader->scratch, &tilesets,
+            ((orb_ldtk_tileset) {
+                .path = path,
+                .uid = uid,
+                .grid = grid,
+                .spacing = spacing,
+                .padding = padding,
+                .columns = columns,
+                .rows = rows,
+                .width = width,
+                .height = height
+            })
+        );
     }
 
     out->tilesets = tilesets;
-    out->tileset_count = count;
     out->skipped = skipped;
-    out->skipped_count = skipped_count;
     return true;
 }
 
@@ -407,7 +412,8 @@ static bool ldtk_defs_layers(ldtk* reader, const orb_json* defs, orb_ldtk* out) 
     if (!ldtk_array(reader, defs, "layers", &arr)) return false;
 
     int count = arr ? arr->count : 0;
-    orb_ldtk_layer_def* layer_defs = orb_arena_push_array(reader->arena, orb_ldtk_layer_def, count);
+    orb_ldtk_layer_def* layer_defs =
+        orb_arena_push_array(reader->scratch, orb_ldtk_layer_def, count);
     int i = 0;
 
     for (const orb_json* entry = arr ? arr->first : nullptr; entry; entry = entry->next, i++) {
@@ -420,7 +426,7 @@ static bool ldtk_defs_layers(ldtk* reader, const orb_json* defs, orb_ldtk* out) 
         int tileset_uid;
         if (!ldtk_optional_int(reader, entry, "tilesetDefUid", &tileset_uid)) return false;
 
-        double px, py;
+        f64 px, py;
         if (!ldtk_number(reader, entry, "parallaxFactorX", &px)) return false;
         if (!ldtk_number(reader, entry, "parallaxFactorY", &py)) return false;
 
@@ -437,14 +443,13 @@ static bool ldtk_defs_layers(ldtk* reader, const orb_json* defs, orb_ldtk* out) 
             .name = identifier,
             .uid = uid,
             .tileset_uid = tileset_uid,
-            .parallax_x = (float)px,
-            .parallax_y = (float)py,
+            .parallax_x = (f32)px,
+            .parallax_y = (f32)py,
             .scaling = scaling
         };
     }
 
-    out->layer_defs = layer_defs;
-    out->layer_def_count = count;
+    out->layer_defs = (orb_ldtk_layer_def_slice) {.elems = layer_defs, .len = (u32)count};
     return true;
 }
 
@@ -456,7 +461,7 @@ static bool ldtk_defs_entities(ldtk* reader, const orb_json* defs, orb_ldtk* out
 
     int count = arr ? arr->count : 0;
     orb_ldtk_entity_def* entity_defs =
-        orb_arena_push_array(reader->arena, orb_ldtk_entity_def, count);
+        orb_arena_push_array(reader->scratch, orb_ldtk_entity_def, count);
     int i = 0;
 
     for (const orb_json* entry = arr ? arr->first : nullptr; entry; entry = entry->next, i++) {
@@ -482,23 +487,21 @@ static bool ldtk_defs_entities(ldtk* reader, const orb_json* defs, orb_ldtk* out
         def->height = height;
 
         if (!ldtk_fields(
-                reader, field_defs, true, nullptr, nullptr, &def->fields, &def->field_count,
-                &def->field_names, &def->field_name_count
+                reader, field_defs, true, nullptr, nullptr, &def->fields, &def->field_names
             ))
             return false;
 
         reader->entity = nullptr;
     }
 
-    out->entity_defs = entity_defs;
-    out->entity_def_count = count;
+    out->entity_defs = (orb_ldtk_entity_def_slice) {.elems = entity_defs, .len = (u32)count};
     return true;
 }
 
 // Index of the entity definition with this uid, or -1.
 static int ldtk_entity_def_by_uid(const orb_ldtk* project, int uid) {
-    for (int i = 0; i < project->entity_def_count; i++)
-        if (project->entity_defs[i].uid == uid) return i;
+    for (u32 i = 0; i < project->entity_defs.len; i++)
+        if (project->entity_defs.elems[i].uid == uid) return (int)i;
 
     return -1;
 }
@@ -511,9 +514,8 @@ static bool ldtk_tiles(
     int columns,
     int rows,
     int tileset,
-    uint64_t tileset_slots,
-    orb_ldtk_tile** out,
-    int* out_count
+    u64 tileset_slots,
+    orb_ldtk_tile_span* out
 ) {
     const orb_json *grid_tiles, *auto_tiles;
 
@@ -526,7 +528,7 @@ static bool ldtk_tiles(
 
     if (count > 0 && tileset < 0) return ldtk_fail(reader, "tiles on a layer with no tileset");
 
-    orb_ldtk_tile* tiles = orb_arena_push_array(reader->arena, orb_ldtk_tile, count);
+    orb_ldtk_tile* tiles = orb_arena_push_array(reader->scratch, orb_ldtk_tile, count);
     int tile_index = 0;
 
     for (int pass = 0; pass < 2; pass++) {
@@ -554,52 +556,42 @@ static bool ldtk_tiles(
             if (!ldtk_int(reader, entry, "t", &id)) return false;
             if (id < 0 || id > (int)ORB_MAX_TILE_ID)
                 return ldtk_fail(reader, "tile id %d does not fit", id);
-            if ((uint64_t)id >= tileset_slots)
+            if ((u64)id >= tileset_slots)
                 return ldtk_fail(reader, "tile id %d is past the tileset", id);
 
             int flip;
             if (!ldtk_int(reader, entry, "f", &flip)) return false;
 
-            double alpha;
+            f64 alpha;
             if (!ldtk_number(reader, entry, "a", &alpha)) return false;
             if (alpha != 1) return ldtk_fail(reader, "tile alpha %g is not 1", alpha);
 
             tiles[tile_index] = (orb_ldtk_tile) {
-                .cell_x = (uint16_t)cell_x,
-                .cell_y = (uint16_t)cell_y,
-                .id = (uint16_t)id,
-                .flip = (uint8_t)flip
+                .cell_x = (u16)cell_x, .cell_y = (u16)cell_y, .id = (u16)id, .flip = (u8)flip
             };
         }
     }
 
-    *out = tiles;
-    *out_count = count;
+    *out = (orb_ldtk_tile_span) {tiles, (u32)count};
     return true;
 }
 
 // intGridCsv: columns * rows values, each 0..255.
-static bool ldtk_cells(
-    ldtk* reader,
-    const orb_json* inst,
-    int columns,
-    int rows,
-    const uint8_t** out
-) {
+static bool ldtk_cells(ldtk* reader, const orb_json* inst, int columns, int rows, const u8** out) {
     const orb_json* csv;
 
     if (!ldtk_array(reader, inst, "intGridCsv", &csv)) return false;
 
-    uint64_t cell_count = (uint64_t)columns * rows;
+    u64 cell_count = (u64)columns * rows;
     int csv_count = csv ? csv->count : 0;
 
-    if ((uint64_t)csv_count != cell_count)
+    if ((u64)csv_count != cell_count)
         return ldtk_fail(
             reader, "intGridCsv holds %d values for %llu cells", csv_count,
             (unsigned long long)cell_count
         );
 
-    uint8_t* cells = orb_arena_push_array(reader->arena, uint8_t, cell_count);
+    u8* cells = orb_arena_push_array(reader->scratch, u8, cell_count);
     int i = 0;
 
     for (const orb_json* value = csv ? csv->first : nullptr; value; value = value->next, i++) {
@@ -608,7 +600,7 @@ static bool ldtk_cells(
         if (value->num < 0 || value->num > 255)
             return ldtk_fail(reader, "intGrid value %g exceeds 255", value->num);
 
-        cells[i] = (uint8_t)value->num;
+        cells[i] = (u8)value->num;
     }
 
     *out = cells;
@@ -617,24 +609,24 @@ static bool ldtk_cells(
 
 // The layer definition with this uid, or nullptr.
 static const orb_ldtk_layer_def* ldtk_layer_def_by_uid(const orb_ldtk* project, int uid) {
-    for (int i = 0; i < project->layer_def_count; i++)
-        if (project->layer_defs[i].uid == uid) return &project->layer_defs[i];
+    for (u32 i = 0; i < project->layer_defs.len; i++)
+        if (project->layer_defs.elems[i].uid == uid) return &project->layer_defs.elems[i];
 
     return nullptr;
 }
 
 // Index of the tileset with this uid, or -1.
 static int ldtk_tileset_by_uid(const orb_ldtk* project, int uid) {
-    for (int i = 0; i < project->tileset_count; i++)
-        if (project->tilesets[i].uid == uid) return i;
+    for (u32 i = 0; i < project->tilesets.len; i++)
+        if (project->tilesets.elems[i].uid == uid) return (int)i;
 
     return -1;
 }
 
 // The skipped tileset definition with this uid, or nullptr.
 static const orb_ldtk_skipped* ldtk_skipped_by_uid(const orb_ldtk* project, int uid) {
-    for (int i = 0; i < project->skipped_count; i++)
-        if (project->skipped[i].uid == uid) return &project->skipped[i];
+    for (u32 i = 0; i < project->skipped.len; i++)
+        if (project->skipped.elems[i].uid == uid) return &project->skipped.elems[i];
 
     return nullptr;
 }
@@ -672,7 +664,7 @@ static bool ldtk_layer(
     if (!ldtk_int(reader, inst, "__pxTotalOffsetX", &offset_x)) return false;
     if (!ldtk_int(reader, inst, "__pxTotalOffsetY", &offset_y)) return false;
 
-    double opacity;
+    f64 opacity;
     if (!ldtk_number(reader, inst, "__opacity", &opacity)) return false;
     if (opacity != 1) return ldtk_fail(reader, "opacity %g is not 1", opacity);
 
@@ -680,7 +672,7 @@ static bool ldtk_layer(
     if (!ldtk_optional_int(reader, inst, "__tilesetDefUid", &tuid)) return false;
 
     int tileset = -1;
-    uint64_t tileset_slots = 0;
+    u64 tileset_slots = 0;
 
     if (tuid >= 0) {
         tileset = ldtk_tileset_by_uid(project, tuid);
@@ -695,16 +687,15 @@ static bool ldtk_layer(
         }
 
         tileset_slots =
-            (uint64_t)project->tilesets[tileset].columns * project->tilesets[tileset].rows;
+            (u64)project->tilesets.elems[tileset].columns * project->tilesets.elems[tileset].rows;
     }
 
-    const uint8_t* cells = nullptr;
+    const u8* cells = nullptr;
     if (strcmp(type, "IntGrid") == 0 && !ldtk_cells(reader, inst, columns, rows, &cells))
         return false;
 
-    orb_ldtk_tile* tiles = nullptr;
-    int tile_count = 0;
-    if (!ldtk_tiles(reader, inst, grid, columns, rows, tileset, tileset_slots, &tiles, &tile_count))
+    orb_ldtk_tile_span tiles = {};
+    if (!ldtk_tiles(reader, inst, grid, columns, rows, tileset, tileset_slots, &tiles))
         return false;
 
     out->name = identifier;
@@ -718,7 +709,6 @@ static bool ldtk_layer(
     out->tileset = tileset;
     out->cells = cells;
     out->tiles = tiles;
-    out->tile_count = tile_count;
 
     reader->layer = nullptr;
     return true;
@@ -788,8 +778,8 @@ static bool ldtk_entities(
         instance->height = height;
 
         if (!ldtk_fields(
-                reader, field_instances, false, &geometry, &project->entity_defs[def],
-                &instance->fields, &instance->field_count, nullptr, nullptr
+                reader, field_instances, false, &geometry, &project->entity_defs.elems[def],
+                &instance->fields, nullptr
             ))
             return false;
 
@@ -824,9 +814,9 @@ static bool ldtk_layers(
         if (arr && arr->kind == ORB_JSON_ARRAY) instance_count += arr->count;
     }
 
-    orb_ldtk_layer* layers = orb_arena_push_array(reader->arena, orb_ldtk_layer, count);
+    orb_ldtk_layer* layers = orb_arena_push_array(reader->scratch, orb_ldtk_layer, count);
     orb_ldtk_instance* entities =
-        orb_arena_push_array(reader->arena, orb_ldtk_instance, instance_count);
+        orb_arena_push_array(reader->scratch, orb_ldtk_instance, instance_count);
     int i = count, entity_index = instance_count;
 
     for (const orb_json* inst = instances->first; inst; inst = inst->next) {
@@ -846,10 +836,8 @@ static bool ldtk_layers(
         if (!ldtk_layer(reader, project, inst, &layers[i])) return false;
     }
 
-    level->layers = layers;
-    level->layer_count = count;
-    level->instances = entities;
-    level->instance_count = instance_count;
+    level->layers = (orb_ldtk_layer_slice) {.elems = layers, .len = (u32)count};
+    level->instances = (orb_ldtk_instance_slice) {.elems = entities, .len = (u32)instance_count};
     return true;
 }
 
@@ -878,7 +866,7 @@ static bool ldtk_level_head(ldtk* reader, const orb_json* level_json, orb_ldtk_l
 
     int neighbor_count = neighbours ? neighbours->count : 0;
     orb_ldtk_neighbor* neighbors =
-        orb_arena_push_array(reader->arena, orb_ldtk_neighbor, neighbor_count);
+        orb_arena_push_array(reader->scratch, orb_ldtk_neighbor, neighbor_count);
     int i = 0;
 
     for (const orb_json* entry = neighbours ? neighbours->first : nullptr; entry;
@@ -901,21 +889,14 @@ static bool ldtk_level_head(ldtk* reader, const orb_json* level_json, orb_ldtk_l
     out->world_y = world_y;
     out->width = width;
     out->height = height;
-    out->neighbors = neighbors;
-    out->neighbor_count = neighbor_count;
+    out->neighbors = (orb_ldtk_neighbor_slice) {.elems = neighbors, .len = (u32)neighbor_count};
 
     return true;
 }
 
-bool orb_ldtk_parse(
-    orb_arena* arena,
-    orb_span text,
-    const char* name,
-    orb_ldtk* out,
-    orb_error* err
-) {
-    ldtk reader = {.arena = arena, .name = name, .err = err};
-    orb_json* root = orb_json_parse(arena, (const char*)text.ptr, text.len, err);
+bool orb_ldtk_parse(arena* scratch, u8_span text, const char* name, orb_ldtk* out, orb_error* err) {
+    ldtk reader = {.scratch = scratch, .name = name, .err = err};
+    orb_json* root = orb_json_parse(scratch, (const char*)text.elems, text.len, err);
 
     if (!root) return ldtk_fail(&reader, "%s", err->text);
 
@@ -940,7 +921,7 @@ bool orb_ldtk_parse(
     if (!ldtk_array(&reader, root, "levels", &levels)) return false;
 
     int level_count = levels ? levels->count : 0;
-    orb_ldtk_level* levels_out = orb_arena_push_array(arena, orb_ldtk_level, level_count);
+    orb_ldtk_level* levels_out = orb_arena_push_array(scratch, orb_ldtk_level, level_count);
     int i = 0;
 
     for (const orb_json* level_json = levels ? levels->first : nullptr; level_json;
@@ -959,27 +940,25 @@ bool orb_ldtk_parse(
                 return ldtk_fail(&reader, "level has neither layerInstances nor externalRelPath");
 
             levels_out[i].external_path = external;
-            levels_out[i].layer_count = 0;
         }
 
         reader.level = nullptr;
     }
 
-    out->levels = levels_out;
-    out->level_count = level_count;
+    out->levels = (orb_ldtk_level_slice) {.elems = levels_out, .len = (u32)level_count};
     return true;
 }
 
 bool orb_ldtk_parse_level(
-    orb_arena* arena,
-    orb_span text,
+    arena* scratch,
+    u8_span text,
     const char* name,
     const orb_ldtk* project,
     orb_ldtk_level* level,
     orb_error* err
 ) {
-    ldtk reader = {.arena = arena, .name = name, .level = level->name, .err = err};
-    orb_json* root = orb_json_parse(arena, (const char*)text.ptr, text.len, err);
+    ldtk reader = {.scratch = scratch, .name = name, .level = level->name, .err = err};
+    orb_json* root = orb_json_parse(scratch, (const char*)text.elems, text.len, err);
 
     if (!root) return ldtk_fail(&reader, "%s", err->text);
 

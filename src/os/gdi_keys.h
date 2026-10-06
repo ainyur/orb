@@ -1,7 +1,7 @@
 #pragma once
 
 // Set-1 scancode to HID position; an extended code (E0 prefix) is indexed at 128 + code.
-static const uint8_t gdi_keys[256] = {
+static const u8 gdi_keys[256] = {
     [0x01] = 41,  [0x02] = 30,  [0x03] = 31,  [0x04] = 32,  // esc 1 2 3
     [0x05] = 33,  [0x06] = 34,  [0x07] = 35,  [0x08] = 36,  // 4 5 6 7
     [0x09] = 37,  [0x0a] = 38,  [0x0b] = 39,  [0x0c] = 45,  // 8 9 0 -

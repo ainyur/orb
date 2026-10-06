@@ -22,9 +22,8 @@ bool orb_os_stat(const char* path, orb_os_info* out) {
     if (stat(path, &stat_buf) != 0) return false;
 
     *out = (orb_os_info) {
-        .size = (uint64_t)stat_buf.st_size,
-        .mtime = (uint64_t)stat_buf.st_mtim.tv_sec * ORB_NS_PER_SECOND +
-                 (uint64_t)stat_buf.st_mtim.tv_nsec,
+        .size = (u64)stat_buf.st_size,
+        .mtime = (u64)stat_buf.st_mtim.tv_sec * ORB_NS_PER_SECOND + (u64)stat_buf.st_mtim.tv_nsec,
         .dir = S_ISDIR(stat_buf.st_mode)
     };
     return true;
@@ -46,10 +45,10 @@ bool orb_os_copy_file(const char* from, const char* to) {
         return false;
     }
 
-    uint8_t chunk[1 << 16];
+    u8 chunk[1 << 16];
     bool ok = true;
 
-    for (size_t n; ok && (n = fread(chunk, 1, sizeof chunk, in)) > 0;)
+    for (usize n; ok && (n = fread(chunk, 1, sizeof chunk, in)) > 0;)
         ok = fwrite(chunk, 1, n, out) == n;
 
     ok = ok && !ferror(in);
@@ -104,7 +103,7 @@ void* orb_os_dlsym(orb_os_library* lib, const char* name) {
     return dlsym(lib, name);
 }
 
-void orb_os_sleep(uint64_t duration_ns) {
+void orb_os_sleep(u64 duration_ns) {
     struct timespec spec = {
         .tv_sec = (time_t)(duration_ns / ORB_NS_PER_SECOND),
         .tv_nsec = (long)(duration_ns % ORB_NS_PER_SECOND)
@@ -113,29 +112,29 @@ void orb_os_sleep(uint64_t duration_ns) {
     nanosleep(&spec, nullptr);
 }
 
-uint64_t orb_os_ticks(void) {
+u64 orb_os_ticks(void) {
     struct timespec spec;
 
     clock_gettime(CLOCK_MONOTONIC, &spec);
 
-    return (uint64_t)spec.tv_sec * ORB_NS_PER_SECOND + (uint64_t)spec.tv_nsec;
+    return (u64)spec.tv_sec * ORB_NS_PER_SECOND + (u64)spec.tv_nsec;
 }
 
-uint32_t orb_os_pid(void) {
-    return (uint32_t)getpid();
+u32 orb_os_pid(void) {
+    return (u32)getpid();
 }
 
-void* orb_os_reserve(size_t size) {
+void* orb_os_reserve(usize size) {
     void* mem = mmap(nullptr, size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
 
     return mem == MAP_FAILED ? nullptr : mem;
 }
 
-bool orb_os_commit(void* at, size_t size) {
+bool orb_os_commit(void* at, usize size) {
     return mprotect(at, size, PROT_READ | PROT_WRITE) == 0;
 }
 
-void orb_os_release(void* base, size_t size) {
+void orb_os_release(void* base, usize size) {
     munmap(base, size);
 }
 

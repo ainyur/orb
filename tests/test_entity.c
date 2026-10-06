@@ -1,4 +1,9 @@
 #include "test.h"
+#include <setjmp.h>
+static jmp_buf test_trap_jump;
+static char test_trap_text[128];
+#define std_trap(message)                                                                          \
+    (snprintf(test_trap_text, sizeof test_trap_text, "%s", (message)), longjmp(test_trap_jump, 1))
 #define ORB_OS_HEADLESS 1
 #include "../src/orb.c"
 
@@ -8,12 +13,12 @@
 static orb_level_desc levels[1] = {
     {.width = 64, .height = 32, .first_placement = 0, .placement_count = 3}
 };
-static uint64_t level_ids[1];
+static u64 level_ids[1];
 static orb_type_desc types[2] = {
     {.width = 8, .height = 8, .first_field = 0, .field_count = 2},
     {.width = 4, .height = 4, .first_field = 2, .field_count = 0},
 };
-static uint64_t type_ids[2];
+static u64 type_ids[2];
 static orb_placement_desc placements[3] = {
     {.iid = 0xa,
      .type = 0,
@@ -44,15 +49,15 @@ static orb_placement_desc placements[3] = {
      .field_count = 0},
 };
 static orb_field_desc fields[6];
-static uint8_t data[40];
+static u8 data[40];
 static orb_assets assets;
 static orb_asset_table table;
-static alignas(16) uint8_t region_mem[1 << 20];
-static orb_arena region;
+static alignas(16) u8 region_mem[1 << 20];
+static arena region;
 static int inits, updates;
 static orb_entity_id last_init;
 
-static void put32(int at, int32_t value) {
+static void put32(int at, i32 value) {
     memcpy(data + at, &value, 4);
 }
 
@@ -89,18 +94,13 @@ static void fixture(void) {
     put32(32, 16);
     put32(36, 1);
     assets = (orb_assets) {
-        .levels = levels,
-        .level_count = 1,
+        .levels = {levels, 1},
         .level_ids = level_ids,
-        .types = types,
-        .type_count = 2,
+        .types = {types, 2},
         .type_ids = type_ids,
-        .placements = placements,
-        .placement_count = 3,
-        .fields = fields,
-        .field_count = 6,
-        .field_data = data,
-        .field_data_count = 40
+        .placements = {placements, 3},
+        .fields = {fields, 6},
+        .field_data = {data, 40}
     };
     table = (orb_asset_table) {};
     orb_asset_set(&table, &assets);
@@ -124,6 +124,10 @@ static orb_config config(void) {
 }
 
 int main(void) {
+    static alignas(16) u8 list_mem[4096];
+    arena lists;
+
+    orb_arena_init(&lists, "lists", list_mem, sizeof list_mem);
     static int state;
     orb_config settings = config();
 
@@ -248,7 +252,7 @@ int main(void) {
         sprite->sprite.v == ORB_NO_SPRITE.v && sprite->anim.anim.v == ORB_NO_ANIM.v &&
         sprite->remap == -1
     );
-    int32_t* game = orb_entity_add(ida, ORB_COMPONENT_GAME);
+    i32* game = orb_entity_add(ida, ORB_COMPONENT_GAME);
     CHECK(game && game[0] == 0 && game[1] == 0 && game[2] == 0);
     CHECK(orb_entity_add(ida, ORB_COMPONENT_GAME + 1) == nullptr);
     CHECK(orb_entity_add(ida, -1) == nullptr);
@@ -274,28 +278,45 @@ int main(void) {
     CHECK(marker1_entity->at.x == 17 && marker1_entity->at.y == 9);
 
     // enumeration and level_despawn: persistent entities stay
-    orb_entity_id list[8];
-    CHECK_EQ(orb_entity_all(list, 8), 3);
-    CHECK_EQ(orb_entity_of_type(marker, list, 8), 3);
-    CHECK_EQ(orb_entity_of_type(crate, list, 8), 0);
-    CHECK_EQ(orb_entity_all(list, 1), 1);
+    CHECK_EQ(orb_entity_all(&lists).len, 3);
+    CHECK_EQ(orb_entity_of_type(&lists, marker).len, 3);
+    CHECK_EQ(orb_entity_of_type(&lists, crate).len, 0);
+
+    orb_entity_id_list all = orb_entity_all(&lists);
+
+    CHECK_EQ(all.cap, all.len); // allocated exactly
+
+    // a result that does not fit traps in debug
+    arena none;
+
+    orb_arena_init(&none, "none", nullptr, 0);
+
+    if (!setjmp(test_trap_jump)) {
+        (void)orb_entity_all(&none);
+        CHECK(!"entity_all did not trap");
+    }
+
+    CHECK(strstr(test_trap_text, "entity_all") != nullptr);
+
     // level_spawn despawns the room's three first, but the despawns are deferred, so only one
     // slot is free: the first placement spawns and the second finds the pool full
     orb_log_clear();
     orb_level_spawn(room);
     CHECK(strstr(orb_log_line(0), "full"));
     orb_entity_free_despawning();
-    CHECK_EQ(orb_entity_all(list, 8), 1);
+    CHECK_EQ(orb_entity_all(&lists).len, 1);
     orb_level_spawn(room); // the one spawned goes again, and now three slots are free
     orb_entity_free_despawning();
-    CHECK_EQ(orb_entity_all(list, 8), 3);
-    orb_entity_get(list[0])->flags |= ORB_ENTITY_PERSISTENT;
+    all = orb_entity_all(&lists);
+    CHECK_EQ(all.len, 3);
+    orb_entity_get(get(all, 0))->flags |= ORB_ENTITY_PERSISTENT;
     orb_level_despawn(room);
     orb_entity_free_despawning();
-    CHECK_EQ(orb_entity_all(list, 8), 1);
-    CHECK(orb_entity_get(list[0])->flags & ORB_ENTITY_PERSISTENT);
+    all = orb_entity_all(&lists);
+    CHECK_EQ(all.len, 1);
+    CHECK(orb_entity_get(get(all, 0))->flags & ORB_ENTITY_PERSISTENT);
     orb_level_spawn(ORB_NO_LEVEL);
-    CHECK_EQ(orb_entity_all(list, 8), 1);
+    CHECK_EQ(orb_entity_all(&lists).len, 1);
 
     // ORB_ENTITY_NEW while an update is in progress
     orb_entity_updating = true;
@@ -307,8 +328,8 @@ int main(void) {
     // when it is gone
     orb_level_spawn(room);
     orb_entity_free_despawning();
-    orb_entity* placed =
-        orb_entity_get(orb_entity_of_type(crate, list, 8) ? list[0] : ORB_NO_ENTITY);
+    orb_entity_id_list crates = orb_entity_of_type(&lists, crate);
+    orb_entity* placed = orb_entity_get(crates.len ? get(crates, 0) : ORB_NO_ENTITY);
     CHECK(placed && placed->placement == 0);
     orb_entity_revalidate(&table.assets);
     CHECK_EQ(placed->placement, 0);
@@ -327,31 +348,30 @@ int main(void) {
     // still linked to its placement picks up its placement's new type index and
     // generation, an override field unaffected; a spawned entity has no placement to
     // re-find by, so its old type index is mapped through the id it shared with the type
-    orb_entity_id live[8];
-    int live_n = orb_entity_all(live, 8);
+    orb_entity_id_list live = orb_entity_all(&lists);
 
-    for (int i = 0; i < live_n; i++)
-        orb_entity_despawn(live[i]);
+    for (u32 i = 0; i < live.len; i++)
+        orb_entity_despawn(get(live, i));
 
     orb_entity_free_despawning();
     orb_level_spawn(room);
     orb_entity_free_despawning();
 
-    orb_entity_id others[8];
-    CHECK_EQ(orb_entity_of_type(crate, others, 8), 2);
-    orb_entity* other = orb_entity_get(others[1]);
+    orb_entity_id_list others = orb_entity_of_type(&lists, crate);
+    CHECK_EQ(others.len, 2);
+    orb_entity* other = orb_entity_get(get(others, 1));
     orb_entity_id spawned = orb_entity_spawn(marker, (orb_vec2f) {2, 2});
     orb_entity* spawned_entity = orb_entity_get(spawned);
     CHECK(spawned_entity->placement == ORB_NO_INDEX && spawned_entity->iid == 0);
 
-    uint64_t previous_type_ids[2] = {type_ids[0], type_ids[1]};
+    u64 previous_type_ids[2] = {type_ids[0], type_ids[1]};
     orb_assets previous = assets;
     previous.type_ids = previous_type_ids;
 
     orb_type_desc swapped_type = types[0];
     types[0] = types[1];
     types[1] = swapped_type;
-    uint64_t swapped_id = type_ids[0];
+    u64 swapped_id = type_ids[0];
     type_ids[0] = type_ids[1];
     type_ids[1] = swapped_id;
     placements[0].type = 1;
@@ -361,17 +381,17 @@ int main(void) {
     orb_entity_revalidate(&previous);
     CHECK_EQ(ORB_HANDLE_INDEX(other->type), 1);
     CHECK_EQ(orb_entity_field_int(other->self, "hp", 0), 3);
-    CHECK_EQ(
-        orb_entity_of_type(ORB_TYPE(1 | (uint32_t)table.assets.type_gens[1] << 24), list, 8), 2
-    );
-    CHECK(list[1].v == other->self.v);
+    orb_entity_id_list swapped_crates =
+        orb_entity_of_type(&lists, ORB_TYPE(1 | (u32)table.assets.type_gens[1] << 24));
+    CHECK_EQ(swapped_crates.len, 2);
+    CHECK(get(swapped_crates, 1).v == other->self.v);
     CHECK_EQ(ORB_HANDLE_INDEX(spawned_entity->type), 0);
     CHECK_EQ(ORB_HANDLE_GEN(spawned_entity->type), table.assets.type_gens[0]);
 
     // a placed entity whose placement disappears in the same recast that reorders types
     // keeps its type, mapped through the previous asset set's type ids
-    uint32_t other_type_before = ORB_HANDLE_INDEX(other->type);
-    uint64_t previous2_type_ids[2] = {type_ids[0], type_ids[1]};
+    u32 other_type_before = ORB_HANDLE_INDEX(other->type);
+    u64 previous2_type_ids[2] = {type_ids[0], type_ids[1]};
     orb_assets previous2 = assets;
     previous2.type_ids = previous2_type_ids;
 
@@ -380,7 +400,7 @@ int main(void) {
     orb_type_desc swapped_type2 = types[0];
     types[0] = types[1];
     types[1] = swapped_type2;
-    uint64_t swapped_id2 = type_ids[0];
+    u64 swapped_id2 = type_ids[0];
     type_ids[0] = type_ids[1];
     type_ids[1] = swapped_id2;
     orb_asset_set(&table, &assets);
@@ -392,7 +412,7 @@ int main(void) {
     settings.components[1] = 8;
     CHECK(orb_entity_reset(&settings));
     CHECK_EQ(pool->kinds, 5);
-    CHECK_EQ(orb_entity_all(list, 8), 0);
+    CHECK_EQ(orb_entity_all(&lists).len, 0);
     CHECK(orb_entity_type_fns(0)->init == nullptr);
     settings.max_entities = 1 << 16;
     CHECK(!orb_entity_reset(&settings));

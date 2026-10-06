@@ -2,22 +2,22 @@
 #define ORB_OS_HEADLESS 1
 #include "../src/orb.c"
 
-static size_t unhex(const char* hex, uint8_t* out) {
-    size_t n = 0;
+static usize unhex(const char* hex, u8* out) {
+    usize n = 0;
 
     for (; hex[0] && hex[1]; hex += 2, n++) {
         unsigned value;
 
         sscanf(hex, "%2x", &value);
-        out[n] = (uint8_t)value;
+        out[n] = (u8)value;
     }
 
     return n;
 }
 
 int main(void) {
-    uint8_t in[512], out[512];
-    size_t n;
+    u8 in[512], out[512];
+    usize n;
 
     // stored block: zlib.compress(b"abc", 0)
     n = unhex("7801010300fcff616263024d0127", in);
@@ -45,7 +45,7 @@ int main(void) {
     // output too small
     CHECK_EQ(orb_inflate(in, n, out, 100), -1);
     // not zlib
-    CHECK_EQ(orb_inflate((const uint8_t*)"nope!!", 6, out, sizeof out), -1);
+    CHECK_EQ(orb_inflate((const u8*)"nope!!", 6, out, sizeof out), -1);
 
     return 0;
 }

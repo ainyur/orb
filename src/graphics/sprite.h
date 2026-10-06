@@ -16,7 +16,7 @@ void orb_sprite_draw(
     orb_vec2f cam,
     orb_sprite sprite,
     orb_vec2 at,
-    uint32_t flags,
-    const uint8_t* remap
+    u32 flags,
+    const u8* remap
 );
-uint64_t orb_sprite_id(const char* stem, int frame); // orb_asset_id with the frame as the suffix
+u64 orb_sprite_id(const char* stem, int frame); // orb_asset_id with the frame as the suffix

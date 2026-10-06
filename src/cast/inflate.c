@@ -4,24 +4,24 @@
 #include <string.h>
 
 typedef struct {
-    const uint8_t* in;
-    size_t inlen, inpos;
-    uint32_t bitbuf;
+    const u8* in;
+    usize inlen, inpos;
+    u32 bitbuf;
     int bitcnt;
-    uint8_t* out;
-    size_t outlen, outpos;
+    u8* out;
+    usize outlen, outpos;
 } inflate_state;
 
 typedef struct {
-    uint16_t count[16];   // number of codes of each length
-    uint16_t symbol[288]; // symbols ordered by code
+    u16 count[16];   // number of codes of each length
+    u16 symbol[288]; // symbols ordered by code
 } inflate_huffman;
 
 // Read n bits, least significant first. -1 at end of input.
 static int inflate_bits(inflate_state* state, int n) {
     while (state->bitcnt < n) {
         if (state->inpos >= state->inlen) return -1;
-        state->bitbuf |= (uint32_t)state->in[state->inpos++] << state->bitcnt;
+        state->bitbuf |= (u32)state->in[state->inpos++] << state->bitcnt;
         state->bitcnt += 8;
     }
 
@@ -32,8 +32,8 @@ static int inflate_bits(inflate_state* state, int n) {
     return value;
 }
 
-static void inflate_build(inflate_huffman* huffman, const uint8_t* lengths, int n) {
-    uint16_t offset[16];
+static void inflate_build(inflate_huffman* huffman, const u8* lengths, int n) {
+    u16 offset[16];
 
     memset(huffman->count, 0, sizeof huffman->count);
 
@@ -47,7 +47,7 @@ static void inflate_build(inflate_huffman* huffman, const uint8_t* lengths, int 
         offset[len + 1] = offset[len] + huffman->count[len];
 
     for (int i = 0; i < n; i++) {
-        if (lengths[i]) huffman->symbol[offset[lengths[i]]++] = (uint16_t)i;
+        if (lengths[i]) huffman->symbol[offset[lengths[i]]++] = (u16)i;
     }
 }
 
@@ -79,17 +79,15 @@ static int inflate_codes(
     const inflate_huffman* lencode,
     const inflate_huffman* distcode
 ) {
-    static const uint16_t lbase[29] = {3,  4,  5,  6,   7,   8,   9,   10,  11, 13,
-                                       15, 17, 19, 23,  27,  31,  35,  43,  51, 59,
-                                       67, 83, 99, 115, 131, 163, 195, 227, 258};
-    static const uint8_t lext[29] = {0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2,
-                                     2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0};
-    static const uint16_t dbase[30] = {1,    2,    3,    4,     5,     7,    9,    13,
-                                       17,   25,   33,   49,    65,    97,   129,  193,
-                                       257,  385,  513,  769,   1025,  1537, 2049, 3073,
-                                       4097, 6145, 8193, 12289, 16385, 24577};
-    static const uint8_t dext[30] = {0, 0, 0, 0, 1, 1, 2, 2,  3,  3,  4,  4,  5,  5,  6,
-                                     6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13};
+    static const u16 lbase[29] = {3,  4,  5,  6,  7,  8,  9,  10, 11,  13,  15,  17,  19,  23, 27,
+                                  31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258};
+    static const u8 lext[29] = {0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2,
+                                2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0};
+    static const u16 dbase[30] = {1,    2,    3,    4,    5,    7,    9,    13,    17,    25,
+                                  33,   49,   65,   97,   129,  193,  257,  385,   513,   769,
+                                  1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577};
+    static const u8 dext[30] = {0, 0, 0, 0, 1, 1, 2, 2,  3,  3,  4,  4,  5,  5,  6,
+                                6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13};
 
     for (;;) {
         int symbol = inflate_decode(state, lencode);
@@ -98,7 +96,7 @@ static int inflate_codes(
 
         if (symbol < 256) {
             if (state->outpos >= state->outlen) return -1;
-            state->out[state->outpos++] = (uint8_t)symbol;
+            state->out[state->outpos++] = (u8)symbol;
             continue;
         }
 
@@ -112,7 +110,7 @@ static int inflate_codes(
 
         if (extra < 0) return -1;
 
-        size_t len = lbase[symbol] + (size_t)extra;
+        usize len = lbase[symbol] + (usize)extra;
         int dist_symbol = inflate_decode(state, distcode);
 
         if (dist_symbol < 0 || dist_symbol >= 30) return -1;
@@ -121,11 +119,11 @@ static int inflate_codes(
 
         if (extra < 0) return -1;
 
-        size_t dist = dbase[dist_symbol] + (size_t)extra;
+        usize dist = dbase[dist_symbol] + (usize)extra;
 
         if (dist > state->outpos || state->outpos + len > state->outlen) return -1;
 
-        for (size_t i = 0; i < len; i++, state->outpos++)
+        for (usize i = 0; i < len; i++, state->outpos++)
             state->out[state->outpos] = state->out[state->outpos - dist];
     }
 }
@@ -152,7 +150,7 @@ static int inflate_stored(inflate_state* state) {
 
 static int inflate_fixed(inflate_state* state) {
     inflate_huffman lencode, distcode;
-    uint8_t lengths[288];
+    u8 lengths[288];
     int i = 0;
 
     for (; i < 144; i++)
@@ -177,10 +175,9 @@ static int inflate_fixed(inflate_state* state) {
 }
 
 static int inflate_dynamic(inflate_state* state) {
-    static const uint8_t order[19] = {16, 17, 18, 0, 8,  7, 9,  6, 10, 5,
-                                      11, 4,  12, 3, 13, 2, 14, 1, 15};
+    static const u8 order[19] = {16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15};
     inflate_huffman lencode, distcode;
-    uint8_t lengths[320];
+    u8 lengths[320];
     int nlen = inflate_bits(state, 5) + 257;
     int ndist = inflate_bits(state, 5) + 1;
     int ncode = inflate_bits(state, 4) + 4;
@@ -194,7 +191,7 @@ static int inflate_dynamic(inflate_state* state) {
 
         if (value < 0) return -1;
 
-        lengths[order[i]] = (uint8_t)value;
+        lengths[order[i]] = (u8)value;
     }
 
     inflate_build(&lencode, lengths, 19);
@@ -207,7 +204,7 @@ static int inflate_dynamic(inflate_state* state) {
         if (symbol < 0) return -1;
 
         if (symbol < 16) {
-            lengths[index++] = (uint8_t)symbol;
+            lengths[index++] = (u8)symbol;
             continue;
         }
 
@@ -226,7 +223,7 @@ static int inflate_dynamic(inflate_state* state) {
         if (repeat < 3 || index + repeat > nlen + ndist) return -1;
 
         while (repeat--)
-            lengths[index++] = (uint8_t)value;
+            lengths[index++] = (u8)value;
     }
 
     inflate_build(&lencode, lengths, nlen);
@@ -234,7 +231,7 @@ static int inflate_dynamic(inflate_state* state) {
     return inflate_codes(state, &lencode, &distcode);
 }
 
-ptrdiff_t orb_inflate(const uint8_t* in, size_t inlen, uint8_t* out, size_t outlen) {
+isize orb_inflate(const u8* in, usize inlen, u8* out, usize outlen) {
     if (inlen < 6 || (in[0] & 0x0f) != 8 || ((in[0] << 8) | in[1]) % 31 != 0) return -1;
 
     inflate_state state = {.in = in, .inlen = inlen - 4, .inpos = 2, .out = out, .outlen = outlen};
@@ -260,5 +257,5 @@ ptrdiff_t orb_inflate(const uint8_t* in, size_t inlen, uint8_t* out, size_t outl
         if (err) return -1;
     } while (!last);
 
-    return (ptrdiff_t)state.outpos;
+    return (isize)state.outpos;
 }

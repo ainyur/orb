@@ -3,22 +3,22 @@
 #include "../src/orb.c"
 
 typedef struct {
-    uint8_t bytes[4096];
-    size_t len;
+    u8 bytes[4096];
+    usize len;
 } wav_buffer;
 
-static void put8(wav_buffer* buffer, uint8_t value) {
+static void put8(wav_buffer* buffer, u8 value) {
     buffer->bytes[buffer->len++] = value;
 }
 
-static void put16(wav_buffer* buffer, uint16_t value) {
-    put8(buffer, (uint8_t)(value & 0xff));
-    put8(buffer, (uint8_t)(value >> 8));
+static void put16(wav_buffer* buffer, u16 value) {
+    put8(buffer, (u8)(value & 0xff));
+    put8(buffer, (u8)(value >> 8));
 }
 
-static void put32(wav_buffer* buffer, uint32_t value) {
-    put16(buffer, (uint16_t)(value & 0xffff));
-    put16(buffer, (uint16_t)(value >> 16));
+static void put32(wav_buffer* buffer, u32 value) {
+    put16(buffer, (u16)(value & 0xffff));
+    put16(buffer, (u16)(value >> 16));
 }
 
 static void put_tag(wav_buffer* buffer, const char* tag) {
@@ -34,21 +34,14 @@ static void put_header(wav_buffer* buffer) {
 }
 
 // format 1 is PCM, 3 is float; extensible wraps either in a 40-byte fmt chunk
-static void put_fmt(
-    wav_buffer* buffer,
-    uint16_t format,
-    uint16_t channels,
-    uint32_t rate,
-    uint16_t bits,
-    bool ext
-) {
+static void put_fmt(wav_buffer* buffer, u16 format, u16 channels, u32 rate, u16 bits, bool ext) {
     put_tag(buffer, "fmt ");
     put32(buffer, ext ? 40 : 16);
     put16(buffer, ext ? 0xFFFE : format);
     put16(buffer, channels);
     put32(buffer, rate);
     put32(buffer, rate * channels * bits / 8);
-    put16(buffer, (uint16_t)(channels * bits / 8));
+    put16(buffer, (u16)(channels * bits / 8));
     put16(buffer, bits);
 
     if (ext) {
@@ -63,23 +56,23 @@ static void put_fmt(
     }
 }
 
-static void put_data16(wav_buffer* buffer, const int16_t* samples, int n) {
+static void put_data16(wav_buffer* buffer, const i16* samples, int n) {
     put_tag(buffer, "data");
-    put32(buffer, (uint32_t)n * 2);
+    put32(buffer, (u32)n * 2);
 
     for (int i = 0; i < n; i++)
-        put16(buffer, (uint16_t)samples[i]);
+        put16(buffer, (u16)samples[i]);
 }
 
-static void put_data8(wav_buffer* buffer, const uint8_t* samples, int n) {
+static void put_data8(wav_buffer* buffer, const u8* samples, int n) {
     put_tag(buffer, "data");
-    put32(buffer, (uint32_t)n);
+    put32(buffer, (u32)n);
 
     for (int i = 0; i < n; i++)
         put8(buffer, samples[i]);
 }
 
-static void put_smpl(wav_buffer* buffer, uint32_t start, uint32_t end_inclusive) {
+static void put_smpl(wav_buffer* buffer, u32 start, u32 end_inclusive) {
     put_tag(buffer, "smpl");
     put32(buffer, 60);
 
@@ -96,27 +89,27 @@ static void put_smpl(wav_buffer* buffer, uint32_t start, uint32_t end_inclusive)
     put32(buffer, 0); // play count
 }
 
-static orb_span finish(wav_buffer* buffer) {
-    uint32_t size = (uint32_t)(buffer->len - 8);
+static u8_span finish(wav_buffer* buffer) {
+    u32 size = (u32)(buffer->len - 8);
 
-    buffer->bytes[4] = (uint8_t)(size & 0xff);
-    buffer->bytes[5] = (uint8_t)(size >> 8 & 0xff);
-    buffer->bytes[6] = (uint8_t)(size >> 16 & 0xff);
-    buffer->bytes[7] = (uint8_t)(size >> 24);
-    return (orb_span) {buffer->bytes, buffer->len};
+    buffer->bytes[4] = (u8)(size & 0xff);
+    buffer->bytes[5] = (u8)(size >> 8 & 0xff);
+    buffer->bytes[6] = (u8)(size >> 16 & 0xff);
+    buffer->bytes[7] = (u8)(size >> 24);
+    return (u8_span) {buffer->bytes, buffer->len};
 }
 
 int main(void) {
-    static alignas(16) uint8_t mem[1 << 20];
-    orb_arena arena;
-    orb_arena_init(&arena, "test", mem, sizeof mem);
+    static alignas(16) u8 mem[1 << 20];
+    arena out;
+    orb_arena_init(&out, "test", mem, sizeof mem);
     wav_buffer buffer;
     orb_wav wav;
     orb_error err;
-    int16_t* pcm = orb_arena_push_array(&arena, int16_t, 96000 * 2); // room for loop.wav
+    i16* pcm = orb_arena_push_array(&out, i16, 96000 * 2); // room for loop.wav
 
     // 16-bit mono
-    static const int16_t mono[4] = {0, 1000, -1000, 32767};
+    static const i16 mono[4] = {0, 1000, -1000, 32767};
     put_header(&buffer);
     put_fmt(&buffer, 1, 1, 22050, 16, false);
     put_data16(&buffer, mono, 4);
@@ -132,7 +125,7 @@ int main(void) {
     CHECK(!wav.has_loop);
 
     // 8-bit unsigned is widened: 128 is silence, 255 is near full scale
-    static const uint8_t eight[3] = {128, 255, 0};
+    static const u8 eight[3] = {128, 255, 0};
     put_header(&buffer);
     put_fmt(&buffer, 1, 1, 8000, 8, false);
     put_data8(&buffer, eight, 3);
@@ -145,7 +138,7 @@ int main(void) {
     CHECK_EQ(pcm[2], -32768);
 
     // stereo, interleaved
-    static const int16_t stereo[4] = {10, -10, 20, -20};
+    static const i16 stereo[4] = {10, -10, 20, -20};
     put_header(&buffer);
     put_fmt(&buffer, 1, 2, 48000, 16, false);
     put_data16(&buffer, stereo, 4);
@@ -168,7 +161,7 @@ int main(void) {
     CHECK(strstr(err.text, "float") != nullptr);
 
     // a smpl loop: end is inclusive in the file, exclusive here, clamped to the data
-    static const int16_t ten[10] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+    static const i16 ten[10] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
     put_header(&buffer);
     put_fmt(&buffer, 1, 1, 48000, 16, false);
     put_smpl(&buffer, 2, 7); // before data, as some editors write it
@@ -247,12 +240,12 @@ int main(void) {
     CHECK(!orb_wav_parse(finish(&buffer), &wav, &err));
     CHECK(strstr(err.text, "past the end") != nullptr);
 
-    CHECK(!orb_wav_parse((orb_span) {(const uint8_t*)"not a wav file", 14}, &wav, &err));
+    CHECK(!orb_wav_parse((u8_span) {(const u8*)"not a wav file", 14}, &wav, &err));
     CHECK(strstr(err.text, "RIFF") != nullptr);
 
     // the generated fixtures, as make fixtures writes them
-    orb_span file;
-    CHECK(orb_os_read_file("tests/fixtures/sfx/beep.wav", &arena, &file));
+    u8_span file;
+    CHECK(orb_os_read_file("tests/fixtures/sfx/beep.wav", &out, &file));
     CHECK(orb_wav_parse(file, &wav, &err));
     CHECK_EQ(wav.channels, 1);
     CHECK_EQ(wav.rate, 48000);
@@ -261,7 +254,7 @@ int main(void) {
     CHECK_EQ(pcm[0], -12000);
     CHECK(!wav.has_loop);
 
-    CHECK(orb_os_read_file("tests/fixtures/music/loop.wav", &arena, &file));
+    CHECK(orb_os_read_file("tests/fixtures/music/loop.wav", &out, &file));
     CHECK(orb_wav_parse(file, &wav, &err));
     CHECK_EQ(wav.channels, 2);
     CHECK_EQ(wav.count, 96000);
