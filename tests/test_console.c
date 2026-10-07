@@ -54,19 +54,23 @@ static int test_text(void) {
 }
 
 static int test_font(void) {
-    for (int glyph = 1; glyph < 95; glyph++) {
+    for (int glyph = 0; glyph < 95; glyph++) {
         bool any = false;
 
-        for (int row = 0; row < 6; row++)
-            if (ORB_CONSOLE_FONT[glyph][row] & 0xe0) any = true;
+        for (int row = 0; row < ORB_CONSOLE_GLYPH_HEIGHT; row++) {
+            const char* line = ORB_CONSOLE_FONT[glyph][row];
 
-        CHECK(any);
-        CHECK_EQ(ORB_CONSOLE_FONT[glyph][0] & 0x1f, 0); // only the high 3 bits carry pixels
+            CHECK_EQ(strlen(line), ORB_CONSOLE_GLYPH_WIDTH);
+            CHECK_EQ(strspn(line, ".#"), ORB_CONSOLE_GLYPH_WIDTH);
+
+            if (strchr(line, '#')) any = true;
+        }
+
+        CHECK(any == (glyph != 0)); // only space is blank
     }
 
-    CHECK_EQ(ORB_CONSOLE_FONT[0][0], 0);       // space is blank
-    CHECK(ORB_CONSOLE_FONT['g' - 32][5] != 0); // a descender in row 6
-    CHECK_EQ(ORB_CONSOLE_FONT['A' - 32][5], 0);
+    CHECK(strchr(ORB_CONSOLE_FONT['g' - 32][7], '#') != nullptr); // a descender in the last row
+    CHECK(strchr(ORB_CONSOLE_FONT['A' - 32][7], '#') == nullptr);
     return 0;
 }
 
@@ -515,6 +519,41 @@ static u32 frame_pixel(int x, int y) {
     return orb_os_headless_frame()[y * 64 + x];
 }
 
+// The console drawn on its own at 64 by 40: ten columns and two rows, a log row above the
+// editor.
+static u32 view[64 * 40];
+
+static void draw_view(void) {
+    orb_console_draw(view, (orb_size) {64, 40});
+}
+
+static u32 view_pixel(int x, int y) {
+    return view[y * 64 + x];
+}
+
+// Renders text through ORB_CONSOLE_FONT, padded with spaces to the full row, and compares it
+// to that row of the view.
+static bool row_text_matches(int row, const char* text) {
+    u32 dark, bright;
+    int len = (int)strlen(text);
+
+    orb_pal_extremes(orb_api_pal_base(), &dark, &bright);
+
+    for (int i = 0; i < console_columns; i++) {
+        int glyph = i < len ? (unsigned char)text[i] - 32 : 0;
+
+        for (int y = 0; y < ORB_CONSOLE_GLYPH_HEIGHT; y++)
+            for (int x = 0; x < ORB_CONSOLE_GLYPH_WIDTH; x++) {
+                u32 want = ORB_CONSOLE_FONT[glyph][y][x] == '#' ? bright : dark;
+                int at_x = i * ORB_CONSOLE_CELL_WIDTH + x, at_y = row * ORB_CONSOLE_CELL_HEIGHT + y;
+
+                if (view_pixel(at_x, at_y) != want) return false;
+            }
+    }
+
+    return true;
+}
+
 // Draws into a buffer with 16 sentinel words on each side and checks nothing past the
 // frame itself changed, and that the fill still ran.
 static int draw_stays_inside(orb_size size, u32 dark) {
@@ -545,59 +584,33 @@ static int test_draw(void) {
 
     memset(&keys, 0, sizeof keys);
     orb_log_clear();
-    orb_log("%s", "0123456789abcdef0123456789abcdef0123456789"); // 42 bytes: three rows of 16
+    orb_log("%s", "0123456789abcdef0123456789abcdef0123456789"); // 42 bytes and no space
     press(ORB_KEY_GRAVE);
     CHECK(orb_console_open());
-    host_render();
+    draw_view();
 
     u32 dark = 0, bright = 0;
 
     orb_pal_extremes(orb_api_pal_base(), &dark, &bright);
     CHECK(dark != bright);
-    CHECK_EQ(frame_pixel(63, 0), dark);  // the panel's top-right corner is blank
-    CHECK_EQ(frame_pixel(0, 6), bright); // the prompt '>' has a pixel at its top-left
-    CHECK(frame_pixel(0, 12) != dark || frame_pixel(20, 20) != dark); // the game is below
-
-    bool bright_in_log_row = false;
-
-    for (int x = 0; x < 64; x++)
-        for (int y = 0; y < 6; y++)
-            if (frame_pixel(x, y) == bright) bright_in_log_row = true;
-
-    CHECK(bright_in_log_row); // the log line's last wrapped piece "89" sits above the editor
-    CHECK_EQ(console_columns, 16);
+    CHECK_EQ(console_columns, 10);
     CHECK_EQ(console_rows, 2);
+    CHECK_EQ(view_pixel(63, 0), dark); // the panel's top-right corner is blank
+    CHECK_EQ(view_pixel(0, ORB_CONSOLE_CELL_HEIGHT), bright); // the prompt '>' at its top-left
+    CHECK(row_text_matches(0, "89")); // a word wider than a row breaks at the edge
 
     static const orb_size guard_sizes[] = {{3, 4}, {65, 13}, {8, 5}, {64, 1}};
 
     for (int i = 0; i < 4; i++)
         if (draw_stays_inside(guard_sizes[i], dark)) return 1;
 
-    host_render(); // back to the fixture's own 64 by 32, for the rest of the test
+    host_render(); // the fixture's own 64 by 32 holds just the editor row
+    CHECK_EQ(frame_pixel(0, 0), bright);
+    CHECK(frame_pixel(0, 12) != dark || frame_pixel(20, 20) != dark); // the game is below
     press(ORB_KEY_ESCAPE);
     host_render();
-    CHECK(frame_pixel(0, 6) != bright || frame_pixel(63, 0) != dark);
+    CHECK(frame_pixel(0, 0) != bright || frame_pixel(63, 0) != dark);
     return 0;
-}
-
-// Renders text through ORB_CONSOLE_FONT and compares its 3 by 5 body to the frame's row.
-static bool row_text_matches(int row, const char* text) {
-    u32 dark, bright;
-
-    orb_pal_extremes(orb_api_pal_base(), &dark, &bright);
-
-    for (int i = 0; text[i]; i++) {
-        const u8* glyph = ORB_CONSOLE_FONT[(unsigned char)text[i] - 32];
-
-        for (int j = 0; j < 5; j++)
-            for (int col = 0; col < 3; col++) {
-                u32 want = glyph[j] & 0x80 >> col ? bright : dark;
-
-                if (frame_pixel(i * 4 + col, row * 6 + j) != want) return false;
-            }
-    }
-
-    return true;
 }
 
 static int test_scroll(void) {
@@ -612,33 +625,42 @@ static int test_scroll(void) {
     for (int i = 0; i < 12; i++)
         orb_log("L%d", i);
 
-    host_render();
+    draw_view();
     CHECK(row_text_matches(0, "L11"));
 
     press(ORB_KEY_PAGE_UP);
-    host_render();
+    draw_view();
     CHECK(row_text_matches(0, "L10"));
 
     press(ORB_KEY_PAGE_UP);
-    host_render();
+    draw_view();
     CHECK(row_text_matches(0, "L9"));
 
     press(ORB_KEY_PAGE_DOWN);
-    host_render();
+    draw_view();
     CHECK(row_text_matches(0, "L10"));
 
     for (int i = 0; i < 30; i++)
         press(ORB_KEY_PAGE_UP);
 
-    host_render();
+    draw_view();
     CHECK(row_text_matches(0, "L0")); // clamped at the oldest line
 
     type("help");
     press(ORB_KEY_RETURN); // a run scrolls back to the bottom
     orb_log_clear();
     orb_log("Z");
-    host_render();
+    draw_view();
     CHECK(row_text_matches(0, "Z"));
+
+    // a line wider than a row breaks after the last space that fits
+    orb_log_clear();
+    orb_log("one two three four");
+    draw_view();
+    CHECK(row_text_matches(0, "three four"));
+    press(ORB_KEY_PAGE_UP);
+    draw_view();
+    CHECK(row_text_matches(0, "one two"));
 
     press(ORB_KEY_ESCAPE);
     CHECK(!orb_console_open());

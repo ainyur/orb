@@ -434,14 +434,45 @@ static void console_complete(void) {
         orb_log("%s", matches[i]);
 }
 
+// The bytes of text that fill one row: up to the last space that fits, or the whole row
+// when a word is wider than that.
+static int console_piece(const char* text) {
+    int len = (int)strlen(text), cut = console_columns;
+
+    if (len <= console_columns) return len;
+
+    while (cut > 0 && text[cut] != ' ')
+        cut--;
+
+    return cut > 0 ? cut : console_columns;
+}
+
+// Where the next row starts: past the piece and the spaces it broke at.
+static const char* console_after(const char* text, int len) {
+    text += len;
+
+    while (*text == ' ')
+        text++;
+
+    return text;
+}
+
+static int console_pieces(const char* line) {
+    int count = 0;
+
+    do {
+        line = console_after(line, console_piece(line));
+        count++;
+    } while (*line);
+
+    return count;
+}
+
 static void console_page(int direction) {
     int total = 0;
 
-    for (int back = 0; back < orb_log_line_count(); back++) {
-        int len = (int)strlen(orb_log_line(back));
-
-        total += console_columns ? orb_max(1, (len + console_columns - 1) / console_columns) : 1;
-    }
+    for (int back = 0; back < orb_log_line_count(); back++)
+        total += console_columns ? console_pieces(orb_log_line(back)) : 1;
 
     int page = orb_max(1, console_rows - 1);
 
@@ -637,17 +668,19 @@ void orb_console_step(orb_input* input) {
 }
 
 static void console_glyph(u32* rgb, int width, int x, int y, unsigned char character, u32 color) {
-    const u8* glyph =
-        ORB_CONSOLE_FONT[character < 32 || character > 126 ? '?' - 32 : character - 32];
+    int glyph = character < 32 || character > 126 ? '?' - 32 : character - 32;
 
-    for (int row = 0; row < 6 && y + row < console_height; row++)
-        for (int col = 0; col < 3; col++)
-            if (glyph[row] & 0x80 >> col) rgb[(y + row) * width + x + col] = color;
+    for (int row = 0; row < ORB_CONSOLE_GLYPH_HEIGHT && y + row < console_height; row++)
+        for (int col = 0; col < ORB_CONSOLE_GLYPH_WIDTH; col++)
+            if (ORB_CONSOLE_FONT[glyph][row][col] == '#') rgb[(y + row) * width + x + col] = color;
 }
 
 static void console_text(u32* rgb, int width, int row, const char* text, int n, u32 color) {
     for (int i = 0; i < n && text[i]; i++)
-        console_glyph(rgb, width, i * 4, row * 6, (unsigned char)text[i], color);
+        console_glyph(
+            rgb, width, i * ORB_CONSOLE_CELL_WIDTH, row * ORB_CONSOLE_CELL_HEIGHT,
+            (unsigned char)text[i], color
+        );
 }
 
 // The prompt, the part of the line around the cursor that fits after it, and a filled
@@ -656,28 +689,31 @@ static void console_editor_row(u32* rgb, int width, int row, u32 color) {
     int fit = console_columns - 1;
     int first = orb_max(0, console_cursor - (fit - 1));
 
-    console_glyph(rgb, width, 0, row * 6, '>', color);
-    console_text(rgb + 4, width, row, console_line + first, fit, color);
+    int top = row * ORB_CONSOLE_CELL_HEIGHT,
+        x = (1 + console_cursor - first) * ORB_CONSOLE_CELL_WIDTH;
 
-    int x = (1 + console_cursor - first) * 4;
+    console_glyph(rgb, width, 0, top, '>', color);
+    console_text(rgb + ORB_CONSOLE_CELL_WIDTH, width, row, console_line + first, fit, color);
 
-    for (int y = 0; y < 6 && row * 6 + y < console_height; y++)
-        for (int col = 0; col < 4; col++)
-            rgb[(row * 6 + y) * width + x + col] = color;
+    for (int y = 0; y < ORB_CONSOLE_CELL_HEIGHT && top + y < console_height; y++)
+        for (int col = 0; col < ORB_CONSOLE_CELL_WIDTH; col++)
+            rgb[(top + y) * width + x + col] = color;
 }
 
 void orb_console_draw(u32* rgb, orb_size size) {
     if (!console_is_open) return;
 
-    console_columns = size.width / 4;
-    console_rows = orb_max(1, size.height / 2 / 6);
+    console_columns = size.width / ORB_CONSOLE_CELL_WIDTH;
+    console_rows = orb_max(1, size.height / 2 / ORB_CONSOLE_CELL_HEIGHT);
     console_height = size.height;
 
     u32 dark = 0, bright = 0;
 
     orb_pal_extremes(orb_api_pal_base(), &dark, &bright);
 
-    for (int i = 0; i < orb_min(console_rows * 6, size.height) * size.width; i++)
+    int panel = orb_min(console_rows * ORB_CONSOLE_CELL_HEIGHT, size.height) * size.width;
+
+    for (int i = 0; i < panel; i++)
         rgb[i] = dark;
 
     if (console_columns < 2) return; // no room for a prompt cell plus a cursor cell
@@ -686,22 +722,23 @@ void orb_console_draw(u32* rgb, orb_size size) {
 
     int row = console_rows - 2, skip = console_scroll;
 
+    // Scrolling hides a line's last pieces first, and its first piece lands on top.
     for (int back = 0; row >= 0 && back < orb_log_line_count(); back++) {
         const char* line = orb_log_line(back);
-        int len = (int)strlen(line),
-            pieces = orb_max(1, (len + console_columns - 1) / console_columns);
+        int pieces = console_pieces(line), hidden = orb_min(skip, pieces);
+        int top = row - (pieces - hidden - 1);
 
-        for (int piece = pieces - 1; piece >= 0 && row >= 0; piece--) {
-            if (skip > 0) {
-                skip--;
-                continue;
-            }
+        skip -= hidden;
 
-            console_text(
-                rgb, size.width, row, line + piece * console_columns, console_columns, bright
-            );
-            row--;
+        for (int piece = 0; piece < pieces - hidden; piece++) {
+            int len = console_piece(line);
+
+            if (top + piece >= 0) console_text(rgb, size.width, top + piece, line, len, bright);
+
+            line = console_after(line, len);
         }
+
+        row = top - 1;
     }
 }
 
