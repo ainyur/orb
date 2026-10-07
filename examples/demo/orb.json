@@ -1,6 +1,6 @@
 {
   "id": "demo",
   "name": "Demo",
-  "size": [320, 180],
+  "framebuffer": [320, 180],
   "songs": {"song": 120}
 }

@@ -188,7 +188,9 @@ int main(void) {
     };
     orb_song_desc songs[1] = {{.sample = 1, .millibpm = 120000}};
     u64 sample_ids[2] = {55, 66}, song_ids[1] = {77};
-    orb_info_desc info = {.width = 64, .height = 32, .name = "fixture"};
+    orb_info_desc info = {
+        .width = 64, .height = 32, .window_width = 128, .window_height = 64, .name = "fixture"
+    };
     orb_assets in = {
         .info = &info,
         .pal = pal,
@@ -215,6 +217,8 @@ int main(void) {
     CHECK(orb_file_load(file, &out, &err));
     CHECK_EQ(out.info->width, 64);
     CHECK_EQ(out.info->height, 32);
+    CHECK_EQ(out.info->window_width, 128);
+    CHECK_EQ(out.info->window_height, 64);
     CHECK(strcmp(out.info->name, "fixture") == 0);
     CHECK_EQ(out.pal[6], 64);
     CHECK_EQ(out.sheets.len, 1);
@@ -260,6 +264,15 @@ int main(void) {
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "song") != nullptr);
     songs[0].sample = 1;
+    file = orb_file_write(&scratch, &in);
+    CHECK(orb_file_load(file, &out, &err));
+
+    // an info name with no zero byte is refused
+    memset(info.name, 'x', sizeof info.name);
+    file = orb_file_write(&scratch, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strcmp(err.text, "orb file: bad info section") == 0);
+    strcpy(info.name, "fixture");
     file = orb_file_write(&scratch, &in);
     CHECK(orb_file_load(file, &out, &err));
 

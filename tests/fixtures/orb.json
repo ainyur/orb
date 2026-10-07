@@ -1,6 +1,6 @@
 {
   "id": "fixture",
   "name": "Fixture",
-  "size": [64, 32],
+  "framebuffer": [64, 32],
   "songs": {"loop": 120}
 }

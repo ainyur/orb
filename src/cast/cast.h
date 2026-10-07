@@ -22,7 +22,7 @@ typedef struct orb_manifest_song {
 
 orb_slice(orb_manifest_song);
 
-// orb.json. id, name, and size are required; the rest default to the layout
+// orb.json. id, name, and framebuffer are required; the rest default to the layout
 // art/palette.aseprite, art/, fonts/, sfx/, music/, and levels/world.ldtk. The
 // directories are walked recursively at cast, so only songs list files, one stem
 // to tempo each, since a rendered file carries none.
@@ -36,7 +36,8 @@ typedef struct orb_manifest {
     const char* music;
     const char* world;
     orb_manifest_song_slice songs;
-    orb_size size;
+    orb_size framebuffer;
+    orb_size window; // 0 by 0 when orb.json has none
 } orb_manifest;
 
 [[nodiscard]] bool orb_cast_game(

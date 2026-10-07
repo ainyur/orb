@@ -33,7 +33,7 @@ int main(void) {
     }
 
     // the one block orb_host_release_size sizes holds the whole release boot
-    if (!orb_boot(orb_game_main(), nullptr, result.file, &err)) {
+    if (!orb_boot(orb_game_main(), nullptr, result.file, (orb_size) {}, &err)) {
         fprintf(stderr, "boot: %s\n", err.text);
         return 1;
     }

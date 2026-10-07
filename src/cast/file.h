@@ -87,7 +87,8 @@ static_assert(sizeof(orb_section) == 16, "orb_section layout");
 
 typedef struct orb_info_desc {
     u16 width, height;
-    char name[60];
+    u16 window_width, window_height; // 0 by 0: orb picks the window
+    char name[56];
 } orb_info_desc;
 
 static_assert(sizeof(orb_info_desc) == 64, "orb_info_desc layout");

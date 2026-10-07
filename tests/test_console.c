@@ -81,7 +81,8 @@ static int boot(void) {
 
     debug_console_register();
 
-    if (!booted && !orb_boot(orb_game_main(), "tests/fixtures", (u8_span) {}, &err)) {
+    if (!booted &&
+        !orb_boot(orb_game_main(), "tests/fixtures", (u8_span) {}, (orb_size) {}, &err)) {
         fprintf(stderr, "boot: %s\n", err.text);
         return 1;
     }

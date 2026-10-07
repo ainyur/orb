@@ -10,6 +10,7 @@
 static orb_input headless_input;
 static u32* headless_frame;
 static usize headless_pixels;
+static orb_size headless_window;
 
 // The US layout, unshifted: ORB_KEY_A..ORB_KEY_0 and ORB_KEY_MINUS..ORB_KEY_SLASH.
 static const char headless_letters[] = "abcdefghijklmnopqrstuvwxyz1234567890";
@@ -18,6 +19,7 @@ static const char headless_marks[] = "-=[]\\#;'`,./";
 bool orb_os_open(const orb_os_config* config) {
     headless_pixels = (usize)config->size.width * config->size.height;
     headless_frame = calloc(headless_pixels, sizeof *headless_frame);
+    headless_window = orb_os_open_size(config->size, config->window, (orb_size) {1920, 1080});
 
     return headless_frame != nullptr;
 }
@@ -59,6 +61,10 @@ void orb_os_close(void) {
 
 const u32* orb_os_headless_frame(void) {
     return headless_frame;
+}
+
+orb_size orb_os_headless_window(void) {
+    return headless_window;
 }
 
 void orb_os_headless_set_input(const orb_input* input) {

@@ -5,7 +5,18 @@
 
 orb_span(u8);
 
-bool orb_boot(const orb_game* game, const char* game_dir, u8_span sealed, orb_error* err);
+// window is the --window request, 0 by 0 for the game's own.
+bool orb_boot(
+    const orb_game* game,
+    const char* game_dir,
+    u8_span sealed,
+    orb_size window,
+    orb_error* err
+);
+
+// --window's WIDTHxHEIGHT: two runs of decimal digits joined by a lowercase x, each 1 to 8192.
+bool orb_window_parse(const char* text, orb_size* out);
+
 bool orb_frame(void);
 void orb_quit(void);
 void orb_quit_request(void);

@@ -324,7 +324,7 @@ static void debug_console_register(void) {
     orb_console_command("stats", debug_command_stats, "memory and frame numbers");
 }
 
-static int debug_boot(const char* game_dir) {
+static int debug_boot(const char* game_dir, orb_size window) {
     debug_console_register();
     snprintf(debug_dir, sizeof debug_dir, "%s", game_dir);
     orb_path_join(debug_so_path, game_dir, "build/game" ORB_OS_LIB_SUFFIX);
@@ -335,7 +335,7 @@ static int debug_boot(const char* game_dir) {
 
     orb_error err;
 
-    if (!orb_boot(game, game_dir, (u8_span) {}, &err)) {
+    if (!orb_boot(game, game_dir, (u8_span) {}, window, &err)) {
         orb_log("%s", err.text);
         return 1;
     }
@@ -411,8 +411,8 @@ int orb_debug_cast(const char* dir, bool seal, const char* out_path) {
     return 0;
 }
 
-int orb_debug_run(const char* game_dir) {
-    if (debug_boot(game_dir)) return 1;
+int orb_debug_run(const char* game_dir, orb_size window) {
+    if (debug_boot(game_dir, window)) return 1;
 
     while (orb_frame())
         continue;
@@ -420,11 +420,11 @@ int orb_debug_run(const char* game_dir) {
     return debug_finish();
 }
 
-int orb_debug_scry(const char* game_dir) {
+int orb_debug_scry(const char* game_dir, orb_size window) {
     snprintf(debug_dir, sizeof debug_dir, "%s", game_dir);
 
     if (!debug_build() || !debug_watch_sources()) return 1;
-    if (debug_boot(game_dir)) return 1;
+    if (debug_boot(game_dir, window)) return 1;
 
     orb_watch_init(&debug_so_watch, debug_so_path);
     debug_watch_assets();

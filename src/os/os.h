@@ -23,6 +23,7 @@ typedef char orb_path[ORB_PATH_MAX];
 typedef struct orb_os_config {
     const char* title;
     orb_size size;
+    orb_size window; // the client area to open; 0 by 0 for the default
 } orb_os_config;
 
 typedef struct orb_os_entry {
@@ -53,13 +54,20 @@ static inline int orb_os_key_code(const u8* table, int key) {
     return -1;
 }
 
-static inline int orb_os_open_scale(orb_size fb, orb_size screen) {
+// The client size to open: the request clamped to the screen, or with none the frame at
+// the largest of 3, 2, and 1 times that fits the screen.
+static inline orb_size orb_os_open_size(orb_size fb, orb_size request, orb_size screen) {
+    if (request.width && request.height)
+        return (orb_size) {
+            orb_min(request.width, screen.width), orb_min(request.height, screen.height)
+        };
+
     int scale = 3;
 
     while (scale > 1 && (fb.width * scale > screen.width || fb.height * scale > screen.height))
         scale--;
 
-    return scale;
+    return (orb_size) {fb.width * scale, fb.height * scale};
 }
 
 // Paths are UTF-8 on every platform. On Windows this replaces main's ANSI argv
@@ -122,5 +130,6 @@ bool orb_audio_idle(u64 elapsed_ns, u64* rendered);
 
 #ifdef ORB_OS_HEADLESS
 const u32* orb_os_headless_frame(void);
+orb_size orb_os_headless_window(void); // the client size the last open chose
 void orb_os_headless_set_input(const orb_input* input);
 #endif

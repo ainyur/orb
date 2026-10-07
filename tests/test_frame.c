@@ -26,7 +26,7 @@ static bool find_color(u32 color, int* x, int* y) {
 int main(void) {
     orb_error err;
 
-    if (!orb_boot(orb_game_main(), "tests/fixtures", (u8_span) {}, &err)) {
+    if (!orb_boot(orb_game_main(), "tests/fixtures", (u8_span) {}, (orb_size) {}, &err)) {
         fprintf(stderr, "boot: %s\n", err.text);
         return 1;
     }
@@ -224,7 +224,7 @@ int main(void) {
     orb_arena_init(&out, "out", out_mem, sizeof out_mem);
 
     CHECK(orb_cast_game(&scratch, &out, "tests/fixtures", &manifest, &result, &err));
-    CHECK(orb_boot(orb_game_main(), nullptr, result.file, &err));
+    CHECK(orb_boot(orb_game_main(), nullptr, result.file, (orb_size) {}, &err));
     CHECK(api->song_position().ms == -1);
     CHECK(api->song_position().millibeats == -1);
     CHECK(host_tick());

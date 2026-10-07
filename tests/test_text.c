@@ -21,7 +21,7 @@ static bool cast_fonts(const char* dir, orb_assets* assets, orb_error* err) {
 
     snprintf(
         json, sizeof json,
-        "{\"id\": \"t\", \"name\": \"T\", \"size\": [64, 64],\n"
+        "{\"id\": \"t\", \"name\": \"T\", \"framebuffer\": [64, 64],\n"
         " \"palette\": \"" ART "art/palette.aseprite\", \"art\": \"" ART "art\",\n"
         " \"fonts\": \"%s\", \"world\": \"nothing.ldtk\"}\n",
         dir

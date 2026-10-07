@@ -51,7 +51,7 @@ static const orb_game test_game = {test_config, test_init, test_reload, test_upd
 int main(void) {
     orb_error err;
 
-    if (!orb_boot(&test_game, "examples/demo", (u8_span) {}, &err)) {
+    if (!orb_boot(&test_game, "examples/demo", (u8_span) {}, (orb_size) {}, &err)) {
         fprintf(stderr, "boot: %s\n", err.text);
         return 1;
     }
@@ -144,7 +144,7 @@ int main(void) {
     CHECK(host_scratch.base == nullptr && host_assets[0].base == nullptr);
 
     test_global = ORB_REGION_RESERVE + 1;
-    CHECK(!orb_boot(&test_game, "examples/demo", (u8_span) {}, &err));
+    CHECK(!orb_boot(&test_game, "examples/demo", (u8_span) {}, (orb_size) {}, &err));
     CHECK(strstr(err.text, "memory.global") != nullptr);
     orb_quit();
 

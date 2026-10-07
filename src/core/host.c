@@ -119,8 +119,9 @@ static bool host_cast(int half, orb_assets* out, orb_error* err) {
         return false;
 
     // The window and the framebuffers were sized at boot from the first manifest.
-    if (manifest.size.width != host_info.width || manifest.size.height != host_info.height)
-        return orb_error_set(err, "orb.json: size changed; restart orb to apply it");
+    if (manifest.framebuffer.width != host_info.width ||
+        manifest.framebuffer.height != host_info.height)
+        return orb_error_set(err, "orb.json: framebuffer changed; restart orb to apply it");
 
     if (!host_load(result.file, out, err)) return false;
 
@@ -129,15 +130,16 @@ static bool host_cast(int half, orb_assets* out, orb_error* err) {
     return true;
 }
 
-// Read the screen size from the manifest, then cast into half A.
+// Read the framebuffer size from the manifest, then cast into half A.
 static bool host_cast_first(const char* game_dir, orb_assets* out, orb_error* err) {
     orb_manifest manifest;
 
     if (!orb_manifest_load(&host_arena, game_dir, &manifest, err)) return false;
 
     host_dir = game_dir;
-    host_info =
-        (orb_info_desc) {.width = (u16)manifest.size.width, .height = (u16)manifest.size.height};
+    host_info = (orb_info_desc) {
+        .width = (u16)manifest.framebuffer.width, .height = (u16)manifest.framebuffer.height
+    };
     return host_cast(0, out, err);
 }
 
@@ -161,10 +163,33 @@ static void host_state_reset(orb_config next) {
 }
 #endif
 
+bool orb_window_parse(const char* text, orb_size* out) {
+    int sides[2] = {};
+
+    for (int side = 0; side < 2; side++) {
+        const char* start = text;
+
+        while (*text >= '0' && *text <= '9') {
+            sides[side] = sides[side] * 10 + (*text++ - '0');
+
+            if (sides[side] > 8192) return false;
+        }
+
+        if (text == start || sides[side] < 1) return false;
+        if (side == 0 && *text++ != 'x') return false;
+    }
+
+    if (*text) return false;
+
+    *out = (orb_size) {sides[0], sides[1]};
+    return true;
+}
+
 bool orb_boot(
     const orb_game* game,
     [[maybe_unused]] const char* game_dir,
     u8_span sealed,
+    orb_size window,
     orb_error* err
 ) {
     host_game = game;
@@ -204,6 +229,15 @@ bool orb_boot(
     orb_size size = {host_info.width, host_info.height};
 #endif
 
+    if (window.width && (window.width < size.width || window.height < size.height))
+        return orb_error_set(
+            err, "--window %dx%d is smaller than the game's %dx%d", window.width, window.height,
+            size.width, size.height
+        );
+
+    orb_size client =
+        window.width ? window : (orb_size) {host_info.window_width, host_info.window_height};
+
     orb_arena_push(&host_state, host_config.state_size, 16);
 #ifndef ORB_RELEASE
     orb_arena_homes(&host_state, orb_api_global());
@@ -214,7 +248,7 @@ bool orb_boot(
     orb_console_boot(host_state.base, orb_api_table());
     host_rgb = orb_arena_push_array(&host_arena, u32, (usize)size.width * size.height);
 
-    orb_os_config os_config = {.title = host_info.name, .size = size};
+    orb_os_config os_config = {.title = host_info.name, .size = size, .window = client};
 
     if (!orb_os_open(&os_config)) return orb_error_set(err, "cannot open a window");
 

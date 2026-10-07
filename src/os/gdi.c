@@ -129,11 +129,17 @@ static LRESULT CALLBACK gdi_proc(HWND window, UINT msg, WPARAM wparam, LPARAM lp
 }
 
 bool orb_os_open(const orb_os_config* config) {
-    orb_size screen = {GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)};
-    int scale = orb_os_open_scale(config->size, screen);
+    DWORD style = WS_OVERLAPPEDWINDOW;
+    RECT area, extra = {0, 0, 0, 0};
+
+    SystemParametersInfo(SPI_GETWORKAREA, 0, &area, 0);
+    AdjustWindowRect(&extra, style, FALSE); // left and top come back negative
+
+    int frame_w = extra.right - extra.left, frame_h = extra.bottom - extra.top;
+    orb_size screen = {area.right - area.left - frame_w, area.bottom - area.top - frame_h};
 
     gdi_fb = config->size;
-    gdi_win = (orb_size) {gdi_fb.width * scale, gdi_fb.height * scale};
+    gdi_win = orb_os_open_size(gdi_fb, config->window, screen);
 
     WNDCLASS window_class = {
         .lpfnWndProc = gdi_proc,
@@ -150,14 +156,9 @@ bool orb_os_open(const orb_os_config* config) {
         return false;
     }
 
-    DWORD style = WS_OVERLAPPEDWINDOW;
-    RECT frame = {0, 0, gdi_win.width, gdi_win.height};
-
-    AdjustWindowRect(&frame, style, FALSE); // grow the outer rect so the client is fb * scale
-
-    int outer_w = frame.right - frame.left, outer_h = frame.bottom - frame.top;
-    int x = (screen.width - outer_w) / 2,
-        y = (screen.height - outer_h) / 2; // centered, not cascaded
+    int outer_w = gdi_win.width + frame_w, outer_h = gdi_win.height + frame_h;
+    int x = area.left + (area.right - area.left - outer_w) / 2;
+    int y = area.top + (area.bottom - area.top - outer_h) / 2; // centered, not cascaded
 
     win32_wpath title;
 

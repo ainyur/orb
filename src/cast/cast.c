@@ -606,7 +606,10 @@ static bool cast_body(cast* context) {
     orb_ldtk world;
     orb_assets assets = {};
     orb_info_desc info = {
-        .width = (u16)context->manifest->size.width, .height = (u16)context->manifest->size.height
+        .width = (u16)context->manifest->framebuffer.width,
+        .height = (u16)context->manifest->framebuffer.height,
+        .window_width = (u16)context->manifest->window.width,
+        .window_height = (u16)context->manifest->window.height,
     };
 
     snprintf(info.name, sizeof info.name, "%s", context->manifest->name);
@@ -710,6 +713,22 @@ static bool cast_song_map(
     return true;
 }
 
+// A JSON number with no fraction, in a range that converts to an integer exactly.
+static bool cast_integer(const orb_json* value) {
+    return value->kind == ORB_JSON_NUMBER && value->num > -1e15 && value->num < 1e15 &&
+           value->num == (f64)(i64)value->num;
+}
+
+static bool cast_pair(const orb_json* value, i64 out[2]) {
+    if (value->kind != ORB_JSON_ARRAY || value->count != 2 || !cast_integer(value->first) ||
+        !cast_integer(value->first->next))
+        return false;
+
+    out[0] = (i64)value->first->num;
+    out[1] = (i64)value->first->next->num;
+    return true;
+}
+
 bool orb_manifest_load(
     orb_arena* out,
     const char* game_dir,
@@ -727,16 +746,31 @@ bool orb_manifest_load(
 
     memset(manifest, 0, sizeof *manifest);
 
-    const orb_json* size = orb_json_get(root, "size");
+    const orb_json* framebuffer = orb_json_get(root, "framebuffer");
+    i64 pair[2];
 
-    if (!size || size->kind != ORB_JSON_ARRAY || size->count != 2)
-        return orb_error_set(err, "orb.json: \"size\" must be [width, height]");
+    if (!framebuffer || !cast_pair(framebuffer, pair))
+        return orb_error_set(err, "orb.json: \"framebuffer\" must be [width, height]");
 
-    manifest->size = (orb_size) {(int)size->first->num, (int)size->first->next->num};
+    if (pair[0] < 1 || pair[0] > 4096 || pair[1] < 1 || pair[1] > 4096)
+        return orb_error_set(err, "orb.json: \"framebuffer\" must be within 1..4096");
 
-    if (manifest->size.width < 1 || manifest->size.width > 4096 || manifest->size.height < 1 ||
-        manifest->size.height > 4096)
-        return orb_error_set(err, "orb.json: \"size\" must be within 1..4096");
+    manifest->framebuffer = (orb_size) {(int)pair[0], (int)pair[1]};
+
+    const orb_json* window = orb_json_get(root, "window");
+
+    if (window) {
+        if (!cast_pair(window, pair))
+            return orb_error_set(err, "orb.json: \"window\" must be [width, height]");
+
+        if (pair[0] < manifest->framebuffer.width || pair[1] < manifest->framebuffer.height ||
+            pair[0] > 8192 || pair[1] > 8192)
+            return orb_error_set(
+                err, "orb.json: \"window\" must be at least \"framebuffer\" and at most 8192"
+            );
+
+        manifest->window = (orb_size) {(int)pair[0], (int)pair[1]};
+    }
 
     return cast_string(root, "id", nullptr, &manifest->id, err) &&
            cast_string(root, "name", nullptr, &manifest->name, err) &&

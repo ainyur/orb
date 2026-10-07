@@ -74,7 +74,7 @@ int main(void) {
 
     CHECK(held >= 0);
 #endif
-    CHECK_EQ(debug_boot("examples/demo"), 0);
+    CHECK_EQ(debug_boot("examples/demo", (orb_size) {}), 0);
 
     orb_log_clear();
     orb_console_run("watch");

@@ -39,9 +39,7 @@ bool orb_os_open(const orb_os_config* config) {
     x11_screen = (orb_size) {DisplayWidth(x11_display, screen), DisplayHeight(x11_display, screen)};
     x11_fb = config->size;
 
-    int scale = orb_os_open_scale(x11_fb, x11_screen);
-
-    x11_win = (orb_size) {x11_fb.width * scale, x11_fb.height * scale};
+    x11_win = orb_os_open_size(x11_fb, config->window, x11_screen);
 
     x11_window = XCreateSimpleWindow(
         x11_display, RootWindow(x11_display, screen), 0, 0, (unsigned)x11_win.width,

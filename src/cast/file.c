@@ -338,7 +338,7 @@ bool orb_file_load(u8_span file, orb_assets* out, orb_error* err) {
             *file_count(out, row) = section->size / row->elem;
     }
 
-    if (out->info && !memchr((const char*)out->info + 4, 0, sizeof(orb_info_desc) - 4))
+    if (out->info && !memchr(out->info->name, 0, sizeof out->info->name))
         return orb_error_set(err, "orb file: bad info section");
 
     if (!out->info || !out->pal) return orb_error_set(err, "orb file: no info or palette section");
