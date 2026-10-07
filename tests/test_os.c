@@ -20,7 +20,7 @@ int main(int argc, char** argv) {
 
     if (argc > 1) CHECK(strcmp(argv[1], "h\xc3\xa9llo") == 0);
 
-    arena out;
+    orb_arena out;
 
     orb_arena_init(&out, "test", mem, sizeof mem);
 
@@ -220,7 +220,7 @@ int main(int argc, char** argv) {
         fclose(big);
 
         static alignas(16) u8 small_mem[64];
-        arena small;
+        orb_arena small;
         u8_span read;
 
         orb_arena_init(&small, "small", small_mem, sizeof small_mem);

@@ -566,7 +566,7 @@ static bool world_circle_hit(world_box box, const void* shape) {
 }
 
 static orb_entity_id_list world_query(
-    arena* out,
+    orb_arena* out,
     const char* call,
     u32 mask,
     orb_entity_id except,
@@ -602,7 +602,7 @@ static orb_entity_id_list world_query(
     return list;
 }
 
-orb_entity_id_list orb_query_rect(arena* out, orb_rect rect, u32 mask, orb_entity_id except) {
+orb_entity_id_list orb_query_rect(orb_arena* out, orb_rect rect, u32 mask, orb_entity_id except) {
     world_box box = {
         rect.at.x, rect.at.y, rect.at.x + rect.size.width, rect.at.y + rect.size.height
     };
@@ -611,7 +611,7 @@ orb_entity_id_list orb_query_rect(arena* out, orb_rect rect, u32 mask, orb_entit
 }
 
 orb_entity_id_list orb_query_circle(
-    arena* out,
+    orb_arena* out,
     orb_vec2 center,
     int radius,
     u32 mask,
@@ -622,7 +622,7 @@ orb_entity_id_list orb_query_circle(
     return world_query(out, "query_circle", mask, except, world_circle_hit, &circle);
 }
 
-orb_entity_id_list orb_query_point(arena* out, orb_vec2 at, u32 mask, orb_entity_id except) {
+orb_entity_id_list orb_query_point(orb_arena* out, orb_vec2 at, u32 mask, orb_entity_id except) {
     world_box box = {at.x, at.y, at.x + 1, at.y + 1};
 
     return world_query(out, "query_point", mask, except, world_rect_hit, &box);

@@ -14,7 +14,7 @@ orb_layer_info orb_tilemap_layer_info(const orb_assets* assets, orb_level level,
 orb_rect orb_tilemap_level_bounds(const orb_assets* assets, orb_level level);
 orb_level_neighbor_list orb_tilemap_level_neighbors(
     const orb_assets* assets,
-    arena* out,
+    orb_arena* out,
     orb_level level
 );
 void orb_tilemap_draw(

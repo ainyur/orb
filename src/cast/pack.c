@@ -42,8 +42,8 @@ static bool pack_same(
     return true;
 }
 
-void orb_pack_frames(
-    arena* scratch,
+bool orb_pack_frames(
+    orb_arena* scratch,
     const u8* frames,
     u32 frame_count,
     orb_size frame,
@@ -55,9 +55,8 @@ void orb_pack_frames(
     u32* owner = orb_arena_push_array(scratch, u32, frame_count); // frame that a rect came from
 
     out->frames = orb_arena_push_array(scratch, orb_pack_frame, frame_count);
-    out->rects = (orb_pack_rect_list) {
-        .elems = orb_arena_push_array(scratch, orb_pack_rect, frame_count), .cap = frame_count
-    };
+    out->rects =
+        (orb_pack_rect_slice) {.elems = orb_arena_push_array(scratch, orb_pack_rect, frame_count)};
 
     for (u32 frame_index = 0; frame_index < frame_count; frame_index++) {
         const u8* frame_data = frames + frame_index * frame_size;
@@ -90,7 +89,7 @@ void orb_pack_frames(
             };
 
             owner[out->rects.len] = frame_index;
-            (void)push(scratch, &out->rects, rect);
+            out->rects.elems[out->rects.len++] = rect;
         }
 
         out->frames[frame_index].rect = found;
@@ -125,6 +124,8 @@ void orb_pack_frames(
         if (rect->height > shelf_height) shelf_height = rect->height;
     }
 
+    if (cursor_y + shelf_height > UINT16_MAX) return false;
+
     out->sheet_height = (u16)(cursor_y + shelf_height);
     out->pixels = orb_arena_push(scratch, (usize)out->sheet_width * out->sheet_height, 1);
 
@@ -140,4 +141,6 @@ void orb_pack_frames(
             );
         }
     }
+
+    return true;
 }

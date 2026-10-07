@@ -11,7 +11,7 @@ static u8 at(const orb_fb* fb, int x, int y) {
 
 int main(void) {
     static alignas(16) u8 mem[1 << 20];
-    arena out;
+    orb_arena out;
     orb_arena_init(&out, "test", mem, sizeof mem);
 
     orb_fb fb;
@@ -213,12 +213,12 @@ int main(void) {
     orb_level_neighbor_list links = api->level_neighbors(cave);
 
     CHECK_EQ(links.len, 1);
-    CHECK_EQ(get(links, 0).dir, ORB_LEVEL_OVERLAP);
-    CHECK_EQ(get(links, 0).level.v, cave.v);
+    CHECK_EQ(links.elems[0].dir, ORB_LEVEL_OVERLAP);
+    CHECK_EQ(links.elems[0].level.v, cave.v);
     CHECK_EQ(api->level_neighbors(ORB_NO_LEVEL).len, 0);
 
     api->camera_set((orb_vec2f) {10, -4});
-    api->clear_screen(0);
+    api->clear(0);
     api->layer_draw(cave, 0);
     CHECK_EQ(orb_api_fb()->px[0], 1);
     CHECK_EQ(orb_api_fb()->px[2], 2);
@@ -229,7 +229,7 @@ int main(void) {
     CHECK(
         follow.at.x == 9 && follow.at.y == -5
     ); // 6x4 bounds inside an 8x6 screen: centered on them
-    api->clear_screen(0);
+    api->clear(0);
     api->layer_draw(cave, 0); // camera_update set the shown origin from its result: (1,1)
     CHECK_EQ(orb_api_fb()->px[1 * W + 1], 1);
 

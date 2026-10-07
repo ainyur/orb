@@ -2,8 +2,8 @@
 #include <setjmp.h>
 static jmp_buf test_trap_jump;
 static char test_trap_text[128];
-#define std_trap(message)                                                                          \
-    (snprintf(test_trap_text, sizeof test_trap_text, "%s", (message)), longjmp(test_trap_jump, 1))
+#define orb_arena_trap(...)                                                                        \
+    (snprintf(test_trap_text, sizeof test_trap_text, __VA_ARGS__), longjmp(test_trap_jump, 1))
 #define ORB_OS_HEADLESS 1
 #include "../src/orb.c"
 
@@ -53,7 +53,7 @@ static u8 data[40];
 static orb_assets assets;
 static orb_asset_table table;
 static alignas(16) u8 region_mem[1 << 20];
-static arena region;
+static orb_arena region;
 static int inits, updates;
 static orb_entity_id last_init;
 
@@ -125,7 +125,7 @@ static orb_config config(void) {
 
 int main(void) {
     static alignas(16) u8 list_mem[4096];
-    arena lists;
+    orb_arena lists;
 
     orb_arena_init(&lists, "lists", list_mem, sizeof list_mem);
     static int state;
@@ -287,7 +287,7 @@ int main(void) {
     CHECK_EQ(all.cap, all.len); // allocated exactly
 
     // a result that does not fit traps in debug
-    arena none;
+    orb_arena none;
 
     orb_arena_init(&none, "none", nullptr, 0);
 
@@ -309,12 +309,12 @@ int main(void) {
     orb_entity_free_despawning();
     all = orb_entity_all(&lists);
     CHECK_EQ(all.len, 3);
-    orb_entity_get(get(all, 0))->flags |= ORB_ENTITY_PERSISTENT;
+    orb_entity_get(all.elems[0])->flags |= ORB_ENTITY_PERSISTENT;
     orb_level_despawn(room);
     orb_entity_free_despawning();
     all = orb_entity_all(&lists);
     CHECK_EQ(all.len, 1);
-    CHECK(orb_entity_get(get(all, 0))->flags & ORB_ENTITY_PERSISTENT);
+    CHECK(orb_entity_get(all.elems[0])->flags & ORB_ENTITY_PERSISTENT);
     orb_level_spawn(ORB_NO_LEVEL);
     CHECK_EQ(orb_entity_all(&lists).len, 1);
 
@@ -329,7 +329,7 @@ int main(void) {
     orb_level_spawn(room);
     orb_entity_free_despawning();
     orb_entity_id_list crates = orb_entity_of_type(&lists, crate);
-    orb_entity* placed = orb_entity_get(crates.len ? get(crates, 0) : ORB_NO_ENTITY);
+    orb_entity* placed = orb_entity_get(crates.len ? crates.elems[0] : ORB_NO_ENTITY);
     CHECK(placed && placed->placement == 0);
     orb_entity_revalidate(&table.assets);
     CHECK_EQ(placed->placement, 0);
@@ -351,7 +351,7 @@ int main(void) {
     orb_entity_id_list live = orb_entity_all(&lists);
 
     for (u32 i = 0; i < live.len; i++)
-        orb_entity_despawn(get(live, i));
+        orb_entity_despawn(live.elems[i]);
 
     orb_entity_free_despawning();
     orb_level_spawn(room);
@@ -359,7 +359,7 @@ int main(void) {
 
     orb_entity_id_list others = orb_entity_of_type(&lists, crate);
     CHECK_EQ(others.len, 2);
-    orb_entity* other = orb_entity_get(get(others, 1));
+    orb_entity* other = orb_entity_get(others.elems[1]);
     orb_entity_id spawned = orb_entity_spawn(marker, (orb_vec2f) {2, 2});
     orb_entity* spawned_entity = orb_entity_get(spawned);
     CHECK(spawned_entity->placement == ORB_NO_INDEX && spawned_entity->iid == 0);
@@ -384,7 +384,7 @@ int main(void) {
     orb_entity_id_list swapped_crates =
         orb_entity_of_type(&lists, ORB_TYPE(1 | (u32)table.assets.type_gens[1] << 24));
     CHECK_EQ(swapped_crates.len, 2);
-    CHECK(get(swapped_crates, 1).v == other->self.v);
+    CHECK(swapped_crates.elems[1].v == other->self.v);
     CHECK_EQ(ORB_HANDLE_INDEX(spawned_entity->type), 0);
     CHECK_EQ(ORB_HANDLE_GEN(spawned_entity->type), table.assets.type_gens[0]);
 

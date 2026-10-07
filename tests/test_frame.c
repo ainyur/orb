@@ -50,12 +50,12 @@ int main(void) {
     CHECK_EQ(pixel(4 * 8, 2 * 8), WHITE);
 
     // frame_arena is cleared before each update, and draw's allocations are released
-    arena* frame = orb_api_frame();
+    orb_arena* frame = orb_api_frame();
 
-    CHECK(alloc(frame, u8, 64) != nullptr);
+    CHECK(orb_arena_alloc(frame, 64, 1) != nullptr);
     CHECK(host_tick());
     CHECK_EQ(frame->used, 0);
-    CHECK(alloc(frame, u8, 32) != nullptr);
+    CHECK(orb_arena_alloc(frame, 32, 1) != nullptr);
     host_render();
     CHECK_EQ(frame->used, 32);
     CHECK(((game_state*)host_state.base)->drawn > 0);
@@ -216,7 +216,7 @@ int main(void) {
     orb_quit();
 
     static alignas(16) u8 scratch_mem[4 << 20], out_mem[1 << 20];
-    arena scratch, out;
+    orb_arena scratch, out;
     orb_manifest manifest;
     orb_cast_result result;
 

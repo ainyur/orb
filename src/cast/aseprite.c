@@ -24,7 +24,7 @@ static bool ase_fail(orb_error* err, const char* msg) {
     return orb_error_set(err, "aseprite: %s", msg);
 }
 
-bool orb_ase_parse(arena* scratch, u8_span file, orb_ase* out, orb_error* err) {
+bool orb_ase_parse(orb_arena* scratch, u8_span file, orb_ase* out, orb_error* err) {
     const u8* header = file.elems;
 
     if (file.len < 128 || orb_bytes_u16(header + 4) != 0xA5E0)

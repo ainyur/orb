@@ -480,6 +480,11 @@ static int test_binds(void) {
     self->speed = 0;
     press(ORB_KEY_F5);
     CHECK_EQ(self->speed, 0);
+    orb_console_run("binds");
+    CHECK(strcmp(last_line(), "bind f6 \"teleport 3 4\"") == 0);
+    orb_entity_get(self->player)->at.x = 0;
+    press(ORB_KEY_F6);
+    CHECK(orb_entity_get(self->player)->at.x == 3);
     orb_console_run("bind nosuchkey speed 1");
     CHECK(strcmp(last_line(), "no key \"nosuchkey\"") == 0);
     orb_console_run("bind ` dump");
@@ -702,9 +707,11 @@ static int test_clock(void) {
     CHECK(strstr(orb_log_line(0), " B,") || strstr(orb_log_line(0), " KB,"));
     CHECK_EQ(stats.frame_ticks, 0);
 
-    arena* battle = alloc(orb_api_global(), arena, 1);
+    const orb_api* orb = orb_api_table();
+    orb_arena* battle = orb->alloc(orb->global_arena, 1, sizeof(orb_arena));
 
-    CHECK(arena_new(battle, orb_api_global(), "battle", 256));
+    CHECK(orb->arena_new(battle, orb->global_arena, "battle", 256));
+    CHECK(orb->arena_new(battle, orb->global_arena, "battle", 256)); // remade in place: one entry
     orb_log_clear();
     orb_console_run("memory");
     CHECK_EQ(orb_log_line_count(), 3);
@@ -712,6 +719,19 @@ static int test_clock(void) {
     CHECK(strncmp(orb_log_line(1), "frame: ", 7) == 0);
     CHECK(strncmp(orb_log_line(0), "battle: ", 8) == 0);
     CHECK(strstr(orb_log_line(0), " used, ") != nullptr);
+
+    // the 90% warning logs once
+    orb_log_clear();
+    CHECK(orb->alloc(battle, 240, 1) != nullptr);
+    CHECK(orb->alloc(battle, 8, 1) != nullptr);
+    CHECK_EQ(orb_log_line_count(), 1);
+    CHECK(strstr(orb_log_line(0), "'battle' at 93% of") != nullptr);
+
+    // clearing its parent drops it
+    orb->arena_clear(orb->global_arena);
+    orb_log_clear();
+    orb_console_run("memory");
+    CHECK_EQ(orb_log_line_count(), 2);
 
     orb_clock_get()->step = true; // outside a pause a step is dropped, not saved up
     CHECK(orb_frame());

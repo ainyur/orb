@@ -101,7 +101,7 @@ static u8_span finish(wav_buffer* buffer) {
 
 int main(void) {
     static alignas(16) u8 mem[1 << 20];
-    arena out;
+    orb_arena out;
     orb_arena_init(&out, "test", mem, sizeof mem);
     wav_buffer buffer;
     orb_wav wav;

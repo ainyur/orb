@@ -14,8 +14,8 @@
 #include <string.h>
 
 typedef struct cast {
-    arena* scratch;
-    arena* out;
+    orb_arena* scratch;
+    orb_arena* out;
     const char* game_dir;
     const orb_manifest* manifest;
     orb_cast_result* result;
@@ -33,7 +33,7 @@ typedef struct cast_files {
 } cast_files;
 
 // dir/rel, unless rel is absolute or dir is empty, in which case rel is returned unchanged.
-static const char* cast_path(arena* out, const char* dir, const char* rel) {
+static const char* cast_path(orb_arena* out, const char* dir, const char* rel) {
     if (orb_path_absolute(rel) || !*dir) {
         usize n = strlen(rel) + 1;
         return memcpy(orb_arena_push(out, n, 1), rel, n);
@@ -48,7 +48,7 @@ static const char* cast_path(arena* out, const char* dir, const char* rel) {
 
 // The directory part of a path, "" when there is none: cast_dir_of("levels/world.ldtk")
 // is "levels", cast_dir_of("w.ldtk") is "", cast_dir_of("/abs/dir/w.ldtk") is "/abs/dir".
-static const char* cast_dir_of(arena* out, const char* rel) {
+static const char* cast_dir_of(orb_arena* out, const char* rel) {
     const char* slash = strrchr(rel, '/');
 
 #ifdef _WIN32
@@ -78,7 +78,7 @@ static bool cast_note(cast* context, const char* rel) {
             context->err, "more than %d files and directories in one cast", ORB_CAST_MAX_READS
         );
 
-    (void)push(context->scratch, &result->reads, rel);
+    result->reads.elems[result->reads.len++] = rel;
     return true;
 }
 
@@ -94,7 +94,7 @@ static bool cast_read(cast* context, const char* rel, u8_span* out) {
 }
 
 // "art/player.aseprite" -> "player"; orb_asset_id folds the case.
-static const char* cast_stem(arena* out, const char* path) {
+static const char* cast_stem(orb_arena* out, const char* path) {
     const char* slash = strrchr(path, '/');
     const char* start = slash ? slash + 1 : path;
     const char* dot = strrchr(start, '.');
@@ -105,8 +105,8 @@ static const char* cast_stem(arena* out, const char* path) {
 
 // Every file with the suffix under rel, recursing, but the one path to skip. A
 // missing directory is empty. The listing buffer is one static reused by every
-// level, so a level copies its names out before it recurses. Each file is noted
-// as it is found, so the reads cap bounds this list too.
+// level, so a level copies its names out before it recurses. The list is capped on
+// its own: a file found by two walks is noted once in reads but listed twice.
 static bool cast_walk_into(
     cast* context,
     const char* rel,
@@ -137,6 +137,11 @@ static bool cast_walk_into(
             if (!cast_walk_into(context, names[i], suffix, skip, files)) return false;
         } else if (orb_has_suffix(names[i], suffix) && strcmp(names[i], skip) != 0) {
             if (!cast_note(context, names[i])) return false;
+
+            if (files->count == ORB_CAST_MAX_READS)
+                return orb_error_set(
+                    context->err, "%s: more than %d files of one kind", names[i], ORB_CAST_MAX_READS
+                );
 
             files->stems[files->count] = cast_stem(context->scratch, names[i]);
             files->paths[files->count++] = names[i];
@@ -265,7 +270,7 @@ static bool cast_art(
     u32* first_tileset_sheet,
     orb_assets* assets
 ) {
-    arena* scratch = context->scratch;
+    orb_arena* scratch = context->scratch;
     cast_files art;
 
     if (!cast_walk(context, context->manifest->art, ".aseprite", context->manifest->pal, &art) ||
@@ -294,8 +299,9 @@ static bool cast_art(
     fonts->grid_height = orb_arena_push_array(scratch, u16, font_count);
 
     // Generous upper bounds so tables can be filled in one pass; tileset files
-    // add no sprites or animations.
-    u32 max_sprites = 0, max_anims = 0;
+    // add no sprites or animations. Tags may overlap, so durations are bounded by
+    // the tag spans, not the frames.
+    u32 max_sprites = 0, max_anims = 0, max_durations = 0;
     orb_ase* files = orb_arena_push_array(scratch, orb_ase, file_count);
 
     for (int i = 0; i < file_count; i++) {
@@ -304,13 +310,17 @@ static bool cast_art(
         if (i < art_count) {
             max_sprites += files[i].frame_count;
             max_anims += files[i].tags.len;
+
+            for (u32 tag = 0; tag < files[i].tags.len; tag++)
+                max_durations +=
+                    (u32)(files[i].tags.elems[tag].to - files[i].tags.elems[tag].from + 1);
         }
     }
 
     orb_sheet_desc* sheets = orb_arena_push_array(scratch, orb_sheet_desc, file_count);
     orb_sprite_desc* sprites = orb_arena_push_array(scratch, orb_sprite_desc, max_sprites);
     orb_anim_desc* anims = orb_arena_push_array(scratch, orb_anim_desc, max_anims);
-    u16* durations = orb_arena_push_array(scratch, u16, max_sprites);
+    u16* durations = orb_arena_push_array(scratch, u16, max_durations);
     u64* sprite_ids = orb_arena_push_array(scratch, u64, max_sprites);
     u64* anim_ids = orb_arena_push_array(scratch, u64, max_anims);
     orb_pack* packs = orb_arena_push_array(scratch, orb_pack, file_count);
@@ -362,9 +372,13 @@ static bool cast_art(
         const char* stem = art.stems[i];
         orb_pack* pack = &packs[i];
 
-        orb_pack_frames(
-            scratch, ase->frames, ase->frame_count, (orb_size) {ase->width, ase->height}, pack
-        );
+        if (!orb_pack_frames(
+                scratch, ase->frames, ase->frame_count, (orb_size) {ase->width, ase->height}, pack
+            ))
+            return orb_error_set(
+                context->err, "%s: packed sheet taller than 65535 pixels", paths[i]
+            );
+
         sheets[i] = (orb_sheet_desc) {
             .width = pack->sheet_width, .height = pack->sheet_height, .pixels = pixel_total
         };
@@ -485,7 +499,7 @@ static int cast_song_index(const orb_manifest* manifest, const char* stem) {
 // Two passes, each file's bytes dropped after use: the first sizes the packed PCM,
 // the second decodes into it, so scratch holds one file beside the pack.
 static bool cast_audio(cast* context, orb_assets* assets) {
-    arena* scratch = context->scratch;
+    orb_arena* scratch = context->scratch;
     const orb_manifest* manifest = context->manifest;
     cast_files wavs;
 
@@ -616,35 +630,34 @@ static bool cast_body(cast* context) {
 }
 
 bool orb_cast_game(
-    arena* scratch,
-    arena* out,
+    orb_arena* scratch,
+    orb_arena* out,
     const char* game_dir,
     orb_manifest* manifest,
     orb_cast_result* result,
     orb_error* err
 ) {
-    // Both arenas armed: running out of room unwinds here as an ordinary cast
-    // error instead of ending the process, so scry keeps the live half.
+    // Armed while the cast runs: running out of room unwinds here as an ordinary
+    // cast error instead of ending the process, so scry keeps the live half.
     jmp_buf recover;
     cast context = {scratch, out, game_dir, manifest, result, err};
 
-    scratch->recover = out->recover = &recover;
     scratch->overflow = out->overflow = 0;
     memset(result, 0, sizeof *result);
 
     bool ok;
 
+    orb_arena_recover(&recover);
+
     if (setjmp(recover) == 0) {
-        result->reads = (reads_list) {
-            .elems = orb_arena_push_array(scratch, const char*, ORB_CAST_MAX_READS),
-            .cap = ORB_CAST_MAX_READS
-        };
-        (void)push(scratch, &result->reads, "orb.json");
+        result->reads =
+            (reads_slice) {.elems = orb_arena_push_array(scratch, const char*, ORB_CAST_MAX_READS)};
+        result->reads.elems[result->reads.len++] = "orb.json";
         ok = orb_manifest_load(scratch, game_dir, manifest, err) && cast_body(&context);
     } else
         ok = orb_arena_error(scratch->overflow ? scratch : out, err);
 
-    scratch->recover = out->recover = nullptr;
+    orb_arena_recover(nullptr);
     return ok;
 }
 
@@ -667,7 +680,7 @@ static bool cast_string(
 
 // "songs": {"title": 140, "forest": 96}: each song under music/ by stem, and its tempo.
 static bool cast_song_map(
-    arena* out,
+    orb_arena* out,
     const orb_json* root,
     orb_manifest* manifest,
     orb_error* err
@@ -679,8 +692,8 @@ static bool cast_song_map(
     if (map->kind != ORB_JSON_OBJECT)
         return orb_error_set(err, "orb.json: \"songs\" must be an object of stem to bpm");
 
-    orb_manifest_song_list songs = {
-        .elems = orb_arena_push_array(out, orb_manifest_song, map->count), .cap = (u32)map->count
+    orb_manifest_song_slice songs = {
+        .elems = orb_arena_push_array(out, orb_manifest_song, map->count)
     };
 
     for (const orb_json* node = map->first; node; node = node->next) {
@@ -690,14 +703,19 @@ static bool cast_song_map(
                 (f64)ORB_MAX_BPM
             );
 
-        (void)push(out, &songs, ((orb_manifest_song) {.bpm = (f32)node->num, .stem = node->key}));
+        songs.elems[songs.len++] = (orb_manifest_song) {.bpm = (f32)node->num, .stem = node->key};
     }
 
-    manifest->songs = songs.span;
+    manifest->songs = songs;
     return true;
 }
 
-bool orb_manifest_load(arena* out, const char* game_dir, orb_manifest* manifest, orb_error* err) {
+bool orb_manifest_load(
+    orb_arena* out,
+    const char* game_dir,
+    orb_manifest* manifest,
+    orb_error* err
+) {
     u8_span text;
     const char* path = cast_path(out, game_dir, "orb.json");
 

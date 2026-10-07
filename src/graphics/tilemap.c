@@ -83,7 +83,7 @@ orb_rect orb_tilemap_level_bounds(const orb_assets* assets, orb_level level) {
 
 orb_level_neighbor_list orb_tilemap_level_neighbors(
     const orb_assets* assets,
-    arena* out,
+    orb_arena* out,
     orb_level level
 ) {
     const orb_level_desc* level_desc = tilemap_level(assets, level);

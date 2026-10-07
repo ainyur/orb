@@ -1,6 +1,6 @@
 #pragma once
 
-#include "orb_std.h"
+#include "orb_types.h"
 
 typedef struct orb_size {
     int width, height;

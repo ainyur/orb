@@ -12,17 +12,17 @@ typedef struct orb_pack_rect {
     u16 x, y, width, height;
 } orb_pack_rect;
 
-list(orb_pack_rect);
+orb_slice(orb_pack_rect);
 
 typedef struct orb_pack {
     u16 sheet_width, sheet_height;
     u8* pixels;
-    orb_pack_rect_list rects;
+    orb_pack_rect_slice rects;
     orb_pack_frame* frames;
 } orb_pack;
 
-void orb_pack_frames(
-    arena* scratch,
+bool orb_pack_frames(
+    orb_arena* scratch,
     const u8* frames,
     u32 frame_count,
     orb_size frame,

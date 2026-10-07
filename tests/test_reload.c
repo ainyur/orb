@@ -3,7 +3,7 @@
 #include "../src/orb.c"
 
 typedef struct test_state {
-    arena battle;
+    orb_arena battle;
     u32* numbers;
 } test_state;
 
@@ -30,9 +30,9 @@ static void test_init(void* state, const orb_api* orb) {
 
     test_init_count++;
 
-    if (!arena_new(&self->battle, orb->global_arena, "battle", 4096)) return;
+    if (!orb->arena_new(&self->battle, orb->global_arena, "battle", 4096)) return;
 
-    self->numbers = alloc(&self->battle, u32, 4);
+    self->numbers = orb->alloc(&self->battle, 4, sizeof(u32));
     self->numbers[0] = 42;
 }
 

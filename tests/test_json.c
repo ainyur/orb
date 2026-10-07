@@ -3,7 +3,7 @@
 #include "../src/orb.c"
 
 int main(void) {
-    arena out;
+    orb_arena out;
     static u8 mem[1 << 16];
     orb_arena_init(&out, "test", mem, sizeof mem);
 

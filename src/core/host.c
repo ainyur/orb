@@ -16,7 +16,7 @@
 static const orb_game* host_game;
 static orb_config host_config;
 static orb_info_desc host_info;
-static arena host_arena, host_state, host_pool;
+static orb_arena host_arena, host_state, host_pool;
 static u32* host_rgb;
 static u64 host_previous, host_accumulator;
 static bool host_quitting;
@@ -29,6 +29,8 @@ static orb_config host_normalize(orb_config config) {
 
     return config;
 }
+
+static_assert(alignof(max_align_t) <= 16, "arena_new carves at alignof(max_align_t)");
 
 // Each carve and push starts on a 16-byte boundary.
 usize orb_host_release_size(const orb_config* config, orb_size size) {
@@ -74,14 +76,14 @@ static void host_reload(void) {
 #ifndef ORB_RELEASE
 static orb_cast_result host_result; // from the last successful cast; valid until the next one
 static const char* host_dir;
-static arena host_assets[2], host_scratch;
+static orb_arena host_assets[2], host_scratch;
 static int host_live_half;
 static orb_clock host_clock = {.timescale = 1};
 static int host_frame_ticks;
 static u32 host_frame_us;
 
 static const struct {
-    arena* region;
+    orb_arena* region;
     const char* name;
 } host_regions[] = {
     {&host_arena, "arena"},
@@ -107,8 +109,8 @@ static bool host_reserve(orb_error* err) {
 }
 
 static bool host_cast(int half, orb_assets* out, orb_error* err) {
-    arena_clear(&host_assets[half]);
-    arena_clear(&host_scratch);
+    orb_arena_clear(&host_assets[half]);
+    orb_arena_clear(&host_scratch);
 
     orb_manifest manifest;
     orb_cast_result result;
@@ -144,11 +146,11 @@ static bool host_cast_first(const char* game_dir, orb_assets* out, orb_error* er
 static void host_state_reset(orb_config next) {
     // Global clears while the arena structs in the state are intact: the registry finds game
     // arenas through those structs.
-    arena_clear(orb_api_global());
-    arena_clear(orb_api_frame());
+    orb_arena_clear(orb_api_global());
+    orb_arena_clear(orb_api_frame());
     orb_api_global()->size = next.memory.global;
     orb_api_frame()->size = next.memory.frame;
-    arena_clear(&host_state);
+    orb_arena_clear(&host_state);
     orb_arena_push(&host_state, next.state_size, 16);
 
     if (!orb_entity_reset(&next)) orb_fatal("the game's entity pool does not fit its region");
@@ -181,16 +183,17 @@ bool orb_boot(
         return orb_error_set(err, "cannot allocate %s for the arena", orb_bytes_format(total).text);
 
     orb_arena_init(&host_arena, "arena", mem, total);
-    host_arena.hooks = &orb_arena_hooks;
     // The block is sized exactly, so filling it is expected.
     host_arena.warned = true;
 
-    if (!arena_new(&host_state, &host_arena, "game state", host_config.state_size) ||
-        !arena_new(&host_pool, &host_arena, "entity pool", orb_entity_region_size(&host_config)))
+    if (!orb_arena_new(&host_state, &host_arena, "game state", host_config.state_size) ||
+        !orb_arena_new(
+            &host_pool, &host_arena, "entity pool", orb_entity_region_size(&host_config)
+        ))
         return orb_error_set(err, "the release block does not fit the state and pool");
 
-    if (!arena_new(orb_api_global(), &host_arena, "global", host_config.memory.global) ||
-        !arena_new(orb_api_frame(), &host_arena, "frame", host_config.memory.frame))
+    if (!orb_arena_new(orb_api_global(), &host_arena, "global", host_config.memory.global) ||
+        !orb_arena_new(orb_api_frame(), &host_arena, "frame", host_config.memory.frame))
         return orb_error_set(err, "the release block does not fit the game's memory");
 #else
     if (!host_memory_fits(&host_config, err)) return false;
@@ -203,7 +206,7 @@ bool orb_boot(
 
     orb_arena_push(&host_state, host_config.state_size, 16);
 #ifndef ORB_RELEASE
-    orb_arena_homes(&host_state, orb_api_global(), orb_api_frame());
+    orb_arena_homes(&host_state, orb_api_global());
 #endif
 
     orb_api_boot(&host_arena, size, &assets);
@@ -241,7 +244,7 @@ static bool host_tick(void) {
     if (!host_poll(&input)) return false;
 
     orb_input_step(&input);
-    arena_clear(orb_api_frame());
+    orb_arena_clear(orb_api_frame());
     host_game->update(host_state.base, orb_api_table());
     orb_api_poll();
     return true;
@@ -324,12 +327,12 @@ void orb_quit(void) {
 #ifndef ORB_RELEASE
     orb_arena_release(orb_api_global());
     orb_arena_release(orb_api_frame());
-    orb_arena_homes(nullptr, nullptr, nullptr);
+    orb_arena_homes(nullptr, nullptr);
 #endif
     orb_api_quit();
 #ifdef ORB_RELEASE
     free(host_arena.base);
-    host_arena = (arena) {};
+    host_arena = (orb_arena) {};
 #else
     for (usize i = 0; i < sizeof host_regions / sizeof host_regions[0]; i++)
         orb_arena_release(host_regions[i].region);

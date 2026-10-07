@@ -4,6 +4,8 @@
 #include "../core/log.h"
 #include "../orb.h"
 
+orb_span(u8);
+
 typedef struct orb_assets orb_assets;
 
 constexpr u32 ORB_FILE_MAGIC = 0x0042524F;
@@ -233,5 +235,5 @@ static inline u32 orb_field_width(orb_field_kind kind) {
     return kind == ORB_FIELD_BOOL ? 1 : kind == ORB_FIELD_POINT ? 8 : 4;
 }
 
-u8_span orb_file_write(arena* out, const orb_assets* in);
+u8_span orb_file_write(orb_arena* out, const orb_assets* in);
 [[nodiscard]] bool orb_file_load(u8_span file, orb_assets* out, orb_error* err);

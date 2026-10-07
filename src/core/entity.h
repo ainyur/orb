@@ -13,6 +13,8 @@ typedef struct orb_sort_entry {
     u32 slot;
 } orb_sort_entry;
 
+orb_slice(u32);
+
 typedef struct orb_pool {
     orb_entity* entities;
     u8* gens;        // the generation the next spawn in a slot gets; 1 at boot
@@ -33,7 +35,7 @@ extern bool orb_entity_updating; // inside world_update, so a spawn gets ORB_ENT
 // Bytes the pool needs for the config.
 usize orb_entity_region_size(const orb_config* config);
 void orb_entity_boot(
-    arena* region,
+    orb_arena* region,
     const orb_config* config,
     void* state,
     const orb_api* api,
@@ -61,8 +63,8 @@ void* orb_entity_add(orb_entity_id id, int kind);
 void orb_entity_remove(orb_entity_id id, int kind);
 void* orb_entity_component(orb_entity_id id, int kind);
 orb_vec2f orb_entity_world_at(orb_entity_id id);
-orb_entity_id_list orb_entity_all(arena* out);
-orb_entity_id_list orb_entity_of_type(arena* out, orb_type type);
+orb_entity_id_list orb_entity_all(orb_arena* out);
+orb_entity_id_list orb_entity_of_type(orb_arena* out, orb_type type);
 int orb_entity_field_count(orb_entity_id id, const char* name);
 i32 orb_entity_field_int(orb_entity_id id, const char* name, int index);
 f32 orb_entity_field_float(orb_entity_id id, const char* name, int index);

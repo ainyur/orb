@@ -67,7 +67,7 @@ static void reload(void* state, const orb_api* orb) {
         orb->level_spawn(self->room);
         orb_entity_id_list players = orb->entity_of_type(self->player_type);
 
-        if (players.len) self->player = get(players, 0);
+        if (players.len) self->player = players.elems[0];
     }
 
     orb->var_int("speed", &self->speed, "walk speed");
@@ -98,7 +98,7 @@ static void update(void* state, const orb_api* orb) {
 static void draw(void* state, const orb_api* orb) {
     game_state* self = state;
 
-    orb->clear_screen(1);
+    orb->clear(1);
     orb->layer_draw(self->room, self->floor);
     orb->world_draw(0);
     orb->text_draw(self->font, "AB", (orb_vec2) {0, 0}, nullptr);

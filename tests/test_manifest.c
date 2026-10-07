@@ -29,7 +29,7 @@ static bool write_manifest(const char* size) {
 
 static bool copy_player(const char* to) {
     static alignas(16) u8 copy_mem[1 << 16];
-    arena copy;
+    orb_arena copy;
     u8_span player;
 
     orb_arena_init(&copy, "copy", copy_mem, sizeof copy_mem);
@@ -49,7 +49,7 @@ int main(void) {
 
     // "world" defaults to levels/world.ldtk and can be overridden like art or sfx
     static alignas(16) u8 world_mem[1 << 16];
-    arena world_arena;
+    orb_arena world_arena;
     orb_arena_init(&world_arena, "world manifest", world_mem, sizeof world_mem);
 
     orb_manifest manifest;
@@ -63,7 +63,7 @@ int main(void) {
     CHECK(
         orb_os_write_file(DIR "/orb.json", (u8_span) {(u8*)world_override, strlen(world_override)})
     );
-    arena_clear(&world_arena);
+    orb_arena_clear(&world_arena);
     CHECK(orb_manifest_load(&world_arena, DIR, &manifest, &err));
     CHECK(strcmp(manifest.world, "maps/w.ldtk") == 0);
 
@@ -76,7 +76,7 @@ int main(void) {
 
     const orb_api* api = orb_api_table();
 
-    api->clear_screen(0);
+    api->clear(0);
     api->sprite_draw(ORB_SPRITE(2), (orb_vec2) {0, 0}, 0, nullptr);
     CHECK_EQ(orb_api_fb()->px[4 * 64 + 4], 0);
 
@@ -88,7 +88,7 @@ int main(void) {
 
     CHECK(orb_file_load(orb_last_cast()->file, &assets, &err));
     CHECK_EQ(assets.sprites.len, 4); // two frames from each of two files
-    api->clear_screen(0);
+    api->clear(0);
     api->sprite_draw(ORB_SPRITE(2), (orb_vec2) {0, 0}, 0, nullptr);
     CHECK_EQ(orb_api_fb()->px[4 * 64 + 4], 2);
 
@@ -97,14 +97,14 @@ int main(void) {
     CHECK(copy_player(DIR "/hero.aseprite"));
     CHECK(orb_recast(&err));
 
-    api->clear_screen(0);
+    api->clear(0);
     api->sprite_draw(ORB_SPRITE(0), (orb_vec2) {0, 0}, 0, nullptr);
 
     CHECK_EQ(orb_api_fb()->px[4 * 64 + 4], 0);
     CHECK_EQ(api->sprite_find("player", 0).v, ORB_NO_SPRITE.v); // gone by that name
 
     // finding by the new name, as reload does, yields the live handle
-    api->clear_screen(0);
+    api->clear(0);
     api->sprite_draw(api->sprite_find("hero", 0), (orb_vec2) {0, 0}, 0, nullptr);
 
     CHECK_EQ(orb_api_fb()->px[4 * 64 + 4], 2);

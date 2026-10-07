@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include <string.h>
 
+orb_span(u8);
+
 // Bytes [at, at + len) of bytes, or an empty span when they do not fit. It reads untrusted file
 // bytes, so it never traps.
 static inline u8_span orb_bytes_sub(u8_span bytes, usize at, usize len) {

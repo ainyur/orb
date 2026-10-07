@@ -3,7 +3,7 @@
 #define ORB_RELEASE 1
 
 static bool test_trapped;
-#define std_trap(message) ((void)(message), test_trapped = true)
+#define orb_arena_trap(...) (test_trapped = true)
 
 #include "../src/orb.c"
 // clang-format off
@@ -17,11 +17,9 @@ static bool test_trapped;
 // clang-format on
 #include "fixtures/game.c"
 
-array(u32, 8);
-
 int main(void) {
     static alignas(16) u8 scratch_mem[4 << 20], out_mem[1 << 20];
-    arena scratch, out;
+    orb_arena scratch, out;
     orb_manifest manifest;
     orb_cast_result result;
     orb_error err;
@@ -51,8 +49,8 @@ int main(void) {
     }
 
     // the release block holds both game arenas at their configured sizes
-    arena* global = orb_api_global();
-    arena* frame = orb_api_frame();
+    orb_arena* global = orb_api_global();
+    orb_arena* frame = orb_api_frame();
 
     CHECK_EQ(global->size, MB);
     CHECK_EQ(frame->size, 256 * KB);
@@ -64,20 +62,14 @@ int main(void) {
         frame->base >= host_arena.base &&
         frame->base + frame->size <= host_arena.base + host_arena.size
     );
-    CHECK(global->hooks == &orb_arena_hooks);
     CHECK(host_arena.used <= host_arena.size);
 
     // a result that does not fit comes back empty, with failed set
-    arena none;
+    orb_arena none;
 
     orb_arena_init(&none, "none", nullptr, 0);
     CHECK_EQ(orb_entity_all(&none).len, 0);
     CHECK(none.failed);
-
-    // ORB_RELEASE compiles the checks out: an index past len inside the storage reads
-    u32_array numbers = {.len = 2};
-
-    (void)get(numbers, 5);
     CHECK(!test_trapped);
 
     orb_quit();

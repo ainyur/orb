@@ -160,7 +160,7 @@ static void reload(void* state, const orb_api* orb) {
         if (players.len == 0)
             orb->log("no player placed in %s", room);
         else
-            demo->player = get(players, 0);
+            demo->player = players.elems[0];
     }
 }
 
@@ -188,7 +188,7 @@ static void update(void* state, const orb_api* orb) {
 static void draw(void* state, const orb_api* orb) {
     game_state* demo = state;
 
-    orb->clear_screen(BG);
+    orb->clear(BG);
     orb->layer_draw(demo->room, demo->floor);
     orb->layer_draw(demo->room, demo->walls);
     orb->layer_draw(demo->room, demo->shadow);

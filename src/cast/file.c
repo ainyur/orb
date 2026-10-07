@@ -85,7 +85,7 @@ static const file_row* file_row_for(u32 tag) {
     return nullptr;
 }
 
-u8_span orb_file_write(arena* out, const orb_assets* in) {
+u8_span orb_file_write(orb_arena* out, const orb_assets* in) {
     orb_file_header* header = orb_arena_push(out, sizeof *header, 16);
     u8* base = (u8*)header;
 

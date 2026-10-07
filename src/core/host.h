@@ -3,6 +3,8 @@
 #include "../cast/cast.h"
 #include "../orb.h"
 
+orb_span(u8);
+
 bool orb_boot(const orb_game* game, const char* game_dir, u8_span sealed, orb_error* err);
 bool orb_frame(void);
 void orb_quit(void);

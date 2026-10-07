@@ -4,7 +4,7 @@
 
 // One level, one type with a default, one placement with every field kind, round-tripped
 // and then broken one way at a time.
-static int test_entities(arena* scratch) {
+static int test_entities(orb_arena* scratch) {
     u8 pal[256 * 4] = {0};
     orb_info_desc info = {.width = 8, .height = 8, .name = "e"};
     orb_level_desc levels[1] = {
@@ -143,7 +143,7 @@ static int test_entities(arena* scratch) {
 }
 
 int main(void) {
-    arena scratch;
+    orb_arena scratch;
     static alignas(16) u8 mem[1 << 20];
     orb_arena_init(&scratch, "test", mem, sizeof mem);
 
@@ -468,22 +468,22 @@ int main(void) {
     CHECK_EQ(font_out.font_ids[0], orb_asset_id("body", "font"));
 
     glyphs[3].x = 61; // 61 + 4 leaves a 64-wide sheet
-    arena_clear(&scratch);
+    orb_arena_clear(&scratch);
     CHECK(!orb_file_load(orb_file_write(&scratch, &font_in), &font_out, &err));
 
     glyphs[3].x = 0;
     fonts[0].line_height = 0;
-    arena_clear(&scratch);
+    orb_arena_clear(&scratch);
     CHECK(!orb_file_load(orb_file_write(&scratch, &font_in), &font_out, &err));
 
     fonts[0].line_height = 8;
     fonts[0].sheet = 1; // only one sheet exists
-    arena_clear(&scratch);
+    orb_arena_clear(&scratch);
     CHECK(!orb_file_load(orb_file_write(&scratch, &font_in), &font_out, &err));
 
     fonts[0].sheet = 0;
     fonts[0].first_glyph = 1; // 95 glyphs from index 1 leave the 95-element section
-    arena_clear(&scratch);
+    orb_arena_clear(&scratch);
     CHECK(!orb_file_load(orb_file_write(&scratch, &font_in), &font_out, &err));
 
     fonts[0].first_glyph = 0;

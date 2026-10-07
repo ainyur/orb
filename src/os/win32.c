@@ -135,8 +135,8 @@ void orb_os_dlclose(orb_os_library* lib) {
     FreeLibrary((HMODULE)lib);
 }
 
-void* orb_os_dlsym(orb_os_library* lib, const char* name) {
-    return (void*)GetProcAddress((HMODULE)lib, name);
+orb_os_fn orb_os_dlsym(orb_os_library* lib, const char* name) {
+    return (orb_os_fn)GetProcAddress((HMODULE)lib, name);
 }
 
 // A high-resolution waitable timer (Windows 10 1803) sleeps to within tens of

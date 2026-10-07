@@ -9,7 +9,7 @@ typedef struct orb_fb {
     u8* px;
 } orb_fb;
 
-void orb_fb_init(orb_fb* fb, arena* out, orb_size size);
+void orb_fb_init(orb_fb* fb, orb_arena* out, orb_size size);
 void orb_fb_clear(orb_fb* fb, u8 index);
 void orb_fb_blit(
     orb_fb* fb,

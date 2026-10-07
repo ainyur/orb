@@ -4,7 +4,7 @@
 
 int main(void) {
     static alignas(16) u8 mem[1 << 20];
-    arena out;
+    orb_arena out;
 
     orb_arena_init(&out, "test", mem, sizeof mem);
 
@@ -146,15 +146,15 @@ int main(void) {
 
     const orb_api* api = orb_api_table();
 
-    api->clear_screen(0);
+    api->clear(0);
     api->sprite_draw(ORB_SPRITE(0), (orb_vec2) {1, 0}, 0, nullptr);
     CHECK_EQ(orb_api_fb()->px[1 * 8 + 2], 1);
     api->camera_set((orb_vec2f) {2, 0});
-    api->clear_screen(0);
+    api->clear(0);
     api->sprite_draw(ORB_SPRITE(1), (orb_vec2) {4, 0}, 0, nullptr);
     CHECK_EQ(orb_api_fb()->px[0 * 8 + 2], 3);
     api->camera_set((orb_vec2f) {});
-    api->clear_screen(0);
+    api->clear(0);
     api->sprite_draw(ORB_SPRITE(0), (orb_vec2) {1, 0}, 0, nullptr);
     CHECK_EQ(orb_api_fb()->px[1 * 8 + 2], 1);
     api->pal_set(1, 9, 8, 7);
@@ -178,7 +178,7 @@ int main(void) {
     CHECK_EQ(api->anim_find("player", "walk").v, 0);
     CHECK_EQ(api->sprite_find("nobody", 0).v, ORB_NO_SPRITE.v);
     CHECK_EQ(api->anim_find("player", "run").v, ORB_NO_ANIM.v);
-    api->clear_screen(0);
+    api->clear(0);
     api->sprite_draw(ORB_NO_SPRITE, (orb_vec2) {0, 0}, 0, nullptr); // a miss draws nothing
     CHECK_EQ(orb_api_fb()->px[0], 0);
     api->sprite_draw(frame1, (orb_vec2) {0, 0}, 0, nullptr);
@@ -194,7 +194,7 @@ int main(void) {
 
     orb_api_set_assets(&assets);
 
-    api->clear_screen(0);
+    api->clear(0);
     api->sprite_draw(frame1, (orb_vec2) {0, 0}, 0, nullptr); // index 1 changed: nothing
     CHECK_EQ(orb_api_fb()->px[0], 0);
     api->sprite_draw(ORB_SPRITE(0), (orb_vec2) {0, 0}, 0, nullptr); // index 0 did not
@@ -207,7 +207,7 @@ int main(void) {
 
     CHECK_EQ(ORB_HANDLE_INDEX(hero), 1);
     CHECK_EQ(ORB_HANDLE_GEN(hero), 1);
-    api->clear_screen(0);
+    api->clear(0);
     api->sprite_draw(hero, (orb_vec2) {0, 0}, 0, nullptr);
     CHECK_EQ(orb_api_fb()->px[0], 3);
     api->anim_start(&state, api->anim_find("hero", "walk"));

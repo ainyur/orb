@@ -35,7 +35,7 @@ static orb_sprite_desc sprites[2] = {
 static orb_assets assets;
 static orb_asset_table table;
 static alignas(16) u8 region_mem[1 << 20];
-static arena region;
+static orb_arena region;
 static int mover_updates;
 
 static void fixture(void) {
@@ -85,7 +85,7 @@ static orb_body* body(orb_entity_id id) {
 }
 
 static alignas(16) u8 list_mem[65536];
-static arena lists;
+static orb_arena lists;
 
 static orb_entity* entity(orb_entity_id id) {
     return orb_entity_get(id);
@@ -96,7 +96,7 @@ static void clear_world(void) {
     orb_entity_id_list ids = orb_entity_all(&lists);
 
     for (u32 i = 0; i < ids.len; i++)
-        orb_entity_despawn(get(ids, i));
+        orb_entity_despawn(ids.elems[i]);
 
     orb_entity_free_despawning();
     orb_world_gravity((orb_vec2f) {});
@@ -385,14 +385,14 @@ static int test_queries(void) {
 
     CHECK_EQ(found.len, 2);
     CHECK_EQ(found.cap, found.len); // allocated exactly
-    CHECK(get(found, 0).v == entity_a.v && get(found, 1).v == entity_b.v);
+    CHECK(found.elems[0].v == entity_a.v && found.elems[1].v == entity_b.v);
     found = orb_query_rect(&lists, rect, 2, ORB_NO_ENTITY);
     CHECK_EQ(found.len, 1);
-    CHECK(get(found, 0).v == entity_b.v);
+    CHECK(found.elems[0].v == entity_b.v);
     CHECK_EQ(orb_query_rect(&lists, rect, 0, ORB_NO_ENTITY).len, 0);
     found = orb_query_rect(&lists, rect, ORB_TAG_ANY, entity_a);
     CHECK_EQ(found.len, 1);
-    CHECK(get(found, 0).v == entity_b.v);
+    CHECK(found.elems[0].v == entity_b.v);
     CHECK_EQ(
         orb_query_rect(&lists, (orb_rect) {{24, 8}, {6, 8}}, ORB_TAG_ANY, ORB_NO_ENTITY).len, 0
     );
@@ -403,7 +403,7 @@ static int test_queries(void) {
     // point: containment with exclusive far edges
     found = orb_query_point(&lists, (orb_vec2) {17, 9}, ORB_TAG_ANY, ORB_NO_ENTITY);
     CHECK_EQ(found.len, 1);
-    CHECK(get(found, 0).v == entity_a.v);
+    CHECK(found.elems[0].v == entity_a.v);
     CHECK_EQ(orb_query_point(&lists, (orb_vec2) {24, 9}, ORB_TAG_ANY, ORB_NO_ENTITY).len, 0);
     CHECK_EQ(orb_query_point(&lists, (orb_vec2) {30, 15}, ORB_TAG_ANY, ORB_NO_ENTITY).len, 1);
     CHECK_EQ(orb_query_point(&lists, (orb_vec2) {30, 16}, ORB_TAG_ANY, ORB_NO_ENTITY).len, 0);
@@ -411,11 +411,11 @@ static int test_queries(void) {
     // circle: squared distance from the box's nearest pixel, inclusive
     found = orb_query_circle(&lists, (orb_vec2) {28, 12}, 2, ORB_TAG_ANY, ORB_NO_ENTITY);
     CHECK_EQ(found.len, 1);
-    CHECK(get(found, 0).v == entity_b.v);
+    CHECK(found.elems[0].v == entity_b.v);
     CHECK_EQ(orb_query_circle(&lists, (orb_vec2) {28, 12}, 1, ORB_TAG_ANY, ORB_NO_ENTITY).len, 0);
     found = orb_query_circle(&lists, (orb_vec2) {18, 10}, 0, ORB_TAG_ANY, ORB_NO_ENTITY);
     CHECK_EQ(found.len, 1);
-    CHECK(get(found, 0).v == entity_a.v);
+    CHECK(found.elems[0].v == entity_a.v);
 
     // ray: the nearest body along x, at the entry point with the face normal
     orb_hit hit;
@@ -501,7 +501,7 @@ static int test_queries(void) {
 
 static int test_draw(void) {
     static alignas(16) u8 fb_mem[4096];
-    arena out;
+    orb_arena out;
     orb_fb fb;
     u32 rgb[16 * 16];
     orb_vec2f cam = {0, 0};

@@ -51,7 +51,7 @@ static bool world_sublayers(
     const orb_ldtk_layer* layer,
     u32* out
 ) {
-    arena* scratch = context->scratch;
+    orb_arena* scratch = context->scratch;
     u32 area = (u32)layer->columns * layer->rows;
     usize mark = scratch->used;
     u8* counts = orb_arena_push_array(scratch, u8, area);
@@ -81,7 +81,7 @@ static bool world_sublayers(
 
 // Bytes the field data section needs for these fields: elements at 4-byte alignment, then
 // the strings, then the next field aligned again.
-static u32 world_field_bytes(orb_ldtk_field_span fields) {
+static u32 world_field_bytes(orb_ldtk_field_slice fields) {
     u32 total = 0;
 
     for (u32 i = 0; i < fields.len; i++) {
@@ -111,7 +111,7 @@ static int world_iid_compare(const void* a, const void* b) {
 }
 
 // Every placement's iid and index, sorted by iid.
-static world_iid* world_iid_index(arena* scratch, const orb_ldtk* world, u32 total) {
+static world_iid* world_iid_index(orb_arena* scratch, const orb_ldtk* world, u32 total) {
     world_iid* iids = orb_arena_push_array(scratch, world_iid, total);
     u32 n = 0;
 
@@ -139,7 +139,7 @@ static bool world_write_fields(
     u32 iid_count,
     const char* level_name,
     const char* entity_name,
-    orb_ldtk_field_span src,
+    orb_ldtk_field_slice src,
     orb_field_desc* fields,
     u8* data,
     u32* field_offset,
@@ -227,7 +227,7 @@ static bool world_cast_entities(
     orb_level_desc* levels,
     orb_assets* assets
 ) {
-    arena* scratch = context->scratch;
+    orb_arena* scratch = context->scratch;
 
     if ((u32)world->entity_defs.len > ORB_MAX_TYPES)
         return orb_error_set(
@@ -240,7 +240,7 @@ static bool world_cast_entities(
         const orb_ldtk_entity_def* def = &world->entity_defs.elems[i];
 
         field_total += (u32)def->fields.len;
-        data_total += world_field_bytes(def->fields.span);
+        data_total += world_field_bytes(def->fields);
     }
 
     for (u32 i = 0; i < world->levels.len; i++) {
@@ -252,7 +252,7 @@ static bool world_cast_entities(
             const orb_ldtk_instance* inst = &level->instances.elems[j];
 
             field_total += (u32)inst->fields.len;
-            data_total += world_field_bytes(inst->fields.span);
+            data_total += world_field_bytes(inst->fields);
         }
     }
 
@@ -301,7 +301,7 @@ static bool world_cast_entities(
         };
 
         if (!world_write_fields(
-                context, iids, placement_total, nullptr, def->name, def->fields.span, fields, data,
+                context, iids, placement_total, nullptr, def->name, def->fields, fields, data,
                 &field_offset, &data_offset
             ))
             return false;
@@ -336,8 +336,8 @@ static bool world_cast_entities(
             };
 
             if (!world_write_fields(
-                    context, iids, placement_total, level->name, name, inst->fields.span, fields,
-                    data, &field_offset, &data_offset
+                    context, iids, placement_total, level->name, name, inst->fields, fields, data,
+                    &field_offset, &data_offset
                 ))
                 return false;
         }
@@ -493,7 +493,7 @@ static bool world_cast(
     u32 first_tileset_sheet,
     orb_assets* assets
 ) {
-    arena* scratch = context->scratch;
+    orb_arena* scratch = context->scratch;
     world_sizes sizes;
 
     if (!world_size(context, world, &sizes)) return false;

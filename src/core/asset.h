@@ -3,21 +3,23 @@
 #include "../cast/file.h"
 #include "../orb.h"
 
-span(orb_sheet_desc);
-span(orb_sprite_desc);
-span(orb_anim_desc);
-span(orb_sample_desc);
-span(i16);
-span(orb_song_desc);
-span(orb_tileset_desc);
-span(orb_level_desc);
-span(orb_layer_desc);
-span(orb_neighbor_desc);
-span(orb_font_desc);
-span(orb_glyph_desc);
-span(orb_type_desc);
-span(orb_placement_desc);
-span(orb_field_desc);
+orb_span(u8);
+orb_span(u16);
+orb_span(orb_sheet_desc);
+orb_span(orb_sprite_desc);
+orb_span(orb_anim_desc);
+orb_span(orb_sample_desc);
+orb_span(i16);
+orb_span(orb_song_desc);
+orb_span(orb_tileset_desc);
+orb_span(orb_level_desc);
+orb_span(orb_layer_desc);
+orb_span(orb_neighbor_desc);
+orb_span(orb_font_desc);
+orb_span(orb_glyph_desc);
+orb_span(orb_type_desc);
+orb_span(orb_placement_desc);
+orb_span(orb_field_desc);
 
 struct orb_assets {
     const orb_info_desc* info;

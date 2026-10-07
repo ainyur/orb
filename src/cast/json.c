@@ -8,7 +8,7 @@
 constexpr int JSON_MAX_DEPTH = 256;
 
 typedef struct {
-    arena* out;
+    orb_arena* out;
     const char* cursor;
     const char* end;
     orb_error* err;
@@ -251,7 +251,7 @@ static bool json_value(json_parser* parser, orb_json** out) {
     return json_fail(parser, "unexpected character");
 }
 
-orb_json* orb_json_parse(arena* out, const char* text, usize len, orb_error* err) {
+orb_json* orb_json_parse(orb_arena* out, const char* text, usize len, orb_error* err) {
     json_parser parser = {.out = out, .cursor = text, .end = text + len, .err = err, .line = 1};
     orb_json* root;
 

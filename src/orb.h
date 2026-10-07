@@ -1,21 +1,7 @@
 #pragma once
 
-// find accepts these handle types; the macro expands where find is used, after
-// the types below exist.
-// clang-format off
-#undef STD_FIND_HANDLES
-#define STD_FIND_HANDLES                                                                           \
-    orb_anim: true,                                                                                \
-    orb_font: true,                                                                                \
-    orb_level: true,                                                                               \
-    orb_sample: true,                                                                              \
-    orb_song: true,                                                                                \
-    orb_sprite: true,                                                                              \
-    orb_entity_id: true,                                                                           \
-    orb_type: true,
-// clang-format on
 #include "orb_math.h"
-#include "orb_std.h"
+#include "orb_types.h"
 
 typedef struct {
     u32 v;
@@ -280,7 +266,7 @@ typedef struct orb_level_neighbor {
     orb_level_dir dir;
 } orb_level_neighbor;
 
-list(orb_level_neighbor);
+orb_list(orb_level_neighbor);
 
 #define ORB_ANIM(index) ((orb_anim) {(u32)(index)})
 #define ORB_FONT(index) ((orb_font) {(u32)(index)})
@@ -315,7 +301,7 @@ typedef struct {
 constexpr orb_entity_id ORB_NO_ENTITY = {ORB_NO_INDEX};
 constexpr orb_type ORB_NO_TYPE = {ORB_NO_INDEX};
 
-list(orb_entity_id);
+orb_list(orb_entity_id);
 
 constexpr int ORB_COMPONENT_SPRITE = 0;
 constexpr int ORB_COMPONENT_BODY = 1;
@@ -413,6 +399,20 @@ typedef struct orb_hit {
     f32 fraction;         // 0..1 along the segment
 } orb_hit;
 
+typedef struct orb_arena {
+    char name[24];
+    u8* base;
+    usize size;      // usable bytes
+    usize committed; // bytes from base backed by memory
+    usize used;      // a caller may save and restore it to drop what it allocated since
+    usize peak;      // the most used has been
+    usize reserved;  // the address space a reserved region holds; 0 otherwise
+    usize overflow;  // bytes the failed allocation was short by, or could not commit
+    bool refused;    // the failure was a refused commit rather than size
+    bool failed;     // an allocation failed since it was made or last cleared
+    bool logged, warned;
+} orb_arena;
+
 constexpr u32 ORB_RAY_CELLS = 1;  // test collision cells
 constexpr u32 ORB_RAY_SOLIDS = 2; // test solid bodies whatever their tags
 // one-way cells and bodies block from their solid side; else open
@@ -490,12 +490,21 @@ typedef struct orb_api orb_api;
 typedef void (*orb_entity_fn)(void* state, const orb_api* orb, orb_entity_id id);
 
 // Memory. global_arena lives for the run; make the game's own arenas from it with
-// arena_new, usually in init, into arena fields of the state, and never copy one.
+// arena_new, usually in init, into orb_arena fields of the state, and never copy one.
+// alloc returns count zeroed elements of size bytes. A full list grows through
+// list_resize, given the arena that holds it, the list's address, the new capacity,
+// and the size of one element:
+//     u32 cap = path.cap ? path.cap * 2 : 8;
+//     if (path.len == path.cap && !orb->list_resize(&self->battle, &path, cap, sizeof *path.elems))
+//         return;
+//     path.elems[path.len++] = step;
+// list_resize leaves the new elements unzeroed and refuses a cap below len.
 // frame_arena is cleared before each update: draw sees what the last update
 // allocated, and what draw allocates is released when it returns, so draw does not
-// grow a list update made. Calls that return a list allocate it in frame_arena.
-// orb_config.memory sizes both; exhausting one returns false or nullptr and logs
-// once. A list holds pointers, so a save writes its elements, not the list.
+// resize a list update made. Calls that return a list allocate it in frame_arena.
+// orb_config.memory sizes both. A call that does not fit returns false or nullptr and
+// sets the arena's failed; orb logs an arena's first failure and the first time its
+// peak passes 90%. A list holds pointers, so a save writes its elements, not the list.
 // A state reset (a changed version, state size, pool, or memory) clears both arenas. A
 // call that returns a list whose result does not fit traps in a debug build and returns an
 // empty list in a release build.
@@ -511,14 +520,18 @@ typedef void (*orb_entity_fn)(void* state, const orb_api* orb, orb_entity_id id)
 // and your input is empty.
 typedef void (*orb_command_fn)(void* state, const orb_api* orb, int argc, const char* const* argv);
 typedef struct orb_api {
-    arena* global_arena;
-    arena* frame_arena;
+    orb_arena* global_arena;
+    orb_arena* frame_arena;
+    bool (*arena_new)(orb_arena* out, orb_arena* parent, const char* name, usize size);
+    void (*arena_clear)(orb_arena* region);
+    void* (*alloc)(orb_arena* region, usize count, usize size);
+    bool (*list_resize)(orb_arena* region, void* list, u32 cap, usize size);
 
     void (*pal_reset)(void);
     void (*pal_set)(int index, u8 r, u8 g, u8 b);
     u32 (*pal_get)(int index);
 
-    void (*clear_screen)(u8 index);
+    void (*clear)(u8 index);
     void (*camera_set)(orb_vec2f at);
     orb_camera (*camera_update)(orb_camera camera);
 
@@ -638,6 +651,9 @@ typedef struct orb_memory {
     usize global; // orb->global_arena; 0 means 1 MB
     usize frame;  // orb->frame_arena; 0 means 256 KB
 } orb_memory;
+
+constexpr usize KB = 1024;
+constexpr usize MB = 1024 * KB;
 
 // Reload rules. orb reloads game code and recasts art while the game runs, and
 // three rules keep that safe:

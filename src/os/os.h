@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <string.h>
 
+orb_span(u8);
+
 constexpr u64 ORB_AUDIO_TICK_NS = 20000000;
 constexpr u64 ORB_PAD_SCAN_NS = ORB_NS_PER_SECOND;
 constexpr int ORB_PATH_MAX = 600;
@@ -75,9 +77,11 @@ int orb_os_key_position(u32 codepoint);
 
 void orb_os_close(void);
 
+typedef void (*orb_os_fn)(void);
+
 orb_os_library* orb_os_dlopen(const char* path);
 void orb_os_dlclose(orb_os_library* lib);
-void* orb_os_dlsym(orb_os_library* lib, const char* name);
+orb_os_fn orb_os_dlsym(orb_os_library* lib, const char* name);
 
 bool orb_os_stat(const char* path, orb_os_info* out);
 FILE* orb_os_fopen(const char* path, const char* mode); // "rb" or "wb"
@@ -88,7 +92,7 @@ int orb_os_read_dir(const char* dir, orb_os_entry* out, int max); // unsorted, n
 // A listing is sorted by name; a missing directory is empty.
 u64 orb_os_file_mtime(const char* path);
 int orb_os_list_dir(const char* dir, orb_os_entry* out, int max);
-bool orb_os_read_file(const char* path, arena* into, u8_span* out);
+bool orb_os_read_file(const char* path, orb_arena* into, u8_span* out);
 bool orb_os_write_file(const char* path, u8_span data);
 bool orb_path_absolute(const char* path);
 void orb_path_join(orb_path out, const char* dir, const char* rel);

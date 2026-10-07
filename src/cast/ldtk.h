@@ -7,12 +7,14 @@
 #include "../orb.h"
 #include "file.h"
 
+orb_span(u8);
+
 typedef struct orb_ldtk_tile {
     u16 cell_x, cell_y, id;
     u8 flip;
 } orb_ldtk_tile;
 
-span(orb_ldtk_tile);
+orb_span(orb_ldtk_tile);
 
 typedef struct orb_ldtk_layer {
     const char* name;
@@ -28,7 +30,7 @@ typedef struct orb_ldtk_neighbor {
     orb_level_dir dir;
 } orb_ldtk_neighbor;
 
-slice(orb_ldtk_neighbor);
+orb_slice(orb_ldtk_neighbor);
 
 typedef union orb_ldtk_value {
     i32 integer;
@@ -38,7 +40,7 @@ typedef union orb_ldtk_value {
     orb_vec2 point;     // world pixels
 } orb_ldtk_value;
 
-slice(orb_ldtk_value);
+orb_slice(orb_ldtk_value);
 
 typedef struct orb_ldtk_field {
     const char* name;
@@ -46,18 +48,18 @@ typedef struct orb_ldtk_field {
     orb_ldtk_value_slice values;
 } orb_ldtk_field;
 
-list(orb_ldtk_field);
+orb_slice(orb_ldtk_field);
 
 typedef struct orb_ldtk_instance {
     const char* iid;
-    int def;                    // index into orb_ldtk.entity_defs
-    int x, y, width, height;    // world pixels
-    orb_ldtk_field_list fields; // the non-null values the definition declares
+    int def;                     // index into orb_ldtk.entity_defs
+    int x, y, width, height;     // world pixels
+    orb_ldtk_field_slice fields; // the non-null values the definition declares
 } orb_ldtk_instance;
 
-slice(orb_ldtk_instance);
+orb_slice(orb_ldtk_instance);
 
-slice(orb_ldtk_layer);
+orb_slice(orb_ldtk_layer);
 
 typedef struct orb_ldtk_level {
     const char *name, *iid,
@@ -68,14 +70,14 @@ typedef struct orb_ldtk_level {
     orb_ldtk_instance_slice instances; // every Entities layer's, bottom to top
 } orb_ldtk_level;
 
-slice(orb_ldtk_level);
+orb_slice(orb_ldtk_level);
 
 typedef struct orb_ldtk_tileset {
     const char* path;
     int uid, grid, spacing, padding, columns, rows, width, height;
 } orb_ldtk_tileset;
 
-list(orb_ldtk_tileset);
+orb_slice(orb_ldtk_tileset);
 
 typedef struct orb_ldtk_layer_def {
     const char* name;
@@ -84,7 +86,7 @@ typedef struct orb_ldtk_layer_def {
     bool scaling;
 } orb_ldtk_layer_def;
 
-slice(orb_ldtk_layer_def);
+orb_slice(orb_ldtk_layer_def);
 
 // A tileset definition dropped from orb_ldtk.tilesets: no relPath, or one that
 // does not end in .aseprite (path is nullptr for the former).
@@ -93,36 +95,36 @@ typedef struct orb_ldtk_skipped {
     const char* path;
 } orb_ldtk_skipped;
 
-list(orb_ldtk_skipped);
+orb_slice(orb_ldtk_skipped);
 
-list(field_names, const char*);
+orb_slice(field_names, const char*);
 
 typedef struct orb_ldtk_entity_def {
     const char* name;
     int uid, width, height;
-    field_names_list field_names; // every declared field, skipped kinds included
-    orb_ldtk_field_list fields;   // the non-null defaults
+    field_names_slice field_names; // every declared field, skipped kinds included
+    orb_ldtk_field_slice fields;   // the non-null defaults
 } orb_ldtk_entity_def;
 
-slice(orb_ldtk_entity_def);
+orb_slice(orb_ldtk_entity_def);
 
 typedef struct orb_ldtk {
-    orb_ldtk_tileset_list tilesets; // definitions with an .aseprite relPath; others are skipped
-    orb_ldtk_skipped_list skipped;
+    orb_ldtk_tileset_slice tilesets; // definitions with an .aseprite relPath; others are skipped
+    orb_ldtk_skipped_slice skipped;
     orb_ldtk_layer_def_slice layer_defs;
     orb_ldtk_entity_def_slice entity_defs;
     orb_ldtk_level_slice levels;
 } orb_ldtk;
 
 [[nodiscard]] bool orb_ldtk_parse(
-    arena* scratch,
+    orb_arena* scratch,
     u8_span text,
     const char* name,
     orb_ldtk* out,
     orb_error* err
 );
 [[nodiscard]] bool orb_ldtk_parse_level(
-    arena* scratch,
+    orb_arena* scratch,
     u8_span text,
     const char* name,
     const orb_ldtk* project,

@@ -24,7 +24,7 @@ static orb_pal api_pal;
 static orb_mixer api_mixer = ORB_MIXER_INIT;
 static orb_assets api_views[2]; // the mixer reads one; a publish fills the other and swaps
 static int api_view;
-static arena api_global_arena, api_frame_arena;
+static orb_arena api_global_arena, api_frame_arena;
 
 static void api_pal_reset(void) {
     orb_pal_reset(&api_pal);
@@ -38,7 +38,7 @@ static u32 api_pal_get(int index) {
     return orb_pal_get(&api_pal, index);
 }
 
-static void api_clear_screen(u8 index) {
+static void api_clear(u8 index) {
     orb_fb_clear(&api_fb, index);
 }
 
@@ -222,10 +222,14 @@ static void api_volume_set(orb_volumes volumes) {
 static const orb_api api_table = {
     .global_arena = &api_global_arena,
     .frame_arena = &api_frame_arena,
+    .arena_new = orb_arena_new,
+    .arena_clear = orb_arena_clear,
+    .alloc = orb_arena_alloc,
+    .list_resize = orb_arena_list_resize,
     .pal_reset = api_pal_reset,
     .pal_set = api_pal_set,
     .pal_get = api_pal_get,
-    .clear_screen = api_clear_screen,
+    .clear = api_clear,
     .camera_set = api_camera_set,
     .camera_update = api_camera_update,
     .sprite_find = api_sprite_find,
@@ -313,11 +317,11 @@ static const orb_api api_table = {
     .console_open = orb_console_open,
 };
 
-arena* orb_api_global(void) {
+orb_arena* orb_api_global(void) {
     return &api_global_arena;
 }
 
-arena* orb_api_frame(void) {
+orb_arena* orb_api_frame(void) {
     return &api_frame_arena;
 }
 
@@ -358,7 +362,7 @@ static void api_publish(void) {
 
 // The mixer needs no step here: it is a static built from ORB_MIXER_INIT, and the
 // audio thread it serves is the OS layer's.
-void orb_api_boot(arena* out, orb_size size, const orb_assets* assets) {
+void orb_api_boot(orb_arena* out, orb_size size, const orb_assets* assets) {
     orb_fb_init(&api_fb, out, size);
     orb_api_set_assets(assets);
 }
@@ -390,7 +394,7 @@ void orb_api_quit(void) {
     api_assets = (orb_asset_table) {};
     api_fb = (orb_fb) {};
     api_mixer = (orb_mixer)ORB_MIXER_INIT;
-    api_global_arena = api_frame_arena = (arena) {};
+    api_global_arena = api_frame_arena = (orb_arena) {};
 }
 
 bool orb_audio_idle(u64 elapsed_ns, u64* rendered) {

@@ -7,7 +7,7 @@
 
 int main(void) {
     static alignas(16) u8 scratch_mem[4 << 20], out_mem[1 << 20];
-    arena scratch, out;
+    orb_arena scratch, out;
 
     orb_arena_init(&scratch, "scratch", scratch_mem, sizeof scratch_mem);
     orb_arena_init(&out, "out", out_mem, sizeof out_mem);
@@ -261,8 +261,8 @@ int main(void) {
         " \"palette\": \"" ART "art/palette.aseprite\", \"art\": \"" ART "art\",\n"
         " \"sfx\": \"" ART "sfx\", \"music\": \"" ART "music\", \"songs\": {\"loop\": 120}}\n";
     CHECK(orb_os_write_file(DIR "/orb.json", (u8_span) {(u8*)no_project, strlen(no_project)}));
-    arena_clear(&scratch);
-    arena_clear(&out);
+    orb_arena_clear(&scratch);
+    orb_arena_clear(&out);
     CHECK(orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
     CHECK(orb_file_load(result.file, &assets, &err));
     CHECK_EQ(assets.levels.len, 0);
@@ -279,8 +279,8 @@ int main(void) {
         "{\"id\": \"bare\", \"name\": \"Bare\", \"size\": [64, 32],\n"
         " \"palette\": \"" ART "art/palette.aseprite\", \"world\": \"w.ldtk\"}\n";
     CHECK(orb_os_write_file(DIR "/orb.json", (u8_span) {(u8*)bare_world, strlen(bare_world)}));
-    arena_clear(&scratch);
-    arena_clear(&out);
+    orb_arena_clear(&scratch);
+    orb_arena_clear(&out);
     CHECK(orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
     CHECK(orb_file_load(result.file, &assets, &err));
     CHECK_EQ(assets.levels.len, 0);
@@ -341,8 +341,8 @@ int main(void) {
     CHECK(
         orb_os_write_file(DIR "/orb.json", (u8_span) {(u8*)stack_manifest, strlen(stack_manifest)})
     );
-    arena_clear(&scratch);
-    arena_clear(&out);
+    orb_arena_clear(&scratch);
+    orb_arena_clear(&out);
     CHECK(!orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
     CHECK(strstr(err.text, "sub-layers") != nullptr);
 
@@ -351,8 +351,8 @@ int main(void) {
     CHECK(orb_os_write_file(
         DIR "/levels/world.ldtk", (u8_span) {(u8*)stack_project, (usize)mismatch_len}
     ));
-    arena_clear(&scratch);
-    arena_clear(&out);
+    orb_arena_clear(&scratch);
+    orb_arena_clear(&out);
     CHECK(!orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
     CHECK(strstr(err.text, "32x16") != nullptr);
 
@@ -374,8 +374,8 @@ int main(void) {
         DIR "/levels/world.ldtk",
         (u8_span) {(u8*)duplicate_names_project, strlen(duplicate_names_project)}
     ));
-    arena_clear(&scratch);
-    arena_clear(&out);
+    orb_arena_clear(&scratch);
+    orb_arena_clear(&out);
     CHECK(!orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
     CHECK(strstr(err.text, "share a name") != nullptr);
 
@@ -393,8 +393,8 @@ int main(void) {
         DIR "/levels/world.ldtk",
         (u8_span) {(u8*)bad_neighbor_project, strlen(bad_neighbor_project)}
     ));
-    arena_clear(&scratch);
-    arena_clear(&out);
+    orb_arena_clear(&scratch);
+    orb_arena_clear(&out);
     CHECK(!orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
     CHECK(strstr(err.text, "not a level") != nullptr);
 
@@ -410,7 +410,7 @@ int main(void) {
 
     if (orb_os_stat(sample_project, &sample_info)) {
         static u8 big_scratch[48 << 20], big_out[8 << 20];
-        arena sample_scratch, sample_out;
+        orb_arena sample_scratch, sample_out;
         orb_arena_init(&sample_scratch, "scratch", big_scratch, sizeof big_scratch);
         orb_arena_init(&sample_out, "out", big_out, sizeof big_out);
         // the tileset file doubles as the palette, so every color matches
@@ -542,7 +542,7 @@ int main(void) {
     CHECK(strstr(err.text, "orb.json") != nullptr);
 
     static alignas(16) u8 tiny_mem[4096];
-    arena tiny;
+    orb_arena tiny;
     orb_arena_init(&tiny, "cast scratch", tiny_mem, sizeof tiny_mem);
     CHECK(!orb_cast_game(&tiny, &out, DIR, &manifest, &result, &err));
     CHECK(strstr(err.text, "cast scratch") != nullptr);
@@ -589,8 +589,8 @@ int main(void) {
     CHECK(orb_os_write_file(
         "build/scratch/badref/world.ldtk", (u8_span) {(const u8*)badref_world, strlen(badref_world)}
     ));
-    arena_clear(&scratch);
-    arena_clear(&out);
+    orb_arena_clear(&scratch);
+    orb_arena_clear(&out);
     CHECK(!orb_cast_game(&scratch, &out, "build/scratch/badref", &manifest, &result, &err));
     CHECK(strstr(err.text, "level Hall: entity Door: field to: ref nowhere"));
 
@@ -632,8 +632,8 @@ int main(void) {
         "build/scratch/badloop/orb.json",
         (u8_span) {(const u8*)badloop_manifest, strlen(badloop_manifest)}
     ));
-    arena_clear(&scratch);
-    arena_clear(&out);
+    orb_arena_clear(&scratch);
+    orb_arena_clear(&out);
     orb_log_clear();
     CHECK(orb_cast_game(&scratch, &out, "build/scratch/badloop", &manifest, &result, &err));
     CHECK(strstr(orb_log_line(0), "bad.wav") != nullptr);
@@ -644,6 +644,119 @@ int main(void) {
     CHECK_EQ(badloop_as.samples.len, 1);
     CHECK_EQ(badloop_as.samples.elems[0].loop_start, 0);
     CHECK_EQ(badloop_as.samples.elems[0].loop_end, 0);
+
+    // tags may overlap, so the durations run past one per frame: 2000 tags over
+    // both frames of the player art are 4000 durations
+    {
+        u8_span original;
+        CHECK(orb_os_read_file("tests/fixtures/art/player.aseprite", &scratch, &original));
+
+        constexpr usize frame_at = 128;
+        constexpr u32 tag_count = 2000;
+        u32 first_frame_size = orb_bytes_u32(original.elems + frame_at);
+        u8* tagged = orb_arena_push(&scratch, original.len + 6 + 10 + tag_count * 32, 1);
+        usize at = frame_at + first_frame_size;
+        usize chunk_at = at;
+
+        memcpy(tagged, original.elems, at);
+        at += 6; // chunk size and type, filled in below
+        memset(tagged + at, 0, 10);
+        tagged[at] = (u8)(tag_count & 0xff);
+        tagged[at + 1] = (u8)(tag_count >> 8);
+        at += 10;
+
+        for (u32 tag = 0; tag < tag_count; tag++) {
+            char name[16];
+            int name_len = snprintf(name, sizeof name, "x%u", tag);
+
+            memset(tagged + at, 0, 19);
+            tagged[at + 2] = 1; // to: the second frame
+            tagged[at + 17] = (u8)name_len;
+            memcpy(tagged + at + 19, name, (usize)name_len);
+            at += 19 + (usize)name_len;
+        }
+
+        u32 chunk_size = (u32)(at - chunk_at);
+
+        memcpy(tagged + chunk_at, &chunk_size, 4);
+        tagged[chunk_at + 4] = 0x18;
+        tagged[chunk_at + 5] = 0x20;
+        memcpy(
+            tagged + at, original.elems + frame_at + first_frame_size,
+            original.len - frame_at - first_frame_size
+        );
+
+        u32 grown_frame_size = first_frame_size + chunk_size;
+        u32 new_chunk_count = orb_bytes_u32(original.elems + frame_at + 12) + 1;
+        u32 total = (u32)(original.len + chunk_size);
+
+        memcpy(tagged + frame_at, &grown_frame_size, 4);
+        tagged[frame_at + 6] = (u8)new_chunk_count;
+        memcpy(tagged + frame_at + 12, &new_chunk_count, 4);
+        memcpy(tagged, &total, 4);
+        at += original.len - frame_at - first_frame_size;
+
+        CHECK(orb_os_make_dir("build/scratch/tagart"));
+        CHECK(orb_os_make_dir("build/scratch/tagart/art"));
+        CHECK(
+            orb_os_write_file("build/scratch/tagart/art/player.aseprite", (u8_span) {tagged, at})
+        );
+
+        const char* tag_manifest =
+            "{\"id\": \"tagart\", \"name\": \"t\", \"size\": [8, 8],\n"
+            " \"palette\": \"" ART "art/palette.aseprite\", \"art\": \"art\"}\n";
+        CHECK(orb_os_write_file(
+            "build/scratch/tagart/orb.json",
+            (u8_span) {(const u8*)tag_manifest, strlen(tag_manifest)}
+        ));
+        orb_arena_clear(&scratch);
+        orb_arena_clear(&out);
+        CHECK(orb_cast_game(&scratch, &out, "build/scratch/tagart", &manifest, &result, &err));
+
+        orb_assets tagged_as;
+        CHECK(orb_file_load(result.file, &tagged_as, &err));
+        CHECK_EQ(tagged_as.anims.len, tag_count);
+        CHECK_EQ(tagged_as.durations.len, 2 * tag_count);
+        CHECK_EQ(tagged_as.sprites.len, 2);
+
+        for (u32 tag = 0; tag < tag_count; tag++) {
+            char name[16];
+
+            snprintf(name, sizeof name, "x%u", tag);
+            CHECK(tagged_as.anim_ids[tag] == orb_asset_id("player", name));
+            CHECK_EQ(tagged_as.anims.elems[tag].first_duration, 2 * tag);
+        }
+    }
+
+    // two walks over one directory note its files once but list them twice, so
+    // the list refuses at its own cap
+    {
+        const char* beep_path = "tests/fixtures/sfx/beep.wav";
+        u8_span beep;
+        CHECK(orb_os_read_file(beep_path, &scratch, &beep));
+        CHECK(orb_os_make_dir("build/scratch/overlap"));
+        CHECK(orb_os_make_dir("build/scratch/overlap/sfx"));
+
+        for (int i = 0; i < 1000; i++) {
+            char path[64];
+
+            snprintf(path, sizeof path, "build/scratch/overlap/sfx/w%04d.wav", i);
+            CHECK(orb_os_write_file(path, beep));
+        }
+
+        const char* overlap_manifest =
+            "{\"id\": \"overlap\", \"name\": \"o\", \"size\": [8, 8],\n"
+            " \"palette\": \"" ART "art/palette.aseprite\", \"art\": \"" ART "art\",\n"
+            " \"sfx\": \"sfx\", \"music\": \"sfx\"}\n";
+        CHECK(orb_os_write_file(
+            "build/scratch/overlap/orb.json",
+            (u8_span) {(const u8*)overlap_manifest, strlen(overlap_manifest)}
+        ));
+        orb_arena_clear(&scratch);
+        orb_arena_clear(&out);
+        CHECK(!orb_cast_game(&scratch, &out, "build/scratch/overlap", &manifest, &result, &err));
+        CHECK(strstr(err.text, "more than 1024 files of one kind") != nullptr);
+    }
 
     return 0;
 }

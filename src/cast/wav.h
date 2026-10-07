@@ -4,6 +4,8 @@
 #include "../core/log.h"
 #include "../orb.h"
 
+orb_span(u8);
+
 typedef struct orb_wav {
     u8_span data;             // the file's data chunk, valid while the file bytes are
     u32 count;                // frames

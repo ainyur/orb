@@ -42,9 +42,9 @@ typedef struct console_bind {
 
 static void* console_state;
 static const orb_api* console_api;
-array(console_vars, console_var, ORB_CONSOLE_VARS);
-array(console_commands, console_command, ORB_CONSOLE_COMMANDS);
-array(console_binds, console_bind, ORB_CONSOLE_BINDS);
+orb_array(console_vars, console_var, ORB_CONSOLE_VARS);
+orb_array(console_commands, console_command, ORB_CONSOLE_COMMANDS);
+orb_array(console_binds, console_bind, ORB_CONSOLE_BINDS);
 
 static console_vars_array console_vars;
 static console_commands_array console_commands;
@@ -133,12 +133,12 @@ static void console_bind_add(int argc, const char* const* argv) {
     console_bind* bind = console_bind_find(key);
 
     if (!bind) {
-        if (!push(&console_binds, (console_bind) {})) {
+        if (console_binds.len == ORB_CONSOLE_BINDS) {
             orb_log("binds are full");
             return;
         }
 
-        bind = &last(console_binds);
+        bind = &console_binds.elems[console_binds.len++];
     }
 
     bind->key = key;
@@ -156,7 +156,7 @@ static void console_bind_remove(int argc, const char* const* argv) {
 
     if (!bind) return;
 
-    (void)remove_swap(&console_binds, bind - console_binds.elems);
+    *bind = console_binds.elems[--console_binds.len];
 }
 
 static void console_bind_list(int, const char* const*) {
@@ -222,7 +222,10 @@ static void console_var_add(const char* name, console_kind kind, void* at, const
     snprintf(var.name, sizeof var.name, "%s", name);
     snprintf(var.help, sizeof var.help, "%s", help ? help : "");
 
-    if (!push(&console_vars, var)) orb_log("console: no room for \"%s\"", name);
+    if (console_vars.len < ORB_CONSOLE_VARS)
+        console_vars.elems[console_vars.len++] = var;
+    else
+        orb_log("console: no room for \"%s\"", name);
 }
 
 static bool console_var_set(console_var* var, const char* text) {
@@ -574,7 +577,10 @@ void orb_console_command(const char* name, orb_command_fn fn, const char* help) 
     snprintf(command.name, sizeof command.name, "%s", name);
     snprintf(command.help, sizeof command.help, "%s", help ? help : "");
 
-    if (!push(&console_commands, command)) orb_log("console: no room for \"%s\"", name);
+    if (console_commands.len < ORB_CONSOLE_COMMANDS)
+        console_commands.elems[console_commands.len++] = command;
+    else
+        orb_log("console: no room for \"%s\"", name);
 }
 
 void orb_console_boot(void* state, const orb_api* api) {

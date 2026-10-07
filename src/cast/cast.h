@@ -4,13 +4,15 @@
 #include "../core/log.h"
 #include "../orb.h"
 
+orb_span(u8);
+
 constexpr int ORB_CAST_MAX_READS = 1024;
 
-list(reads, const char*);
+orb_slice(reads, const char*);
 
 typedef struct orb_cast_result {
     u8_span file;
-    reads_list reads; // every file the cast read, relative to game_dir, once each, in order
+    reads_slice reads; // every file the cast read, relative to game_dir, once each, in order
 } orb_cast_result;
 
 typedef struct orb_manifest_song {
@@ -18,7 +20,7 @@ typedef struct orb_manifest_song {
     const char* stem;
 } orb_manifest_song;
 
-list(orb_manifest_song);
+orb_slice(orb_manifest_song);
 
 // orb.json. id, name, and size are required; the rest default to the layout
 // art/palette.aseprite, art/, fonts/, sfx/, music/, and levels/world.ldtk. The
@@ -33,20 +35,20 @@ typedef struct orb_manifest {
     const char* sfx;
     const char* music;
     const char* world;
-    orb_manifest_song_span songs;
+    orb_manifest_song_slice songs;
     orb_size size;
 } orb_manifest;
 
 [[nodiscard]] bool orb_cast_game(
-    arena* scratch,
-    arena* out,
+    orb_arena* scratch,
+    orb_arena* out,
     const char* game_dir,
     orb_manifest* manifest, // loaded by the cast, so the caller reads what it cast from
     orb_cast_result* result,
     orb_error* err
 );
 [[nodiscard]] bool orb_manifest_load(
-    arena* out,
+    orb_arena* out,
     const char* game_dir,
     orb_manifest* manifest,
     orb_error* err

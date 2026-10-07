@@ -11,7 +11,7 @@ static const u8 pal_ase[] = {
 
 int main(void) {
     static u8 mem[1 << 20];
-    arena scratch;
+    orb_arena scratch;
     orb_arena_init(&scratch, "test", mem, sizeof mem);
     orb_error err;
 

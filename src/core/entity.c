@@ -11,7 +11,7 @@
 #include <string.h>
 
 static orb_pool entity_pool;
-static arena* entity_region;
+static orb_arena* entity_region;
 static void* entity_state;
 static const orb_api* entity_api;
 static const orb_assets* entity_assets;
@@ -171,7 +171,7 @@ static bool entity_listed(u32 slot, u32 type) {
 }
 
 // Live, non-despawning handles, all or of one type index, in slot order.
-static orb_entity_id_list entity_list(arena* out, const char* call, u32 type) {
+static orb_entity_id_list entity_list(orb_arena* out, const char* call, u32 type) {
     u32 count = 0;
 
     for (u32 slot = 0; slot < entity_pool.max; slot++)
@@ -294,11 +294,11 @@ orb_vec2f orb_entity_world_at(orb_entity_id id) {
     return (orb_vec2f) {parent->at.x + entity->at.x, parent->at.y + entity->at.y};
 }
 
-orb_entity_id_list orb_entity_all(arena* out) {
+orb_entity_id_list orb_entity_all(orb_arena* out) {
     return entity_list(out, "entity_all", ORB_NO_INDEX);
 }
 
-orb_entity_id_list orb_entity_of_type(arena* out, orb_type type) {
+orb_entity_id_list orb_entity_of_type(orb_arena* out, orb_type type) {
     u32 index = entity_type_index(type);
 
     return index == ORB_NO_INDEX ? (orb_entity_id_list) {}
@@ -716,7 +716,7 @@ bool orb_entity_reset(const orb_config* config) {
 
     if (orb_entity_region_size(config) > entity_region->size) return false;
 
-    arena_clear(entity_region);
+    orb_arena_clear(entity_region);
 
     orb_pool* pool = &entity_pool;
 
@@ -749,7 +749,7 @@ bool orb_entity_reset(const orb_config* config) {
 }
 
 void orb_entity_boot(
-    arena* region,
+    orb_arena* region,
     const orb_config* config,
     void* state,
     const orb_api* api,

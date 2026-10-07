@@ -125,7 +125,7 @@ static const char* level_a(
 
 #define GOOD_A level_a("null", INSTANCES, "1", "7", "0, 1", "5", "1", "<")
 
-static bool fails_with(arena* scratch, u8_span json, const char* needle) {
+static bool fails_with(orb_arena* scratch, u8_span json, const char* needle) {
     orb_ldtk parsed;
     orb_error err;
 
@@ -136,7 +136,7 @@ static bool fails_with(arena* scratch, u8_span json, const char* needle) {
 
 int main(void) {
     static alignas(16) u8 mem[4 << 20];
-    arena scratch;
+    orb_arena scratch;
     orb_arena_init(&scratch, "test", mem, sizeof mem);
     orb_ldtk world;
     orb_error err;
@@ -631,6 +631,38 @@ int main(void) {
         world.levels.elems[0].layers.elems[1].tiles.len, 23
     ); // 20 border tiles + 2 seconds + 1 third
     CHECK_EQ(world.levels.elems[0].layers.elems[2].offset_x, 2);
+
+    // a required string that is null is an error naming the key, not a crash
+    static const char null_version[] = "{\"jsonVersion\": null}";
+    CHECK(fails_with(
+        &scratch, (u8_span) {(const u8*)null_version, sizeof null_version - 1}, "jsonVersion"
+    ));
+
+    u8_span null_type = project("true", "", "tiles.aseprite", "0.5", "0.25", "false", both);
+    char* type_key = strstr((char*)null_type.elems, "\"__type\": \"Entities\", \"layerDefUid\"");
+
+    CHECK(type_key != nullptr);
+    memcpy(type_key + 10, "null      ", 10);
+    CHECK(fails_with(&scratch, null_type, "__type"));
+
+    u8_span null_identifier = project("true", "", "tiles.aseprite", "0.5", "0.25", "false", both);
+    char* identifier_key = strstr((char*)null_identifier.elems, "\"identifier\": \"Room\"");
+
+    CHECK(identifier_key != nullptr);
+    memcpy(identifier_key + 14, "null  ", 6);
+    CHECK(fails_with(&scratch, null_identifier, "identifier"));
+
+    // a null externalRelPath is read as absent: it fails as a missing path, not a crash
+    CHECK(fails_with(
+        &scratch,
+        project(
+            "true", "", "tiles.aseprite", "0.5", "0.25", "false",
+            "{\"identifier\": \"Bare\", \"iid\": \"ccc\", \"worldX\": 0, \"worldY\": 0,"
+            " \"pxWid\": 8, \"pxHei\": 8, \"bgRelPath\": null, \"externalRelPath\": null,"
+            " \"__neighbours\": [], \"layerInstances\": null}"
+        ),
+        "neither layerInstances nor externalRelPath"
+    ));
 
     return 0;
 }

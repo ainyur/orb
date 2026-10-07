@@ -175,7 +175,7 @@ static void debug_watch_depfile(u8_span text) {
 static bool debug_watch_sources(void) {
     static orb_os_entry entries[DEBUG_MAX_WATCHES];
     orb_path build;
-    arena scratch;
+    orb_arena scratch;
 
     orb_path_join(build, debug_dir, "build");
     orb_arena_init(&scratch, "depfile", debug_depfile_mem, sizeof debug_depfile_mem);
@@ -201,7 +201,7 @@ static bool debug_watch_sources(void) {
         if (!orb_has_suffix(entries[i].name, ".d")) continue;
 
         orb_path_join(path, build, entries[i].name);
-        arena_clear(&scratch);
+        orb_arena_clear(&scratch);
 
         if (!orb_os_read_file(path, &scratch, &text)) orb_fatal("cannot read %s", path);
 
@@ -275,7 +275,7 @@ static void debug_command_watch(void*, const orb_api*, int, const char* const*) 
     orb_log("%d sources, %d assets", debug_sources.count, debug_assets.count);
 }
 
-static void debug_memory_line(const arena* region) {
+static void debug_memory_line(const orb_arena* region) {
     orb_log(
         "%s: %s used, %s peak, %s size", region->name, orb_bytes_format(region->used).text,
         orb_bytes_format(region->peak).text, orb_bytes_format(region->size).text
@@ -352,7 +352,7 @@ static int debug_finish(void) {
 
 int orb_debug_cast(const char* dir, bool seal, const char* out_path) {
     static u8 boot_mem[1 << 18];
-    arena boot;
+    orb_arena boot;
     orb_arena_init(&boot, "boot", boot_mem, sizeof boot_mem);
     orb_error err;
     orb_manifest manifest;
@@ -362,7 +362,7 @@ int orb_debug_cast(const char* dir, bool seal, const char* out_path) {
         return 1;
     }
 
-    arena scratch, out;
+    orb_arena scratch, out;
 
     if (!orb_arena_reserve(&scratch, "cast scratch", ORB_REGION_RESERVE) ||
         !orb_arena_reserve(&out, "asset", ORB_REGION_RESERVE)) {

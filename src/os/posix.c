@@ -99,8 +99,8 @@ void orb_os_dlclose(orb_os_library* lib) {
     dlclose(lib);
 }
 
-void* orb_os_dlsym(orb_os_library* lib, const char* name) {
-    return dlsym(lib, name);
+orb_os_fn orb_os_dlsym(orb_os_library* lib, const char* name) {
+    return (orb_os_fn)dlsym(lib, name);
 }
 
 void orb_os_sleep(u64 duration_ns) {

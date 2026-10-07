@@ -10,12 +10,12 @@ static int expect_advance(int n) {
     return (int[]) {2, 4, 5, 2}[n % 4];
 }
 
-static arena scratch, out;
+static orb_arena scratch, out;
 
 // dir names the fonts directory, relative to DIR (as orb.json's "fonts" key is).
 static bool cast_fonts(const char* dir, orb_assets* assets, orb_error* err) {
-    arena_clear(&scratch);
-    arena_clear(&out);
+    orb_arena_clear(&scratch);
+    orb_arena_clear(&out);
 
     static char json[512];
 

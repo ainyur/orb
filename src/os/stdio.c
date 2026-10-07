@@ -15,7 +15,7 @@ int orb_os_list_dir(const char* dir, orb_os_entry* out, int max) {
     return n;
 }
 
-bool orb_os_read_file(const char* path, arena* into, u8_span* out) {
+bool orb_os_read_file(const char* path, orb_arena* into, u8_span* out) {
     orb_os_info info;
 
     if (!orb_os_stat(path, &info)) return false;
