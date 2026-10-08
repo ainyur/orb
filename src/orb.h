@@ -498,7 +498,15 @@ typedef void (*orb_entity_fn)(void* state, const orb_api* orb, orb_entity_id id)
 //     if (path.len == path.cap && !orb->list_resize(&self->battle, &path, cap, sizeof *path.elems))
 //         return;
 //     path.elems[path.len++] = step;
-// list_resize leaves the new elements unzeroed and refuses a cap below len.
+// list_resize leaves the new elements unzeroed and refuses a cap below len. A list whose
+// storage ends at its arena's top resizes in place, so a list that is the only allocation
+// in its arena never moves and pointers into it stay valid. Writing back a used read
+// earlier rewinds an arena, releasing everything allocated or resized since:
+//     usize mark = orb->frame_arena->used;
+//     ...
+//     orb->frame_arena->used = mark;
+// Between the two the arena is not cleared and no arena is made, and nothing allocated or
+// resized between them is used after the write.
 // frame_arena is cleared before each update: draw sees what the last update
 // allocated, and what draw allocates is released when it returns, so draw does not
 // resize a list update made. Calls that return a list allocate it in frame_arena.
