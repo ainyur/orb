@@ -43,5 +43,6 @@ jobs:
       - run: make release GAME=examples/demo
       # mingw's own DLLs, such as libssp-0.dll and libwinpthread-1.dll, are not on a player's machine.
       - run: |
-          objdump -p bin/orb.exe examples/demo/bin/demo.exe > imports.txt
-          ! grep -i "DLL Name: lib" imports.txt
+          objdump -p bin/orb.exe > orb.txt
+          objdump -p examples/demo/bin/demo.exe > demo.txt
+          ! grep -i "DLL Name: lib" orb.txt demo.txt

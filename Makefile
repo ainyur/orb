@@ -4,14 +4,14 @@ ifeq ($(OS),Windows_NT)
 CC       := gcc
 CFLAGS   := -std=c23 -D_WIN32_WINNT=0x0A00 -Wall -Wextra -Wformat=2
 BACKEND  := -DORB_OS_GDI
-LIBS     := -lgdi32 -lole32 -lshell32
+LIBS     := -static -lgdi32 -lole32 -lshell32
 TESTLIBS := -lshell32
 ORB      := bin/orb.exe
 LIB      := dll
 OBJ      := obj
 EXE      := .exe
 HARDEN   := -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -fstack-protector-strong
-HARDEN_LD := -static
+HARDEN_LD :=
 else
 CC       := gcc
 CFLAGS   := -std=c23 -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Wformat=2
@@ -29,13 +29,13 @@ endif
 
 $(WIN): private CFLAGS   := -std=c23 -D_WIN32_WINNT=0x0A00 -Wall -Wextra -Wformat=2
 $(WIN): private BACKEND  := -DORB_OS_GDI
-$(WIN): private LIBS     := -lgdi32 -lole32 -lshell32
+$(WIN): private LIBS     := -static -lgdi32 -lole32 -lshell32
 $(WIN): private TESTLIBS := -lshell32
 $(WIN): private LIB      := dll
 $(WIN): private OBJ      := obj
 $(WIN): private EXE      := .exe
 $(WIN): private HARDEN   := -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -fstack-protector-strong
-$(WIN): private HARDEN_LD := -static
+$(WIN): private HARDEN_LD :=
 
 SRC      := $(wildcard src/*.c src/*/*.c src/*.h src/*/*.h)
 TESTS    := $(patsubst tests/%.c,build/%,$(wildcard tests/test_*.c))
