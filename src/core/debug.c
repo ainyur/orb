@@ -337,6 +337,8 @@ static int debug_boot(const char* game_dir, orb_size window) {
 
     if (!orb_boot(game, game_dir, (u8_span) {}, window, &err)) {
         orb_log("%s", err.text);
+        orb_os_dlclose(debug_lib);
+        remove(debug_copy_path);
         return 1;
     }
 

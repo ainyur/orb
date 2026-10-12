@@ -1,5 +1,7 @@
 #include "text.h"
 
+#include <limits.h>
+
 static const orb_font_desc* text_font(const orb_assets* assets, orb_font font) {
     u32 index = orb_asset_index_of(assets, font);
 
@@ -45,6 +47,7 @@ void orb_text_draw(
     if (!desc || !text) return;
 
     const orb_sheet_desc* sheet = &assets->sheets.elems[desc->sheet];
+    i64 pen = at.x;
 
     for (const unsigned char* c = (const unsigned char*)text; *c; c++) {
         const orb_glyph_desc* glyph = text_glyph(assets, desc, *c);
@@ -53,13 +56,15 @@ void orb_text_draw(
 
         if (glyph->width) {
             const u8* src =
-                assets->pixels.elems + sheet->pixels + glyph->y * sheet->width + glyph->x;
+                assets->pixels.elems + sheet->pixels + (usize)glyph->y * sheet->width + glyph->x;
+            orb_vec2 glyph_at = {(int)orb_clamp(pen, INT_MIN, INT_MAX), at.y};
 
             orb_fb_blit(
-                fb, src, sheet->width, (orb_size) {glyph->width, desc->line_height}, at, 0, remap
+                fb, src, sheet->width, (orb_size) {glyph->width, desc->line_height}, glyph_at, 0,
+                remap
             );
         }
 
-        at.x += glyph->advance;
+        pen += glyph->advance;
     }
 }

@@ -109,6 +109,42 @@ u8_span orb_file_write(orb_arena* out, const orb_assets* in) {
     return (u8_span) {base, (u32)(out->base + out->used - base)};
 }
 
+static bool file_check_images(const orb_assets* out, orb_error* err) {
+    for (u32 i = 0; i < out->sheets.len; i++) {
+        const orb_sheet_desc* sheet = &out->sheets.elems[i];
+
+        if ((u64)sheet->pixels + (u64)sheet->width * sheet->height > out->pixels.len)
+            return orb_error_set(err, "orb file: sheet %u runs past the pixels section", i);
+    }
+
+    for (u32 i = 0; i < out->sprites.len; i++) {
+        const orb_sprite_desc* sprite = &out->sprites.elems[i];
+
+        if (sprite->sheet >= out->sheets.len)
+            return orb_error_set(err, "orb file: sprite %u names sheet %u", i, sprite->sheet);
+
+        const orb_sheet_desc* sheet = &out->sheets.elems[sprite->sheet];
+
+        if ((u32)sprite->x + sprite->width > sheet->width ||
+            (u32)sprite->y + sprite->height > sheet->height)
+            return orb_error_set(err, "orb file: sprite %u leaves its sheet", i);
+    }
+
+    for (u32 i = 0; i < out->anims.len; i++) {
+        const orb_anim_desc* anim = &out->anims.elems[i];
+
+        if (anim->count == 0) return orb_error_set(err, "orb file: anim %u has no frames", i);
+
+        if ((u64)anim->first_duration + anim->count > out->durations.len ||
+            (u64)anim->first_sprite + anim->count > out->sprites.len)
+            return orb_error_set(
+                err, "orb file: anim %u runs past the durations or sprites sections", i
+            );
+    }
+
+    return true;
+}
+
 static bool file_check_audio(const orb_assets* out, orb_error* err) {
     for (u32 i = 0; i < out->samples.len; i++) {
         const orb_sample_desc* sample = &out->samples.elems[i];
@@ -165,6 +201,10 @@ static bool file_check_levels(const orb_assets* out, orb_error* err) {
         if (layer->grid == 0 || area == 0)
             return orb_error_set(err, "orb file: layer %u has an empty grid", i);
 
+        if ((u64)layer->columns * layer->grid > ORB_MAX_WORLD ||
+            (u64)layer->rows * layer->grid > ORB_MAX_WORLD)
+            return orb_error_set(err, "orb file: layer %u is larger than the world", i);
+
         if (layer->sublayers > ORB_MAX_SUBLAYERS)
             return orb_error_set(err, "orb file: layer %u has %u sub-layers", i, layer->sublayers);
 
@@ -180,15 +220,33 @@ static bool file_check_levels(const orb_assets* out, orb_error* err) {
         for (u64 k = 0; layer->sublayers && k < area * layer->sublayers; k++) {
             u16 id = out->tiles.elems[layer->tiles + k] & ORB_TILE_ID_MASK;
 
-            if (id > out->tilesets.elems[layer->tileset].count)
+            const orb_tileset_desc* tileset = &out->tilesets.elems[layer->tileset];
+
+            if (id > tileset->count)
                 return orb_error_set(
                     err, "orb file: layer %u holds tile %u past its tileset", i, id
+                );
+
+            if (!id) continue;
+
+            const orb_sheet_desc* sheet = &out->sheets.elems[tileset->sheet];
+            u64 pitch = (u64)tileset->grid + tileset->spacing;
+            u64 source_x = tileset->padding + (u64)((id - 1) % tileset->columns) * pitch;
+            u64 source_y = tileset->padding + (u64)((id - 1) / tileset->columns) * pitch;
+
+            if (source_x + tileset->grid > sheet->width || source_y + tileset->grid > sheet->height)
+                return orb_error_set(
+                    err, "orb file: layer %u tile %u leaves its tileset's sheet", i, id
                 );
         }
     }
 
     for (u32 i = 0; i < out->levels.len; i++) {
         const orb_level_desc* level = &out->levels.elems[i];
+
+        if (level->world_x < -ORB_MAX_WORLD || level->world_x > ORB_MAX_WORLD ||
+            level->world_y < -ORB_MAX_WORLD || level->world_y > ORB_MAX_WORLD)
+            return orb_error_set(err, "orb file: level %u is outside the world", i);
 
         if ((u32)level->first_layer + level->layer_count > out->layers.len ||
             (u32)level->first_neighbor + level->neighbor_count > out->neighbors.len)
@@ -252,6 +310,10 @@ static bool file_check_entities(const orb_assets* out, orb_error* err) {
                 placement->level
             );
 
+        if (placement->x < -ORB_MAX_WORLD || placement->x > ORB_MAX_WORLD ||
+            placement->y < -ORB_MAX_WORLD || placement->y > ORB_MAX_WORLD)
+            return orb_error_set(err, "orb file: placement %u is outside the world", i);
+
         if ((u64)placement->first_field + placement->field_count > out->fields.len)
             return orb_error_set(err, "orb file: placement %u runs past the fields section", i);
     }
@@ -298,6 +360,7 @@ static bool file_check_entities(const orb_assets* out, orb_error* err) {
 
 bool orb_file_load(u8_span file, orb_assets* out, orb_error* err) {
     if (file.len < sizeof(orb_file_header)) return orb_error_set(err, "orb file: too short");
+    if ((uintptr_t)file.elems & 15) return orb_error_set(err, "orb file: misaligned buffer");
 
     const orb_file_header* header = (const orb_file_header*)file.elems;
 
@@ -338,10 +401,17 @@ bool orb_file_load(u8_span file, orb_assets* out, orb_error* err) {
             *file_count(out, row) = section->size / row->elem;
     }
 
-    if (out->info && !memchr(out->info->name, 0, sizeof out->info->name))
-        return orb_error_set(err, "orb file: bad info section");
-
     if (!out->info || !out->pal) return orb_error_set(err, "orb file: no info or palette section");
+
+    // Exactly the sizes orb.json accepts, so nothing the caster cannot write loads.
+    const orb_info_desc* info = out->info;
+    bool window_set = info->window_width != 0 || info->window_height != 0;
+
+    if (!memchr(info->name, 0, sizeof info->name) || info->width < 1 || info->width > 4096 ||
+        info->height < 1 || info->height > 4096 ||
+        (window_set && (info->window_width < info->width || info->window_height < info->height ||
+                        info->window_width > 8192 || info->window_height > 8192)))
+        return orb_error_set(err, "orb file: bad info section");
 
     for (u32 i = 0; i < FILE_ROW_COUNT; i++) {
         const file_row* row = &file_rows[i];
@@ -357,6 +427,7 @@ bool orb_file_load(u8_span file, orb_assets* out, orb_error* err) {
             );
     }
 
-    return file_check_audio(out, err) && file_check_levels(out, err) &&
-           file_check_fonts(out, err) && file_check_entities(out, err);
+    return file_check_images(out, err) && file_check_audio(out, err) &&
+           file_check_levels(out, err) && file_check_fonts(out, err) &&
+           file_check_entities(out, err);
 }

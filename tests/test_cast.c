@@ -293,7 +293,7 @@ int main(void) {
     // and a tileset whose flattened size disagrees with the project is refused
     CHECK(orb_os_make_dir(DIR "/levels"));
 
-    const char* stack_project_template =
+    static const char stack_project_template[] =
         "{\"jsonVersion\": \"1.5.3\", \"worldLayout\": \"Free\", \"externalLevels\": false,\n"
         " \"worlds\": [],\n"
         " \"defs\": {\"layers\": [{\"uid\": 2, \"identifier\": \"grid\", \"type\": \"IntGrid\",\n"
@@ -355,6 +355,42 @@ int main(void) {
     orb_arena_clear(&out);
     CHECK(!orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
     CHECK(strstr(err.text, "32x16") != nullptr);
+
+    // a tileset that declares a fifth column of a 32 pixel image holds a partial last column:
+    // a tile in a whole column casts, and a tile in the partial one is refused
+    int partial_len = snprintf(stack_project, sizeof stack_project, stack_project_template, 32);
+    char* columns_text = strstr(stack_project, "\"__cWid\": 4, \"__cHei\": 2");
+    char* tiles_text = strstr(stack_project, "{\"px\"");
+
+    CHECK(partial_len > 0 && columns_text != nullptr && tiles_text != nullptr);
+    columns_text[10] = '5';
+
+    for (int tile = 3; tile <= 4; tile++) {
+        int length = (int)(tiles_text - stack_project);
+
+        length += snprintf(
+            tiles_text, sizeof stack_project - (usize)length,
+            "{\"px\": [0, 0], \"src\": [0, 0], \"f\": 0, \"t\": %d, \"d\": [0], \"a\": 1}],\n"
+            "     \"entityInstances\": []}]}]}\n",
+            tile
+        );
+        CHECK(orb_os_write_file(
+            DIR "/levels/world.ldtk", (u8_span) {(u8*)stack_project, (usize)length}
+        ));
+        orb_arena_clear(&scratch);
+        orb_arena_clear(&out);
+
+        if (tile == 3) {
+            CHECK(orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
+            CHECK(orb_file_load(result.file, &assets, &err));
+        } else {
+            CHECK(!orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
+            CHECK(
+                strstr(err.text, "level Stack: layer grid: tile id 4 leaves the tileset image") !=
+                nullptr
+            );
+        }
+    }
 
     // two level identifiers that fold to one name are refused
     const char* duplicate_names_project =
@@ -521,7 +557,7 @@ int main(void) {
 
     const char* fast = "{\"id\": \"fixture\", \"name\": \"Fixture\", \"framebuffer\": [64, 32],\n"
                        " \"palette\": \"" ART "art/palette.aseprite\",\n"
-                       " \"songs\": {\"loop\": 1e999}}\n";
+                       " \"songs\": {\"loop\": 1e300}}\n";
     CHECK(orb_os_write_file(DIR "/orb.json", (u8_span) {(u8*)fast, strlen(fast)}));
     CHECK(!orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
     CHECK(strstr(err.text, "bpm") != nullptr);

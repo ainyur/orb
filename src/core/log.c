@@ -22,7 +22,9 @@ static void log_append(const char* line, usize len) {
 
     memcpy(slot, line, len);
     slot[len] = 0;
-    log_total++;
+
+    // Stepping back a whole ring keeps every slot and the full count, and never overflows.
+    if (++log_total == 2 * ORB_LOG_LINES) log_total = ORB_LOG_LINES;
 }
 
 // Formats into a local buffer and writes it with one fputs, so a line from the

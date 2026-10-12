@@ -1,5 +1,6 @@
 #include "sprite.h"
 
+#include <limits.h>
 #include <stdio.h>
 
 void orb_anim_start(orb_anim_state* state, orb_anim anim) {
@@ -59,12 +60,14 @@ void orb_sprite_draw(
 
     const orb_sheet_desc* sheet = &assets->sheets.elems[desc->sheet];
 
-    at.x -= orb_floor(cam.x);
-    at.y -= orb_floor(cam.y);
-    at.x += flags & ORB_FLIP_X ? desc->frame_width - desc->ox - desc->width : desc->ox;
-    at.y += flags & ORB_FLIP_Y ? desc->frame_height - desc->oy - desc->height : desc->oy;
+    i64 x = (i64)at.x - orb_floor(cam.x) +
+            (flags & ORB_FLIP_X ? desc->frame_width - desc->ox - desc->width : desc->ox);
+    i64 y = (i64)at.y - orb_floor(cam.y) +
+            (flags & ORB_FLIP_Y ? desc->frame_height - desc->oy - desc->height : desc->oy);
 
-    const u8* src = assets->pixels.elems + sheet->pixels + desc->y * sheet->width + desc->x;
+    at = (orb_vec2) {(int)orb_clamp(x, INT_MIN, INT_MAX), (int)orb_clamp(y, INT_MIN, INT_MAX)};
+
+    const u8* src = assets->pixels.elems + sheet->pixels + (usize)desc->y * sheet->width + desc->x;
 
     orb_fb_blit(fb, src, sheet->width, (orb_size) {desc->width, desc->height}, at, flags, remap);
 }

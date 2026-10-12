@@ -10,6 +10,7 @@
 #include "wav.h"
 
 #include <stdarg.h>
+#include <stdckdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -258,6 +259,14 @@ static bool cast_art_remap(cast* context, const orb_ase* master, orb_ase* ase, c
     return true;
 }
 
+// *total += n, refusing a sum a u32 cannot hold.
+static bool cast_sum(cast* context, u32* total, u64 n, const char* what) {
+    if (ckd_add(total, *total, n))
+        return orb_error_set(context->err, "more than 4294967295 %s in one cast", what);
+
+    return true;
+}
+
 // Every sprite file: one packed sheet each, a sprite per frame, an animation per tag.
 // Font and tileset files, appended after the art files, take a plainer path: one
 // unpacked sheet each, no sprites or animations.
@@ -280,6 +289,12 @@ static bool cast_art(
     int art_count = art.count;
     int font_count = fonts->count;
     int file_count = art_count + font_count + world->tilesets.len;
+
+    if (file_count > 65535)
+        return orb_error_set(
+            context->err, "%d art, font, and tileset files is more than 65535", file_count
+        );
+
     const char* world_dir = cast_dir_of(scratch, context->manifest->world);
     const char** paths = orb_arena_push_array(scratch, const char*, file_count);
 
@@ -308,12 +323,15 @@ static bool cast_art(
         if (!cast_load_ase(context, paths[i], &files[i])) return false;
 
         if (i < art_count) {
-            max_sprites += files[i].frame_count;
-            max_anims += files[i].tags.len;
+            if (!cast_sum(context, &max_sprites, files[i].frame_count, "sprites") ||
+                !cast_sum(context, &max_anims, files[i].tags.len, "animations"))
+                return false;
 
-            for (u32 tag = 0; tag < files[i].tags.len; tag++)
-                max_durations +=
-                    (u32)(files[i].tags.elems[tag].to - files[i].tags.elems[tag].from + 1);
+            for (u32 tag = 0; tag < files[i].tags.len; tag++) {
+                u32 span = (u32)(files[i].tags.elems[tag].to - files[i].tags.elems[tag].from + 1);
+
+                if (!cast_sum(context, &max_durations, span, "animation frames")) return false;
+            }
         }
     }
 
@@ -365,7 +383,10 @@ static bool cast_art(
             sheets[i] = (orb_sheet_desc) {
                 .width = ase->width, .height = ase->height, .pixels = pixel_total
             };
-            pixel_total += (u32)ase->width * ase->height;
+
+            if (!cast_sum(context, &pixel_total, (u32)ase->width * ase->height, "pixels"))
+                return false;
+
             continue;
         }
 
@@ -382,7 +403,9 @@ static bool cast_art(
         sheets[i] = (orb_sheet_desc) {
             .width = pack->sheet_width, .height = pack->sheet_height, .pixels = pixel_total
         };
-        pixel_total += (u32)pack->sheet_width * pack->sheet_height;
+
+        if (!cast_sum(context, &pixel_total, (u32)pack->sheet_width * pack->sheet_height, "pixels"))
+            return false;
 
         u32 first_sprite = sprite_count;
 
@@ -567,7 +590,8 @@ static bool cast_audio(cast* context, orb_assets* assets) {
 
         samples[i] = cast_sample_desc(&wav, pcm_total);
         sample_ids[i] = orb_asset_id(wavs.stems[i], song ? "song" : "");
-        pcm_total += wav.count * wav.channels;
+
+        if (!cast_sum(context, &pcm_total, (u64)wav.count * wav.channels, "samples")) return false;
     }
 
     i16* pcm = orb_arena_push_array(scratch, i16, pcm_total);
@@ -772,8 +796,15 @@ bool orb_manifest_load(
         manifest->window = (orb_size) {(int)pair[0], (int)pair[1]};
     }
 
-    return cast_string(root, "id", nullptr, &manifest->id, err) &&
-           cast_string(root, "name", nullptr, &manifest->name, err) &&
+    if (!cast_string(root, "id", nullptr, &manifest->id, err)) return false;
+
+    usize id_length = strlen(manifest->id);
+
+    if (id_length < 1 || id_length > 64 ||
+        strspn(manifest->id, "abcdefghijklmnopqrstuvwxyz0123456789-_") != id_length)
+        return orb_error_set(err, "orb.json: \"id\" must be 1 to 64 of a-z, 0-9, - and _");
+
+    return cast_string(root, "name", nullptr, &manifest->name, err) &&
            cast_string(root, "palette", "art/palette.aseprite", &manifest->pal, err) &&
            cast_string(root, "art", "art", &manifest->art, err) &&
            cast_string(root, "fonts", "fonts", &manifest->fonts, err) &&

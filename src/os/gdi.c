@@ -175,6 +175,7 @@ bool orb_os_open(const orb_os_config* config) {
     gdi_focused = true;
     ShowWindow(gdi_window, SW_SHOW);
 
+    xinput_open();
     wasapi_open();
 
     return true;

@@ -152,6 +152,12 @@ int main(void) {
     orb_text_draw(&fb, &table.assets, font, "\"", (orb_vec2) {100, 100}, nullptr);
     CHECK_EQ(fb.px[0], 0);
 
+    // The pen is wide: a position at either extreme neither wraps nor overflows.
+    orb_text_draw(&fb, &table.assets, font, "\"\"\"", (orb_vec2) {INT_MAX, INT_MAX}, nullptr);
+    orb_text_draw(&fb, &table.assets, font, "\"\"\"", (orb_vec2) {INT_MIN, INT_MIN}, nullptr);
+    orb_text_draw(&fb, &table.assets, font, "\"\"\"", (orb_vec2) {INT_MAX - 7, 0}, nullptr);
+    CHECK_EQ(fb.px[0], 0);
+
     orb_text_draw(&fb, &table.assets, ORB_NO_FONT, "\"", (orb_vec2) {0, 0}, nullptr);
     orb_text_draw(&fb, &table.assets, font, nullptr, (orb_vec2) {0, 0}, nullptr);
     CHECK_EQ(fb.px[0], 0);

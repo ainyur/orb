@@ -2,18 +2,19 @@ WIN := bin/orb.exe build/wine/%.exe release-wine
 
 ifeq ($(OS),Windows_NT)
 CC       := gcc
-CFLAGS   := -std=c23 -D_WIN32_WINNT=0x0A00 -Wall -Wextra
+CFLAGS   := -std=c23 -D_WIN32_WINNT=0x0A00 -Wall -Wextra -Wformat=2
 BACKEND  := -DORB_OS_GDI
-LIBS     := -lgdi32 -lole32 -lshell32 -lxinput1_4
+LIBS     := -lgdi32 -lole32 -lshell32
 TESTLIBS := -lshell32
 ORB      := bin/orb.exe
 LIB      := dll
 OBJ      := obj
 EXE      := .exe
-HARDEN   := -D_FORTIFY_SOURCE=2 -fstack-protector-strong
+HARDEN   := -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -fstack-protector-strong
+HARDEN_LD := -static
 else
 CC       := gcc
-CFLAGS   := -std=c23 -D_POSIX_C_SOURCE=200809L -Wall -Wextra
+CFLAGS   := -std=c23 -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Wformat=2
 BACKEND  := -DORB_OS_X11
 LIBS     := -lX11 -lasound
 TESTLIBS :=
@@ -21,18 +22,20 @@ ORB      := bin/orb
 LIB      := so
 OBJ      := o
 EXE      :=
-HARDEN   := -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE -pie
+HARDEN   := -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -fstack-protector-strong -fstack-clash-protection -fPIE
+HARDEN_LD := -pie -Wl,-z,relro,-z,now
 $(WIN): private CC := x86_64-w64-mingw32-gcc
 endif
 
-$(WIN): private CFLAGS   := -std=c23 -D_WIN32_WINNT=0x0A00 -Wall -Wextra
+$(WIN): private CFLAGS   := -std=c23 -D_WIN32_WINNT=0x0A00 -Wall -Wextra -Wformat=2
 $(WIN): private BACKEND  := -DORB_OS_GDI
-$(WIN): private LIBS     := -lgdi32 -lole32 -lshell32 -lxinput1_4
+$(WIN): private LIBS     := -lgdi32 -lole32 -lshell32
 $(WIN): private TESTLIBS := -lshell32
 $(WIN): private LIB      := dll
 $(WIN): private OBJ      := obj
 $(WIN): private EXE      := .exe
-$(WIN): private HARDEN   := -D_FORTIFY_SOURCE=2 -fstack-protector-strong
+$(WIN): private HARDEN   := -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -fstack-protector-strong
+$(WIN): private HARDEN_LD := -static
 
 SRC      := $(wildcard src/*.c src/*/*.c src/*.h src/*/*.h)
 TESTS    := $(patsubst tests/%.c,build/%,$(wildcard tests/test_*.c))
@@ -58,10 +61,10 @@ run: $(ORB)
 	$(ORB) run $(GAME)
 
 release release-wine: $(ORB)
-	$(MAKE) --no-print-directory -s -C $(GAME) release-objects RELEASE_EXT=$(OBJ)
+	$(MAKE) --no-print-directory -s -C $(GAME) release-objects RELEASE_EXT=$(OBJ) RELEASE_CFLAGS='$(HARDEN)'
 	$(ORB) seal $(GAME) $(GAME)/build/game.orb
 	mkdir -p $(GAME)/bin
-	$(CC) $(CFLAGS) -O2 $(BACKEND) -DORB_RELEASE $(HARDEN) --embed-dir=$(GAME)/build -o $(GAME)/bin/$(GAMENAME)$(EXE) src/main.c $(GAME)/build/release/*.$(OBJ) $(LIBS)
+	$(CC) $(CFLAGS) -O2 $(BACKEND) -DORB_RELEASE $(HARDEN) $(HARDEN_LD) --embed-dir=$(GAME)/build -o $(GAME)/bin/$(GAMENAME)$(EXE) src/main.c $(GAME)/build/release/*.$(OBJ) $(LIBS)
 
 run-wine: bin/orb.exe
 	$(MAKE) --no-print-directory -s -C $(GAME) build/game.dll

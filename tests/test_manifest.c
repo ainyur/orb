@@ -123,6 +123,39 @@ int main(void) {
         }
     }
 
+    // "id" is a save directory name: 1 to 64 of a-z, 0-9, - and _
+    char long_id[80] = "";
+    memset(long_id, 'a', 65);
+
+    const struct {
+        const char* id;
+        bool good;
+    } ids[] = {
+        {"demo", true},  {"my-game_2", true}, {"0", true},         {"../x", false},
+        {"/abs", false}, {"A", false},        {"", false},         {"a b", false},
+        {"a/b", false},  {"a.b", false},      {long_id + 1, true}, {long_id, false},
+    };
+
+    for (usize i = 0; i < sizeof ids / sizeof ids[0]; i++) {
+        char text[512];
+        int n = snprintf(
+            text, sizeof text,
+            "{\"id\": \"%s\", \"name\": \"m\", \"framebuffer\": [64, 32],\n"
+            " \"palette\": " ART "art/palette.aseprite\", \"art\": \".\"}\n",
+            ids[i].id
+        );
+
+        CHECK(orb_os_write_file(DIR "/orb.json", (u8_span) {(u8*)text, (usize)n}));
+        orb_arena_clear(&world_arena);
+        CHECK(orb_manifest_load(&world_arena, DIR, &manifest, &err) == ids[i].good);
+        CHECK(
+            ids[i].good ||
+            strcmp(err.text, "orb.json: \"id\" must be 1 to 64 of a-z, 0-9, - and _") == 0
+        );
+    }
+
+    CHECK(write_manifest("[64, 32]"));
+
     // the cast writes the window into the info section and cuts the name to 55 bytes
     const char* boot_manifest =
         "{\"id\": \"m\", \"name\": "

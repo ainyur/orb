@@ -100,13 +100,17 @@ static inline int orb_bytes_utf8_decode(const char* text, u32* out) {
     return n;
 }
 
-// Appends codepoint to a NUL-terminated buffer of cap bytes as UTF-8; a control character or one
-// that does not fit is dropped.
+// Appends codepoint to a NUL-terminated buffer of cap bytes as UTF-8; a control character, a
+// surrogate, a value past U+10FFFF, or one that does not fit is dropped.
 static inline void orb_bytes_utf8_push(char* text, int* n, int cap, u32 codepoint) {
     char utf8[4];
+
+    if (codepoint < 0x20 || codepoint == 0x7f || codepoint > 0x10ffff) return;
+    if (codepoint >= 0xd800 && codepoint <= 0xdfff) return;
+
     int len = orb_bytes_utf8(codepoint, utf8);
 
-    if (codepoint < 0x20 || codepoint == 0x7f || *n + len >= cap) return;
+    if (*n + len >= cap) return;
 
     memcpy(text + *n, utf8, (usize)len);
     *n += len;

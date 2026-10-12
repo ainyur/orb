@@ -50,6 +50,23 @@ int main(void) {
     CHECK(orb_json_parse(&out, "\"\\u12\"", 6, &err) == nullptr);
     CHECK(orb_json_parse(&out, "\"\\ud83d\"", 8, &err) == nullptr);
 
+    // no nan, inf, hex, overflow, leading dot or plus, or a sign or exponent without digits
+    static const char* const bad_numbers[] = {
+        "nan", "inf", "-inf", "-nan", "0x10", "1e999", "-1e999", ".5", "-", "1e", "+1",
+    };
+
+    for (usize i = 0; i < sizeof bad_numbers / sizeof bad_numbers[0]; i++)
+        CHECK(orb_json_parse(&out, bad_numbers[i], strlen(bad_numbers[i]), &err) == nullptr);
+
+    CHECK(strstr(err.text, "line 1") != nullptr);
+
+    orb_json* minus_zero = orb_json_parse(&out, "-0", 2, &err);
+    CHECK(minus_zero != nullptr && minus_zero->num == 0);
+    orb_json* exponent = orb_json_parse(&out, "1.5e3", 5, &err);
+    CHECK(exponent != nullptr && exponent->num == 1500);
+    orb_json* in_array = orb_json_parse(&out, "[0, -1E+2, 0.25]", 16, &err);
+    CHECK(in_array != nullptr && in_array->count == 3);
+
     // nesting past the depth limit fails instead of exhausting the stack
     char deep[300];
     memset(deep, '[', sizeof deep);

@@ -95,8 +95,7 @@ int main(void) {
     CHECK(strcmp(debug_copy_path, leftover) == 0);
     CHECK(orb_os_file_mtime(debug_copy_path) != 0);
 #ifndef _WIN32
-    // orb_os_copy_file opens with "wb", so without the loader's remove() this descriptor
-    // would read the new library instead of the byte the leftover was written with.
+    // The held descriptor still reads the leftover's byte: the loader replaced the file.
     u8 held_byte = 0;
 
     CHECK_EQ(pread(held, &held_byte, 1, 0), 1);

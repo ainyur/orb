@@ -66,6 +66,8 @@ constexpr u32 ORB_FONT_GLYPHS = 95;
 constexpr u32 ORB_MAX_CELL = 254; // a cell any wider overflows advance, which is width + 1
 constexpr u32 ORB_MAX_FIELDS = 1 << 20;
 constexpr u32 ORB_MAX_PLACEMENTS = 1 << 16;
+// World positions and layer offsets stay inside this, so sums of a few cannot overflow an int.
+constexpr int ORB_MAX_WORLD = 1 << 24; // pixels, either side of the origin
 
 // A tile is 16 bits: zero is empty, otherwise the low fourteen bits are the tile id
 // plus one and the top two bits are the flip flags.

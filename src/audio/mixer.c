@@ -276,8 +276,8 @@ static void mixer_render_voice(
     }
 }
 
-// After an asset swap, a voice whose sample (or song) is gone or has a different
-// id at its index is silenced.
+// A voice whose sample (or song) is gone or has a different id at its index is silenced;
+// every render runs it, since two publishes can hand over one pointer with new contents.
 static void mixer_revalidate(orb_mixer* mixer, const orb_assets* assets) {
     for (int i = 0; i < ORB_VOICE_COUNT; i++) {
         orb_voice_state* voice = &mixer->voices[i];
@@ -449,10 +449,7 @@ void orb_mixer_render(orb_mixer* mixer, i16* out, int frames) {
 
     const orb_assets* assets = atomic_load(&mixer->assets);
 
-    if (assets != mixer->last_assets) {
-        mixer_revalidate(mixer, assets);
-        mixer->last_assets = assets;
-    }
+    mixer_revalidate(mixer, assets);
 
     orb_mixer_command command;
 

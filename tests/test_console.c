@@ -205,6 +205,10 @@ static int test_entities(void) {
     CHECK(strcmp(last_line(), "no entity type \"ghost\"") == 0);
     orb_console_run("spawn crate");
     CHECK(strcmp(last_line(), "spawn <type> <x> <y>") == 0);
+    orb_console_run("spawn crate nan 0");
+    CHECK(strcmp(last_line(), "spawn: x and y must be finite") == 0);
+    orb_console_run("spawn crate 0 inf");
+    CHECK(strcmp(last_line(), "spawn: x and y must be finite") == 0);
     orb_console_run("despawn 4");
     CHECK(orb_entity_get(ORB_ENTITY(4 | 1u << 24))->flags & ORB_ENTITY_DESPAWNING);
     tick();

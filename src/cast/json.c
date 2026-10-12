@@ -1,6 +1,7 @@
 #include "json.h"
 #include "../core/bytes.h"
 
+#include <float.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -237,8 +238,13 @@ static bool json_value(json_parser* parser, orb_json** out) {
     if (c == '-' || (c >= '0' && c <= '9')) {
         char* after;
         f64 value = strtod(parser->cursor, &after);
+        usize length = (usize)(after - parser->cursor);
 
-        if (after == parser->cursor) return json_fail(parser, "bad number");
+        // strtod also reads inf, nan, and hex, which JSON does not have.
+        if (length == 0 || strspn(parser->cursor, "+-.0123456789Ee") < length)
+            return json_fail(parser, "bad number");
+        if (!(value >= -DBL_MAX && value <= DBL_MAX))
+            return json_fail(parser, "number out of range");
 
         orb_json* node = json_node(parser, ORB_JSON_NUMBER);
 

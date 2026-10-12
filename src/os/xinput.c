@@ -24,6 +24,7 @@ static const struct {
     {XINPUT_GAMEPAD_DPAD_RIGHT, ORB_PAD_RIGHT},
 };
 
+static DWORD(WINAPI* xinput_get_state)(DWORD, XINPUT_STATE*);
 static int xinput_slot = -1;
 static u64 xinput_next_scan;
 
@@ -31,15 +32,25 @@ static i16 xinput_axis(int value) {
     return (i16)orb_clamp(value, -32767, 32767);
 }
 
+// System32 only, so a copy beside the exe is never loaded; without it there is no pad.
+static void xinput_open(void) {
+    HMODULE module = LoadLibraryEx(L"xinput1_4.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    void* function = module ? (void*)GetProcAddress(module, "XInputGetState") : nullptr;
+
+    if (!function) orb_log("pad: xinput1_4.dll is not available");
+
+    xinput_get_state = (DWORD(WINAPI*)(DWORD, XINPUT_STATE*))function;
+}
+
 static void xinput_pump(orb_pad_input* out, bool focused) {
     XINPUT_STATE state;
 
     // Probing an empty slot is slow, so the four are probed once a second.
-    if (xinput_slot < 0 && orb_os_ticks() >= xinput_next_scan) {
+    if (xinput_get_state && xinput_slot < 0 && orb_os_ticks() >= xinput_next_scan) {
         xinput_next_scan = orb_os_ticks() + ORB_PAD_SCAN_NS;
 
         for (DWORD slot = 0; slot < XUSER_MAX_COUNT && xinput_slot < 0; slot++)
-            if (XInputGetState(slot, &state) == ERROR_SUCCESS) xinput_slot = (int)slot;
+            if (xinput_get_state(slot, &state) == ERROR_SUCCESS) xinput_slot = (int)slot;
 
         if (xinput_slot >= 0) orb_log("pad: XInput %d (xbox)", xinput_slot);
     }
@@ -48,7 +59,7 @@ static void xinput_pump(orb_pad_input* out, bool focused) {
 
     if (xinput_slot < 0) return;
 
-    if (XInputGetState((DWORD)xinput_slot, &state) != ERROR_SUCCESS) {
+    if (xinput_get_state((DWORD)xinput_slot, &state) != ERROR_SUCCESS) {
         orb_log("pad: XInput %d disconnected", xinput_slot);
         xinput_slot = -1;
         xinput_next_scan = 0;

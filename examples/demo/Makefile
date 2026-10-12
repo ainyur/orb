@@ -12,6 +12,7 @@ build/game.dll build/%.obj: CC := x86_64-w64-mingw32-gcc
 endif
 
 RELEASE_EXT ?= o
+RELEASE_CFLAGS ?=
 RELEASE_OBJ := $(patsubst %.c,build/release/%.$(RELEASE_EXT),$(wildcard *.c))
 
 ifneq ($(OS),Windows_NT)
@@ -32,10 +33,10 @@ build/%.obj: %.c | build
 release-objects: $(RELEASE_OBJ)
 
 build/release/%.o: %.c | build/release
-	$(CC) $(CFLAGS) -O2 -fPIE -DORB_RELEASE -MMD -MP -MF $@.d -c -o $@ $<
+	$(CC) $(CFLAGS) -O2 $(RELEASE_CFLAGS) -DORB_RELEASE -MMD -MP -MF $@.d -c -o $@ $<
 
 build/release/%.obj: %.c | build/release
-	$(CC) $(CFLAGS) -O2 -DORB_RELEASE -MMD -MP -MF $@.d -c -o $@ $<
+	$(CC) $(CFLAGS) -O2 $(RELEASE_CFLAGS) -DORB_RELEASE -MMD -MP -MF $@.d -c -o $@ $<
 
 build/release:
 	mkdir -p build/release

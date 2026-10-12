@@ -371,5 +371,21 @@ int main(void) {
     CHECK_EQ(orb_button_pad(ORB_BTN_START), ORB_PAD_START);
     CHECK_EQ(stick_step(32767, 0), 0);
 
+    // text keeps valid UTF-8 only: no controls, surrogates, or values past U+10FFFF
+    char text[16] = "";
+    int text_n = 0;
+
+    for (u32 codepoint = 0; codepoint < 8; codepoint++)
+        orb_bytes_utf8_push(text, &text_n, sizeof text, codepoint);
+
+    orb_bytes_utf8_push(text, &text_n, sizeof text, 0xd800);
+    orb_bytes_utf8_push(text, &text_n, sizeof text, 0xdfff);
+    orb_bytes_utf8_push(text, &text_n, sizeof text, 0x110000);
+    orb_bytes_utf8_push(text, &text_n, sizeof text, 0xffffffff);
+    CHECK_EQ(text_n, 0);
+    orb_bytes_utf8_push(text, &text_n, sizeof text, 0x10ffff);
+    orb_bytes_utf8_push(text, &text_n, sizeof text, 0xe000);
+    CHECK_EQ(text_n, 7);
+
     return 0;
 }

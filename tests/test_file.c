@@ -70,6 +70,13 @@ static int test_entities(orb_arena* scratch) {
     CHECK_EQ(out.placements.elems[0].x, 16);
     CHECK_EQ(orb_bytes_i32(out.field_data.elems + out.fields.elems[1].data), 3);
 
+    // a placement outside the world
+    placements[0].x = ORB_MAX_WORLD + 1;
+    file = orb_file_write(scratch, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "placement 0 is outside the world"));
+    placements[0].x = 16;
+
     // a ref row past the placements
     fields[4] = (orb_field_desc) {.name = 5, .data = 28, .count = 1, .kind = ORB_FIELD_REF};
     ref = 1;
@@ -276,6 +283,31 @@ int main(void) {
     file = orb_file_write(&scratch, &in);
     CHECK(orb_file_load(file, &out, &err));
 
+    // the sizes orb.json allows load, and nothing past them does
+    static const struct {
+        u16 width, height, window_width, window_height;
+        bool good;
+    } sizes[] = {
+        {1, 1, 0, 0, true},        {4096, 4096, 8192, 8192, true}, {64, 32, 64, 32, true},
+        {0, 32, 0, 0, false},      {64, 0, 0, 0, false},           {4097, 32, 0, 0, false},
+        {64, 4097, 0, 0, false},   {64, 32, 63, 64, false},        {64, 32, 128, 31, false},
+        {64, 32, 8193, 64, false}, {64, 32, 128, 8193, false},     {64, 32, 0, 64, false},
+    };
+
+    for (usize i = 0; i < sizeof sizes / sizeof sizes[0]; i++) {
+        info.width = sizes[i].width;
+        info.height = sizes[i].height;
+        info.window_width = sizes[i].window_width;
+        info.window_height = sizes[i].window_height;
+        file = orb_file_write(&scratch, &in);
+        CHECK(orb_file_load(file, &out, &err) == sizes[i].good);
+        CHECK(sizes[i].good || strcmp(err.text, "orb file: bad info section") == 0);
+    }
+
+    info = (orb_info_desc) {
+        .width = 64, .height = 32, .window_width = 128, .window_height = 64, .name = "fixture"
+    };
+
     // a sample with a bad channel count is refused
     samples[1].channels = 3;
     file = orb_file_write(&scratch, &in);
@@ -320,6 +352,62 @@ int main(void) {
     mem[file.elems - mem + 4] = 99; // version
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "version") != nullptr);
+
+    // sheets, sprites, and anims that reach outside what they index are refused
+    sheets[0].height = 3;
+    file = orb_file_write(&scratch, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "sheet 0 runs past the pixels") != nullptr);
+    sheets[0].height = 2;
+    sheets[0].pixels = 0xffffffff;
+    file = orb_file_write(&scratch, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "sheet 0 runs past the pixels") != nullptr);
+    sheets[0].pixels = 0;
+    sprites[1].sheet = 1;
+    file = orb_file_write(&scratch, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "sprite 1 names sheet 1") != nullptr);
+    sprites[1].sheet = 0;
+    sprites[1].x = 3;
+    file = orb_file_write(&scratch, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "sprite 1 leaves its sheet") != nullptr);
+    sprites[1].x = 2;
+    sprites[1].y = 1;
+    file = orb_file_write(&scratch, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "sprite 1 leaves its sheet") != nullptr);
+    sprites[1].y = 0;
+    anims[0].count = 0;
+    file = orb_file_write(&scratch, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "anim 0 has no frames") != nullptr);
+    anims[0].count = 3;
+    file = orb_file_write(&scratch, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "anim 0 runs past") != nullptr);
+    anims[0].count = 2;
+    anims[0].first_sprite = 1;
+    file = orb_file_write(&scratch, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "anim 0 runs past") != nullptr);
+    anims[0].first_sprite = 0;
+    anims[0].first_duration = 1;
+    file = orb_file_write(&scratch, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "anim 0 runs past") != nullptr);
+    anims[0].first_duration = 0;
+
+    // a buffer that is not 16-byte aligned is refused
+    static alignas(16) u8 shifted[1 << 12];
+    file = orb_file_write(&scratch, &in);
+    CHECK(file.len < sizeof shifted - 1);
+    memcpy(shifted + 1, file.elems, file.len);
+    CHECK(!orb_file_load((u8_span) {shifted + 1, file.len}, &out, &err));
+    CHECK(strstr(err.text, "misaligned buffer") != nullptr);
+    memcpy(shifted, file.elems, file.len);
+    CHECK(orb_file_load((u8_span) {shifted, file.len}, &out, &err));
 
     // levels: two tilesets, two levels, three layers, one neighbor link
     orb_tileset_desc tilesets[1] = {
@@ -445,6 +533,35 @@ int main(void) {
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "sheet") != nullptr);
     tilesets[0].sheet = 0;
+    tilesets[0].columns = 1; // tile 2 moves to a second row below the 2-pixel-high sheet
+    file = orb_file_write(&scratch, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "layer 0 tile 2 leaves its tileset's sheet") != nullptr);
+    tilesets[0].columns = 2;
+    tilesets[0].padding = 1;
+    file = orb_file_write(&scratch, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "layer 0 tile 1 leaves its tileset's sheet") != nullptr);
+    tilesets[0].padding = 0;
+    levels[1].world_x = ORB_MAX_WORLD + 1;
+    file = orb_file_write(&scratch, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "level 1 is outside the world") != nullptr);
+    levels[1].world_x = 4;
+    levels[1].world_y = -ORB_MAX_WORLD - 1;
+    file = orb_file_write(&scratch, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "level 1 is outside the world") != nullptr);
+    levels[1].world_y = -8;
+    layers[1].grid = 65535;
+    layers[1].columns = 65535;
+    file = orb_file_write(&scratch, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "layer 1 is larger than the world") != nullptr);
+    layers[1].grid = 2;
+    layers[1].columns = 2;
+    file = orb_file_write(&scratch, &in);
+    CHECK(orb_file_load(file, &out, &err));
 
     // a file sealed before levels existed loads with none
     in.tilesets.len = in.levels.len = in.layers.len = in.neighbors.len = 0;
@@ -455,6 +572,7 @@ int main(void) {
 
     // A font whose glyphs sit inside its sheet round-trips; one that leaves it is refused.
     orb_sheet_desc font_sheets[] = {{64, 8, 0}};
+    u8 font_pixels[64 * 8] = {};
     orb_font_desc fonts[] = {{.sheet = 0, .first_glyph = 0, .line_height = 8}};
     orb_glyph_desc glyphs[ORB_FONT_GLYPHS] = {};
     u64 font_ids[] = {orb_asset_id("body", "font")};
@@ -466,6 +584,7 @@ int main(void) {
         .info = &info,
         .pal = pal,
         .sheets = {font_sheets, 1},
+        .pixels = {font_pixels, sizeof font_pixels},
         .fonts = {fonts, 1},
         .glyphs = {glyphs, ORB_FONT_GLYPHS},
         .font_ids = font_ids

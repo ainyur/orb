@@ -80,7 +80,6 @@ typedef struct orb_mixer {
     orb_mixer_command ring[ORB_MIXER_RING];
     atomic_uint head, tail; // the main thread writes head, the audio thread tail
     _Atomic(const orb_assets*) assets;
-    const orb_assets* last_assets; // the audio thread's
     atomic_uint render_begin, render_end;
     _Atomic orb_song_position song_position; // stored after each render
     orb_mixer_volumes volumes;               // the audio thread's copy

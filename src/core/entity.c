@@ -498,6 +498,7 @@ const orb_type_fns* orb_entity_type_fns(u32 type_index) {
     return type_index < ORB_MAX_TYPES ? &entity_types[type_index] : &none;
 }
 
+#ifndef ORB_RELEASE
 static void entity_command_spawn(void*, const orb_api*, int argc, const char* const* argv) {
     if (argc != 4) {
         orb_log("spawn <type> <x> <y>");
@@ -509,6 +510,12 @@ static void entity_command_spawn(void*, const orb_api*, int argc, const char* co
     if (type.v == ORB_NO_INDEX) return;
 
     orb_vec2f at = {strtof(argv[2], nullptr), strtof(argv[3], nullptr)};
+
+    if (!(at.x - at.x == 0) || !(at.y - at.y == 0)) {
+        orb_log("spawn: x and y must be finite");
+        return;
+    }
+
     orb_entity_id id = orb_entity_spawn(type, at);
 
     if (id.v != ORB_NO_INDEX) orb_log("entity %u", ORB_HANDLE_INDEX(id));
@@ -693,6 +700,7 @@ static void entity_console_register(void) {
     );
     orb_console_var_bool("entities.debug", &orb_entity_debug, "outline every body");
 }
+#endif
 
 usize orb_entity_region_size(const orb_config* config) {
     usize slots = config->max_entities, total = 0;
@@ -760,7 +768,9 @@ void orb_entity_boot(
     entity_api = api;
     entity_assets = assets;
     orb_entity_updating = false;
+#ifndef ORB_RELEASE
     entity_console_register();
+#endif
 
     if (!orb_entity_reset(config)) orb_fatal("the entity pool does not fit its region");
 }

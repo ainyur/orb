@@ -20,7 +20,7 @@ static GC x11_gc;
 static XImage* x11_image;
 static u32* x11_pixels;
 static orb_size x11_screen, x11_win, x11_fb;
-static Atom x11_wm_delete;
+static Atom x11_wm_delete, x11_wm_protocols;
 static bool x11_down[ORB_KEY_COUNT];
 static XComposeStatus x11_compose;
 static bool x11_resized;
@@ -51,20 +51,25 @@ bool orb_os_open(const orb_os_config* config) {
         KeyPressMask | KeyReleaseMask | StructureNotifyMask | FocusChangeMask
     );
     x11_wm_delete = XInternAtom(x11_display, "WM_DELETE_WINDOW", False);
+    x11_wm_protocols = XInternAtom(x11_display, "WM_PROTOCOLS", False);
     XSetWMProtocols(x11_display, x11_window, &x11_wm_delete, 1);
     XkbSetDetectableAutoRepeat(x11_display, True, nullptr);
     XMapWindow(x11_display, x11_window);
     x11_gc = DefaultGC(x11_display, screen);
 
     x11_pixels = calloc((usize)x11_screen.width * x11_screen.height, sizeof *x11_pixels);
-    x11_image = XCreateImage(
-        x11_display, DefaultVisual(x11_display, screen),
-        (unsigned)DefaultDepth(x11_display, screen), ZPixmap, 0, (char*)x11_pixels,
-        (unsigned)x11_screen.width, (unsigned)x11_screen.height, 32, 0
-    );
+    x11_image =
+        x11_pixels ? XCreateImage(
+                         x11_display, DefaultVisual(x11_display, screen),
+                         (unsigned)DefaultDepth(x11_display, screen), ZPixmap, 0, (char*)x11_pixels,
+                         (unsigned)x11_screen.width, (unsigned)x11_screen.height, 32, 0
+                     )
+                   : nullptr;
 
     if (!x11_image) {
-        orb_log("XCreateImage failed; the display depth is probably not 24 or 32");
+        orb_log("cannot make the frame image: out of memory, or a display depth not 24 or 32");
+        free(x11_pixels);
+        XCloseDisplay(x11_display);
         return false;
     }
 
@@ -108,7 +113,10 @@ bool orb_os_pump(orb_input* out) {
         } else if (event.type == FocusOut) {
             memset(x11_down, 0, sizeof x11_down);
             x11_focused = false;
-        } else if (event.type == ClientMessage && (Atom)event.xclient.data.l[0] == x11_wm_delete) {
+        } else if (
+            event.type == ClientMessage && event.xclient.message_type == x11_wm_protocols &&
+            event.xclient.format == 32 && (Atom)event.xclient.data.l[0] == x11_wm_delete
+        ) {
             return false;
         }
     }

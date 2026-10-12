@@ -132,6 +132,8 @@ int main(void) {
         orb_tilemap_cell(&assets, ORB_LEVEL(0), 0, (orb_vec2) {9, -4}), 0
     ); // left of the level
     CHECK_EQ(orb_tilemap_cell(&assets, ORB_LEVEL(0), 0, (orb_vec2) {16, -4}), 0); // right of it
+    CHECK_EQ(orb_tilemap_cell(&assets, ORB_LEVEL(0), 0, (orb_vec2) {INT_MIN, INT_MAX}), 0);
+    CHECK_EQ(orb_tilemap_cell(&assets, ORB_LEVEL(0), 0, (orb_vec2) {INT_MAX, INT_MIN}), 0);
     CHECK_EQ(orb_tilemap_cell(&assets, ORB_LEVEL(0), 0, (orb_vec2) {10, -5}), 0); // above
     CHECK_EQ(
         orb_tilemap_cell(&assets, ORB_LEVEL(0), 1, (orb_vec2) {11, -3}), 0

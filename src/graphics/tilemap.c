@@ -23,16 +23,16 @@ int orb_tilemap_cell(const orb_assets* assets, orb_level level, int layer, orb_v
     if (!layer_desc || layer_desc->cells == ORB_NO_INDEX) return 0;
 
     const orb_level_desc* level_desc = &assets->levels.elems[ORB_HANDLE_INDEX(level)];
-    int x = at.x - level_desc->world_x - layer_desc->offset_x,
-        y = at.y - level_desc->world_y - layer_desc->offset_y;
+    i64 x = (i64)at.x - level_desc->world_x - layer_desc->offset_x,
+        y = (i64)at.y - level_desc->world_y - layer_desc->offset_y;
 
     if (x < 0 || y < 0) return 0;
 
-    int cell_x = x / layer_desc->grid, cell_y = y / layer_desc->grid;
+    i64 cell_x = x / layer_desc->grid, cell_y = y / layer_desc->grid;
 
     if (cell_x >= layer_desc->columns || cell_y >= layer_desc->rows) return 0;
 
-    return assets->cells.elems[layer_desc->cells + cell_y * layer_desc->columns + cell_x];
+    return assets->cells.elems[layer_desc->cells + (usize)cell_y * layer_desc->columns + cell_x];
 }
 
 u32 orb_tilemap_level_at(const orb_assets* assets, orb_vec2 at) {
@@ -125,7 +125,8 @@ void orb_tilemap_draw(
     const orb_tileset_desc* tileset = &assets->tilesets.elems[layer_desc->tileset];
     const orb_sheet_desc* sheet = &assets->sheets.elems[tileset->sheet];
     const u8* pixels = assets->pixels.elems + sheet->pixels;
-    int grid = layer_desc->grid, area = layer_desc->columns * layer_desc->rows;
+    int grid = layer_desc->grid;
+    usize area = (usize)layer_desc->columns * layer_desc->rows;
     // LDtk's parallax: 0 scrolls the layer with the camera like a sprite, 1 fixes it on screen
     // relative to the camera's center, anchored on the level's center.
     f32 center_x = cam.x + fb->width / 2.0f;
@@ -143,11 +144,11 @@ void orb_tilemap_draw(
     int last_y = orb_min(layer_desc->rows, (fb->height - origin_y + grid - 1) / grid);
 
     for (int sublayer = 0; sublayer < layer_desc->sublayers; sublayer++) {
-        const u16* tiles = assets->tiles.elems + layer_desc->tiles + sublayer * area;
+        const u16* tiles = assets->tiles.elems + layer_desc->tiles + (usize)sublayer * area;
 
         for (int y = first_y; y < last_y; y++) {
             for (int x = first_x; x < last_x; x++) {
-                u16 tile = tiles[y * layer_desc->columns + x];
+                u16 tile = tiles[(usize)y * layer_desc->columns + x];
 
                 if (!tile) continue;
 
@@ -160,7 +161,7 @@ void orb_tilemap_draw(
                             (tile & ORB_TILE_FLIP_Y ? ORB_FLIP_Y : 0);
 
                 orb_fb_blit(
-                    fb, pixels + src_y * sheet->width + src_x, sheet->width,
+                    fb, pixels + (usize)src_y * sheet->width + src_x, sheet->width,
                     (orb_size) {tileset->grid, tileset->grid},
                     (orb_vec2) {origin_x + x * grid, origin_y + y * grid}, flags, nullptr
                 );

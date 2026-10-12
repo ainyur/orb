@@ -7,6 +7,7 @@
 #include "entity.h"
 #include "log.h"
 
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -137,9 +138,9 @@ static void world_cells(world_box box, world_cell_fn visit, void* context) {
 
         for (int row = r0; row <= r1; row++) {
             for (int column = c0; column <= c1; column++) {
-                orb_cell_kind kind = (orb_cell_kind)
-                    world_kinds[assets->cells
-                                    .elems[layer_desc->cells + row * layer_desc->columns + column]];
+                orb_cell_kind kind = (orb_cell_kind)world_kinds
+                    [assets->cells
+                         .elems[layer_desc->cells + (usize)row * layer_desc->columns + column]];
 
                 if (kind == ORB_CELL_OPEN) continue;
 
@@ -555,14 +556,17 @@ typedef struct world_circle {
 
 static bool world_circle_hit(world_box box, const void* shape) {
     const world_circle* circle = shape;
-    int dx = circle->center.x < box.left     ? box.left - circle->center.x
-             : circle->center.x >= box.right ? circle->center.x - (box.right - 1)
+    i64 dx = circle->center.x < box.left     ? (i64)box.left - circle->center.x
+             : circle->center.x >= box.right ? (i64)circle->center.x - box.right + 1
                                              : 0;
-    int dy = circle->center.y < box.top       ? box.top - circle->center.y
-             : circle->center.y >= box.bottom ? circle->center.y - (box.bottom - 1)
+    i64 dy = circle->center.y < box.top       ? (i64)box.top - circle->center.y
+             : circle->center.y >= box.bottom ? (i64)circle->center.y - box.bottom + 1
                                               : 0;
 
-    return (i64)dx * dx + (i64)dy * dy <= (i64)circle->radius * circle->radius;
+    // Farther than any int radius reaches, and the squares below would overflow.
+    if (dx > INT_MAX || dy > INT_MAX) return false;
+
+    return dx * dx + dy * dy <= (i64)circle->radius * circle->radius;
 }
 
 static orb_entity_id_list world_query(
@@ -602,10 +606,16 @@ static orb_entity_id_list world_query(
     return list;
 }
 
-orb_entity_id_list orb_query_rect(orb_arena* out, orb_rect rect, u32 mask, orb_entity_id except) {
-    world_box box = {
-        rect.at.x, rect.at.y, rect.at.x + rect.size.width, rect.at.y + rect.size.height
+// Clamping the far edges loses nothing: a box's exclusive edge never passes INT_MAX.
+static world_box world_box_at(orb_vec2 at, orb_size size) {
+    return (world_box) {
+        at.x, at.y, (int)orb_clamp((i64)at.x + size.width, INT_MIN, INT_MAX),
+        (int)orb_clamp((i64)at.y + size.height, INT_MIN, INT_MAX)
     };
+}
+
+orb_entity_id_list orb_query_rect(orb_arena* out, orb_rect rect, u32 mask, orb_entity_id except) {
+    world_box box = world_box_at(rect.at, rect.size);
 
     return world_query(out, "query_rect", mask, except, world_rect_hit, &box);
 }
@@ -623,7 +633,7 @@ orb_entity_id_list orb_query_circle(
 }
 
 orb_entity_id_list orb_query_point(orb_arena* out, orb_vec2 at, u32 mask, orb_entity_id except) {
-    world_box box = {at.x, at.y, at.x + 1, at.y + 1};
+    world_box box = world_box_at(at, (orb_size) {1, 1});
 
     return world_query(out, "query_point", mask, except, world_rect_hit, &box);
 }
@@ -650,7 +660,7 @@ static world_slab_hit world_slab(orb_vec2 from, orb_vec2 delta, world_box box) {
             continue;
         }
 
-        f32 ta = (f32)(low - origin) / (f32)step, tb = (f32)(high - origin) / (f32)step;
+        f32 ta = (f32)((i64)low - origin) / (f32)step, tb = (f32)((i64)high - origin) / (f32)step;
 
         if (ta > tb) {
             f32 swap = ta;
@@ -681,7 +691,11 @@ bool orb_query_ray(
     orb_entity_id except,
     orb_hit* hit
 ) {
-    orb_vec2 delta = {to.x - from.x, to.y - from.y};
+    i64 span_x = (i64)to.x - from.x, span_y = (i64)to.y - from.y;
+
+    if (llabs(span_x) > ORB_MAX_WORLD || llabs(span_y) > ORB_MAX_WORLD) return false;
+
+    orb_vec2 delta = {(int)span_x, (int)span_y};
     orb_hit best = {.fraction = 2};
     orb_pool* pool = orb_entity_pool();
 
@@ -726,9 +740,9 @@ bool orb_query_ray(
     }
 
     if (flags & ORB_RAY_CELLS) {
-        int ax = abs(delta.x), ay = abs(delta.y), sx = delta.x > 0 ? 1 : -1,
-            sy = delta.y > 0 ? 1 : -1;
-        int steps = ax + ay, x = from.x, y = from.y, ix = 0, iy = 0;
+        i64 ax = abs(delta.x), ay = abs(delta.y);
+        int sx = delta.x > 0 ? 1 : -1, sy = delta.y > 0 ? 1 : -1;
+        int steps = (int)(ax + ay), x = from.x, y = from.y, ix = 0, iy = 0;
 
         for (int i = 1; i <= steps; i++) {
             // step the axis whose next pixel center the ray reaches first
@@ -838,7 +852,7 @@ void orb_world_draw(orb_fb* fb, orb_vec2f cam, int layer) {
     }
 }
 
-static void world_plot(u32* rgb, orb_size size, int x, int y, u32 color) {
+static void world_plot(u32* rgb, orb_size size, i64 x, i64 y, u32 color) {
     if (x >= 0 && y >= 0 && x < size.width && y < size.height) rgb[y * size.width + x] = color;
 }
 
@@ -858,16 +872,16 @@ void orb_world_debug_draw(u32* rgb, orb_size size, orb_vec2f cam) {
 
         world_box box = world_body_box(entity, body);
         u32 color = body->flags & ORB_BODY_SOLID ? dark : bright;
-        int cx = orb_floor(cam.x), cy = orb_floor(cam.y);
+        i64 cx = orb_floor(cam.x), cy = orb_floor(cam.y);
 
         for (int x = box.left; x < box.right; x++) {
             world_plot(rgb, size, x - cx, box.top - cy, color);
-            world_plot(rgb, size, x - cx, box.bottom - 1 - cy, color);
+            world_plot(rgb, size, x - cx, box.bottom - cy - 1, color);
         }
 
         for (int y = box.top; y < box.bottom; y++) {
             world_plot(rgb, size, box.left - cx, y - cy, color);
-            world_plot(rgb, size, box.right - 1 - cx, y - cy, color);
+            world_plot(rgb, size, box.right - cx - 1, y - cy, color);
         }
     }
 }

@@ -380,12 +380,6 @@ static bool world_size(cast* context, const orb_ldtk* world, world_sizes* out) {
     for (u32 i = 0; i < world->levels.len; i++) {
         const orb_ldtk_level* level = &world->levels.elems[i];
 
-        if (level->width > 65535 || level->height > 65535)
-            return orb_error_set(
-                context->err, "level %s: %dx%d pixels is larger than 65535x65535", level->name,
-                level->width, level->height
-            );
-
         neighbor_total += (u32)level->neighbors.len;
 
         for (u32 j = 0; j < level->layers.len; j++, k++) {
@@ -404,8 +398,10 @@ static bool world_size(cast* context, const orb_ldtk* world, world_sizes* out) {
             if (!world_sublayers(context, level, layer, &depth)) return false;
 
             sublayers[k] = (u8)depth;
-            tile_total += area * depth; // 0 for a layer with no tiles
-            cell_total += layer->cells ? area : 0;
+
+            if (!cast_sum(context, &tile_total, (u64)area * depth, "tiles") ||
+                !cast_sum(context, &cell_total, layer->cells ? area : 0, "cells"))
+                return false;
         }
     }
 

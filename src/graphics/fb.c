@@ -22,11 +22,15 @@ void orb_fb_blit(
     u32 flags,
     const u8* remap
 ) {
+    if (at.x >= fb->width || at.y >= fb->height || (i64)at.x + size.width <= 0 ||
+        (i64)at.y + size.height <= 0)
+        return;
+
     int x0 = orb_max(0, -at.x), x1 = orb_min(size.width, fb->width - at.x);
     int y0 = orb_max(0, -at.y), y1 = orb_min(size.height, fb->height - at.y);
 
     for (int y = y0; y < y1; y++) {
-        const u8* row = src + (flags & ORB_FLIP_Y ? size.height - 1 - y : y) * stride;
+        const u8* row = src + (usize)(flags & ORB_FLIP_Y ? size.height - 1 - y : y) * stride;
         u8* dst = fb->px + (at.y + y) * fb->width + at.x;
 
         for (int x = x0; x < x1; x++) {

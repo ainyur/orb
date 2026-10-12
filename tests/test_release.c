@@ -40,6 +40,10 @@ int main(void) {
 
     CHECK(orb_frame());
 
+    // orb's own entity commands are scry-only
+    orb_console_run("spawn crate 0 0");
+    CHECK(strcmp(orb_log_line(0), "unknown: spawn") == 0);
+
     // filling the exactly sized block is not a warning
     for (int i = 0; i < orb_log_line_count(); i++) {
         const char* line = orb_log_line(i);

@@ -4,6 +4,7 @@
 #include <dirent.h>
 #include <dlfcn.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -38,9 +39,12 @@ bool orb_os_copy_file(const char* from, const char* to) {
 
     if (!in) return false;
 
-    FILE* out = fopen(to, "wb");
+    int fd = open(to, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+    FILE* out = fd < 0 ? nullptr : fdopen(fd, "wb");
 
     if (!out) {
+        if (fd >= 0) close(fd);
+
         fclose(in);
         return false;
     }

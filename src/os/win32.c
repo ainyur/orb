@@ -86,7 +86,7 @@ bool orb_os_copy_file(const char* from, const char* to) {
 
     return CopyFile(
                win32_wide(from, from_wide, ORB_PATH_MAX), win32_wide(to, to_wide, ORB_PATH_MAX),
-               FALSE
+               TRUE
            ) != 0;
 }
 
@@ -201,6 +201,13 @@ void orb_os_release(void* base, usize) {
 }
 
 int orb_os_run(const char* dir, const char* const* argv, void (*line)(const char* text)) {
+    wchar_t cmd[MAX_PATH + 16];
+    UINT system_length = GetSystemDirectory(cmd, MAX_PATH);
+
+    if (system_length == 0 || system_length >= MAX_PATH) return -1;
+
+    wcscat(cmd, L"\\cmd.exe");
+
     SECURITY_ATTRIBUTES inherit = {.nLength = sizeof inherit, .bInheritHandle = TRUE};
     HANDLE read_end, write_end;
 
@@ -232,7 +239,7 @@ int orb_os_run(const char* dir, const char* const* argv, void (*line)(const char
     };
     PROCESS_INFORMATION proc;
     BOOL started = CreateProcess(
-        nullptr, cmdline, nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr,
+        cmd, cmdline, nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr,
         dir && *dir ? win32_wide(dir, dir_wide, ORB_PATH_MAX) : nullptr, &start, &proc
     );
 

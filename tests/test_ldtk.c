@@ -436,7 +436,8 @@ int main(void) {
         "     \"gridTiles\": [{\"px\": [0, 0], \"src\": [0, 0], \"f\": 0, \"t\": 0, \"a\": 1}],"
         "     \"autoLayerTiles\": [], \"entityInstances\": []}]}]}\n";
     CHECK(fails_with(
-        &scratch, (u8_span) {(const u8*)zero_grid_project, strlen(zero_grid_project)}, "positive"
+        &scratch, (u8_span) {(const u8*)zero_grid_project, strlen(zero_grid_project)},
+        "__gridSize 0 is outside 1..65535"
     ));
 
     // __cWid 0 with a tile present: an empty layer
@@ -460,7 +461,8 @@ int main(void) {
         "     \"gridTiles\": [{\"px\": [0, 0], \"src\": [0, 0], \"f\": 0, \"t\": 0, \"a\": 1}],"
         "     \"autoLayerTiles\": [], \"entityInstances\": []}]}]}\n";
     CHECK(fails_with(
-        &scratch, (u8_span) {(const u8*)zero_cells_project, strlen(zero_cells_project)}, "empty"
+        &scratch, (u8_span) {(const u8*)zero_cells_project, strlen(zero_cells_project)},
+        "__cWid 0 is outside 1..65535"
     ));
 
     // __cWid/__cHei of 65536 each overflows a signed 32-bit int product; refused before the
@@ -483,7 +485,7 @@ int main(void) {
         "    \"entityInstances\": []}]}]}";
     CHECK(fails_with(
         &scratch, (u8_span) {(const u8*)huge_grid_project, strlen(huge_grid_project)},
-        "larger than 65535x65535"
+        "layer Collision: __cWid 65536 is outside 1..65535"
     ));
 
     // the same bound on a tileset definition's own grid, ahead of the slot count product
@@ -497,8 +499,51 @@ int main(void) {
         " \"levels\": []}";
     CHECK(fails_with(
         &scratch, (u8_span) {(const u8*)huge_tileset_project, strlen(huge_tileset_project)},
-        "larger than 65535x65535"
+        "__cWid 65536 is outside 1..65535"
     ));
+
+    // one edit to the good project at a time: a tileset grid, spacing, padding, or column count
+    // out of range, a number outside what an int holds, or a position outside the world
+    static const struct {
+        const char* from;
+        const char* to;
+        const char* error;
+    } mutations[] = {
+        {"\"tileGridSize\": 8", "\"tileGridSize\": 0", "tileGridSize 0 is outside 1..65535"},
+        {"\"tileGridSize\": 8", "\"tileGridSize\": -8", "tileGridSize -8 is outside 1..65535"},
+        {"\"tileGridSize\": 8", "\"tileGridSize\": 65536", "tileGridSize 65536 is outside"},
+        {"\"spacing\": 0", "\"spacing\": -1", "spacing -1 is outside 0..65535"},
+        {"\"padding\": 0", "\"padding\": -1", "padding -1 is outside 0..65535"},
+        {"\"__cWid\": 4", "\"__cWid\": 0", "__cWid 0 is outside 1..65535"},
+        {"\"__cHei\": 2", "\"__cHei\": -2", "__cHei -2 is outside 1..65535"},
+        {"\"worldX\": 0", "\"worldX\": 1e10", "worldX 1e+10 is outside"},
+        {"\"worldY\": -8", "\"worldY\": -16777217", "worldY -1.67772e+07 is outside"},
+        {"\"pxWid\": 16, \"pxHei\": 8", "\"pxWid\": 65536, \"pxHei\": 8",
+         "level Room: pxWid 65536 is outside 0..65535"},
+        {"\"hp\", \"__type\": \"Int\", \"__value\": 3",
+         "\"hp\", \"__type\": \"Int\", \"__value\": 3e9", "field hp: value 3e+09 is outside"},
+        {"\"px\": [8, 0], \"src\": [0, 0], \"f\": 3",
+         "\"px\": [1e300, 0], \"src\": [0, 0], \"f\": 3", "px 1e+300 is outside"},
+        {"\"defUid\": 20, \"px\": [8, 0]", "\"defUid\": 20, \"px\": [8, -16777210]",
+         "entity Crate: placement (8, -16777218) is outside the world"},
+        {"\"intGridCsv\": [0, 1]", "\"intGridCsv\": [0, 1e300]",
+         "intGrid value 1e+300 exceeds 255"},
+    };
+
+    for (usize i = 0; i < sizeof mutations / sizeof mutations[0]; i++) {
+        char mutated[16384];
+        u8_span good = project("false", "", "tiles.aseprite", "0", "0", "true", GOOD_A);
+        const char* at = strstr((const char*)good.elems, mutations[i].from);
+
+        CHECK(at != nullptr);
+        snprintf(
+            mutated, sizeof mutated, "%.*s%s%s", (int)(at - (const char*)good.elems), good.elems,
+            mutations[i].to, at + strlen(mutations[i].from)
+        );
+        CHECK(fails_with(
+            &scratch, (u8_span) {(const u8*)mutated, strlen(mutated)}, mutations[i].error
+        ));
+    }
 
     CHECK(fails_with(
         &scratch, project("false", "", "tiles.aseprite", "0.5", "0", "true", GOOD_A),

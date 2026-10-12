@@ -3,6 +3,7 @@
 #include "file.h"
 #include "json.h"
 
+#include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -18,7 +19,7 @@ typedef struct ldtk {
 } ldtk;
 
 // Every failure names the file, then the level, layer, entity, and field being read.
-static bool ldtk_fail(ldtk* reader, const char* fmt, ...) {
+[[gnu::format(gnu_printf, 2, 3)]] static bool ldtk_fail(ldtk* reader, const char* fmt, ...) {
     char text[sizeof reader->err->text]; // orb_error is { char text[256]; }
     char where[sizeof reader->err->text] = "";
     va_list args;
@@ -51,13 +52,32 @@ static bool ldtk_number(ldtk* reader, const orb_json* obj, const char* key, f64*
     return true;
 }
 
-static bool ldtk_int(ldtk* reader, const orb_json* obj, const char* key, int* out) {
+// Every JSON number that becomes an int comes through here but intGridCsv's, which checks its own.
+static bool ldtk_convert(ldtk* reader, const char* key, f64 num, int low, int high, int* out) {
+    if (!(num >= low && num <= high))
+        return ldtk_fail(reader, "%s %g is outside %d..%d", key, num, low, high);
+
+    *out = (int)num;
+    return true;
+}
+
+static bool ldtk_int_in(
+    ldtk* reader,
+    const orb_json* obj,
+    const char* key,
+    int low,
+    int high,
+    int* out
+) {
     f64 value;
 
     if (!ldtk_number(reader, obj, key, &value)) return false;
 
-    *out = (int)value;
-    return true;
+    return ldtk_convert(reader, key, value, low, high, out);
+}
+
+static bool ldtk_int(ldtk* reader, const orb_json* obj, const char* key, int* out) {
+    return ldtk_int_in(reader, obj, key, INT_MIN, INT_MAX, out);
 }
 
 static bool ldtk_string(ldtk* reader, const orb_json* obj, const char* key, const char** out) {
@@ -122,8 +142,7 @@ static bool ldtk_optional_int(ldtk* reader, const orb_json* obj, const char* key
     }
     if (value->kind != ORB_JSON_NUMBER) return ldtk_fail(reader, "%s is not a number or null", key);
 
-    *out = (int)value->num;
-    return true;
+    return ldtk_convert(reader, key, value->num, INT_MIN, INT_MAX, out);
 }
 
 // "Int", "Array<Int>", "LocalEnum.X"... to a kind. Color, Tile, and FilePath set skip.
@@ -177,6 +196,17 @@ typedef struct ldtk_geometry {
     int world_x, world_y, offset_x, offset_y, grid;
 } ldtk_geometry;
 
+static bool ldtk_world(ldtk* reader, const char* what, i64 x, i64 y, int* out_x, int* out_y) {
+    if (x < -ORB_MAX_WORLD || x > ORB_MAX_WORLD || y < -ORB_MAX_WORLD || y > ORB_MAX_WORLD)
+        return ldtk_fail(
+            reader, "%s (%lld, %lld) is outside the world", what, (long long)x, (long long)y
+        );
+
+    *out_x = (int)x;
+    *out_y = (int)y;
+    return true;
+}
+
 // One element: a point's cell becomes world pixels; a ref keeps its iid for the cast.
 static bool ldtk_value(
     ldtk* reader,
@@ -188,8 +218,7 @@ static bool ldtk_value(
     switch (kind) {
     case ORB_FIELD_INT:
         if (value->kind != ORB_JSON_NUMBER) return ldtk_fail(reader, "is not a number");
-        out->integer = (i32)value->num;
-        return true;
+        return ldtk_convert(reader, "value", value->num, INT_MIN, INT_MAX, &out->integer);
     case ORB_FIELD_FLOAT:
         if (value->kind != ORB_JSON_NUMBER) return ldtk_fail(reader, "is not a number");
         out->number = (f32)value->num;
@@ -209,11 +238,11 @@ static bool ldtk_value(
         if (!ldtk_int(reader, value, "cx", &cx) || !ldtk_int(reader, value, "cy", &cy))
             return false;
 
-        out->point = (orb_vec2) {
-            geometry->world_x + geometry->offset_x + cx * geometry->grid,
-            geometry->world_y + geometry->offset_y + cy * geometry->grid
-        };
-        return true;
+        return ldtk_world(
+            reader, "point", (i64)geometry->world_x + geometry->offset_x + (i64)cx * geometry->grid,
+            (i64)geometry->world_y + geometry->offset_y + (i64)cy * geometry->grid, &out->point.x,
+            &out->point.y
+        );
     }
     case ORB_FIELD_REF:
         if (value->kind != ORB_JSON_OBJECT) return ldtk_fail(reader, "is not an entity ref");
@@ -381,16 +410,11 @@ static bool ldtk_defs_tilesets(ldtk* reader, const orb_json* defs, orb_ldtk* out
         }
 
         int grid, spacing, padding, columns, rows, width, height;
-        if (!ldtk_int(reader, entry, "tileGridSize", &grid)) return false;
-        if (!ldtk_int(reader, entry, "spacing", &spacing)) return false;
-        if (!ldtk_int(reader, entry, "padding", &padding)) return false;
-        if (!ldtk_int(reader, entry, "__cWid", &columns)) return false;
-        if (!ldtk_int(reader, entry, "__cHei", &rows)) return false;
-        if (columns > 65535 || rows > 65535)
-            return ldtk_fail(
-                reader, "tileset %s: __cWid/__cHei %dx%d is larger than 65535x65535", path, columns,
-                rows
-            );
+        if (!ldtk_int_in(reader, entry, "tileGridSize", 1, 65535, &grid)) return false;
+        if (!ldtk_int_in(reader, entry, "spacing", 0, 65535, &spacing)) return false;
+        if (!ldtk_int_in(reader, entry, "padding", 0, 65535, &padding)) return false;
+        if (!ldtk_int_in(reader, entry, "__cWid", 1, 65535, &columns)) return false;
+        if (!ldtk_int_in(reader, entry, "__cHei", 1, 65535, &rows)) return false;
         if (!ldtk_int(reader, entry, "pxWid", &width)) return false;
         if (!ldtk_int(reader, entry, "pxHei", &height)) return false;
 
@@ -519,8 +543,7 @@ static bool ldtk_tiles(
     int grid,
     int columns,
     int rows,
-    int tileset,
-    u64 tileset_slots,
+    const orb_ldtk_tileset* tileset,
     orb_ldtk_tile_span* out
 ) {
     const orb_json *grid_tiles, *auto_tiles;
@@ -532,7 +555,7 @@ static bool ldtk_tiles(
     int at_count = auto_tiles ? auto_tiles->count : 0;
     int count = gt_count + at_count;
 
-    if (count > 0 && tileset < 0) return ldtk_fail(reader, "tiles on a layer with no tileset");
+    if (count > 0 && !tileset) return ldtk_fail(reader, "tiles on a layer with no tileset");
 
     orb_ldtk_tile* tiles = orb_arena_push_array(reader->scratch, orb_ldtk_tile, count);
     int tile_index = 0;
@@ -552,7 +575,10 @@ static bool ldtk_tiles(
             if (px0->kind != ORB_JSON_NUMBER || px1->kind != ORB_JSON_NUMBER)
                 return ldtk_fail(reader, "px does not hold two numbers");
 
-            int px_x = (int)px0->num, px_y = (int)px1->num;
+            int px_x, px_y;
+            if (!ldtk_convert(reader, "px", px0->num, INT_MIN, INT_MAX, &px_x)) return false;
+            if (!ldtk_convert(reader, "px", px1->num, INT_MIN, INT_MAX, &px_y)) return false;
+
             int cell_x = px_x / grid, cell_y = px_y / grid;
 
             if (px_x < 0 || px_y < 0 || cell_x >= columns || cell_y >= rows)
@@ -562,8 +588,16 @@ static bool ldtk_tiles(
             if (!ldtk_int(reader, entry, "t", &id)) return false;
             if (id < 0 || id > (int)ORB_MAX_TILE_ID)
                 return ldtk_fail(reader, "tile id %d does not fit", id);
-            if ((u64)id >= tileset_slots)
+            if ((u64)id >= (u64)tileset->columns * tileset->rows)
                 return ldtk_fail(reader, "tile id %d is past the tileset", id);
+
+            i64 pitch = (i64)tileset->grid + tileset->spacing;
+
+            if (tileset->padding + (id % tileset->columns) * pitch + tileset->grid >
+                    tileset->width ||
+                tileset->padding + (id / tileset->columns) * pitch + tileset->grid >
+                    tileset->height)
+                return ldtk_fail(reader, "tile id %d leaves the tileset image", id);
 
             int flip;
             if (!ldtk_int(reader, entry, "f", &flip)) return false;
@@ -603,7 +637,7 @@ static bool ldtk_cells(ldtk* reader, const orb_json* inst, int columns, int rows
     for (const orb_json* value = csv ? csv->first : nullptr; value; value = value->next, i++) {
         if (value->kind != ORB_JSON_NUMBER)
             return ldtk_fail(reader, "intGridCsv value is not a number");
-        if (value->num < 0 || value->num > 255)
+        if (!(value->num >= 0 && value->num <= 255))
             return ldtk_fail(reader, "intGrid value %g exceeds 255", value->num);
 
         cells[i] = (u8)value->num;
@@ -659,14 +693,9 @@ static bool ldtk_layer(
     if (!def) return ldtk_fail(reader, "layerDefUid %d has no definition", def_uid);
 
     int grid, columns, rows, offset_x, offset_y;
-    if (!ldtk_int(reader, inst, "__gridSize", &grid)) return false;
-    if (!ldtk_int(reader, inst, "__cWid", &columns)) return false;
-    if (!ldtk_int(reader, inst, "__cHei", &rows)) return false;
-    if (grid < 1) return ldtk_fail(reader, "__gridSize %d is not positive", grid);
-    if (columns < 1 || rows < 1)
-        return ldtk_fail(reader, "__cWid/__cHei %dx%d is empty", columns, rows);
-    if (columns > 65535 || rows > 65535)
-        return ldtk_fail(reader, "__cWid/__cHei %dx%d is larger than 65535x65535", columns, rows);
+    if (!ldtk_int_in(reader, inst, "__gridSize", 1, 65535, &grid)) return false;
+    if (!ldtk_int_in(reader, inst, "__cWid", 1, 65535, &columns)) return false;
+    if (!ldtk_int_in(reader, inst, "__cHei", 1, 65535, &rows)) return false;
     if (!ldtk_int(reader, inst, "__pxTotalOffsetX", &offset_x)) return false;
     if (!ldtk_int(reader, inst, "__pxTotalOffsetY", &offset_y)) return false;
 
@@ -678,7 +707,6 @@ static bool ldtk_layer(
     if (!ldtk_optional_int(reader, inst, "__tilesetDefUid", &tuid)) return false;
 
     int tileset = -1;
-    u64 tileset_slots = 0;
 
     if (tuid >= 0) {
         tileset = ldtk_tileset_by_uid(project, tuid);
@@ -691,9 +719,6 @@ static bool ldtk_layer(
             if (skip) return ldtk_fail(reader, "tileset uid %d has no image path", tuid);
             return ldtk_fail(reader, "tileset uid %d has no definition", tuid);
         }
-
-        tileset_slots =
-            (u64)project->tilesets.elems[tileset].columns * project->tilesets.elems[tileset].rows;
     }
 
     const u8* cells = nullptr;
@@ -701,7 +726,10 @@ static bool ldtk_layer(
         return false;
 
     orb_ldtk_tile_span tiles = {};
-    if (!ldtk_tiles(reader, inst, grid, columns, rows, tileset, tileset_slots, &tiles))
+    if (!ldtk_tiles(
+            reader, inst, grid, columns, rows,
+            tileset >= 0 ? &project->tilesets.elems[tileset] : nullptr, &tiles
+        ))
         return false;
 
     out->name = identifier;
@@ -734,7 +762,7 @@ static bool ldtk_entities(
     reader->layer = identifier;
 
     int grid, offset_x, offset_y;
-    if (!ldtk_int(reader, inst, "__gridSize", &grid)) return false;
+    if (!ldtk_int_in(reader, inst, "__gridSize", 1, 65535, &grid)) return false;
     if (!ldtk_int(reader, inst, "__pxTotalOffsetX", &offset_x)) return false;
     if (!ldtk_int(reader, inst, "__pxTotalOffsetY", &offset_y)) return false;
 
@@ -765,7 +793,10 @@ static bool ldtk_entities(
             px->first->next->kind != ORB_JSON_NUMBER)
             return ldtk_fail(reader, "px does not hold two numbers");
 
-        int width, height;
+        int px_x, px_y, width, height;
+        if (!ldtk_convert(reader, "px", px->first->num, INT_MIN, INT_MAX, &px_x)) return false;
+        if (!ldtk_convert(reader, "px", px->first->next->num, INT_MIN, INT_MAX, &px_y))
+            return false;
         if (!ldtk_int(reader, entry, "width", &width)) return false;
         if (!ldtk_int(reader, entry, "height", &height)) return false;
 
@@ -774,10 +805,14 @@ static bool ldtk_entities(
 
         orb_ldtk_instance* instance = &out[i];
 
+        if (!ldtk_world(
+                reader, "placement", (i64)level->world_x + px_x, (i64)level->world_y + px_y,
+                &instance->x, &instance->y
+            ))
+            return false;
+
         instance->iid = iid;
         instance->def = def;
-        instance->x = level->world_x + (int)px->first->num;
-        instance->y = level->world_y + (int)px->first->next->num;
         instance->width = width;
         instance->height = height;
 
@@ -856,10 +891,12 @@ static bool ldtk_level_head(ldtk* reader, const orb_json* level_json, orb_ldtk_l
     if (!ldtk_string(reader, level_json, "iid", &iid)) return false;
 
     int world_x, world_y, width, height;
-    if (!ldtk_int(reader, level_json, "worldX", &world_x)) return false;
-    if (!ldtk_int(reader, level_json, "worldY", &world_y)) return false;
-    if (!ldtk_int(reader, level_json, "pxWid", &width)) return false;
-    if (!ldtk_int(reader, level_json, "pxHei", &height)) return false;
+    if (!ldtk_int_in(reader, level_json, "worldX", -ORB_MAX_WORLD, ORB_MAX_WORLD, &world_x))
+        return false;
+    if (!ldtk_int_in(reader, level_json, "worldY", -ORB_MAX_WORLD, ORB_MAX_WORLD, &world_y))
+        return false;
+    if (!ldtk_int_in(reader, level_json, "pxWid", 0, 65535, &width)) return false;
+    if (!ldtk_int_in(reader, level_json, "pxHei", 0, 65535, &height)) return false;
 
     const char* background;
     if (!ldtk_optional_string(reader, level_json, "bgRelPath", &background)) return false;

@@ -74,10 +74,14 @@ int main(int argc, char** argv) {
     CHECK_EQ(orb_os_file_mtime("build/scratch/does-not-exist"), 0);
 
     // copy a file byte for byte: how scry loads a copy of the game library
+    remove("build/scratch/os-copy.bin");
     CHECK(orb_os_copy_file("build/scratch/os.bin", "build/scratch/os-copy.bin"));
     CHECK(orb_os_read_file("build/scratch/os-copy.bin", &out, &back));
     CHECK_EQ(back.len, 3);
     CHECK_EQ(back.elems[1], 2);
+
+    // an existing destination is never overwritten
+    CHECK(!orb_os_copy_file("build/scratch/os.bin", "build/scratch/os-copy.bin"));
     CHECK(!orb_os_copy_file("build/scratch/does-not-exist", "build/scratch/nope"));
     CHECK_EQ(orb_os_file_mtime("build/scratch/nope"), 0); // no half-made target
 
@@ -87,6 +91,7 @@ int main(int argc, char** argv) {
     CHECK(orb_os_read_file("build/scratch/h\xc3\xa9llo/\xc3\xbc.bin", &out, &back));
     CHECK_EQ(back.len, 3);
     CHECK(orb_os_file_mtime("build/scratch/h\xc3\xa9llo/\xc3\xbc.bin") > 0);
+    remove("build/scratch/h\xc3\xa9llo/\xc3\xb6.bin");
     CHECK(orb_os_copy_file(
         "build/scratch/h\xc3\xa9llo/\xc3\xbc.bin", "build/scratch/h\xc3\xa9llo/\xc3\xb6.bin"
     ));
@@ -210,6 +215,12 @@ int main(int argc, char** argv) {
     CHECK(orb_os_reserve(SIZE_MAX) == nullptr);
 
 #ifndef _WIN32
+    // a copy never writes through a symlink at its destination
+    remove("build/scratch/os-link.bin");
+    CHECK_EQ(symlink("os.bin", "build/scratch/os-link.bin"), 0);
+    CHECK(!orb_os_copy_file("build/scratch/os-copy.bin", "build/scratch/os-link.bin"));
+    remove("build/scratch/os-link.bin");
+
     // a file of 4 GB or more is refused before anything is allocated
     {
         FILE* big = fopen("build/scratch/big.bin", "wb");

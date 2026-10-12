@@ -314,6 +314,25 @@ int main(void) {
     CHECK(!song_playing());
     CHECK_EQ(out[0], 0);
 
+    // two publishes with no render between can hand over one pointer with new contents: a
+    // voice on a sample that is gone is silenced before a set reads the shrunk table
+    static orb_assets view;
+    static const orb_sample_desc one_sample[1] = {samples[0]};
+    static const u64 one_id[1] = {11};
+
+    view = assets;
+    (void)orb_mixer_set_assets(&mixer, &view);
+    voice = orb_mixer_sound_play(&mixer, ORB_SAMPLE(1), full, 0);
+    render(1);
+    CHECK_EQ(playing_count(), 1);
+    view.samples = (orb_sample_desc_span) {one_sample, 1};
+    view.sample_ids = one_id;
+    (void)orb_mixer_set_assets(&mixer, &view);
+    orb_mixer_sound_set(&mixer, voice, full);
+    render(1);
+    CHECK_EQ(playing_count(), 0);
+    CHECK_EQ(out[0], 0);
+
     // handles carry generations: one from before a recast plays nothing
     static const u8 gens[3] = {0, 1, 0};
     assets.sample_gens = gens;

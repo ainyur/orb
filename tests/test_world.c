@@ -417,6 +417,31 @@ static int test_queries(void) {
     CHECK_EQ(found.len, 1);
     CHECK(found.elems[0].v == entity_a.v);
 
+    // extreme inputs neither overflow nor lose what they reach
+    orb_rect huge = {{1, 1}, {INT_MAX, INT_MAX}};
+
+    CHECK_EQ(orb_query_rect(&lists, huge, ORB_TAG_ANY, ORB_NO_ENTITY).len, 2);
+    huge.at = (orb_vec2) {INT_MAX, INT_MAX};
+    CHECK_EQ(orb_query_rect(&lists, huge, ORB_TAG_ANY, ORB_NO_ENTITY).len, 0);
+    huge = (orb_rect) {{INT_MIN, INT_MIN}, {INT_MIN, INT_MIN}};
+    CHECK_EQ(orb_query_rect(&lists, huge, ORB_TAG_ANY, ORB_NO_ENTITY).len, 0);
+    CHECK_EQ(
+        orb_query_point(&lists, (orb_vec2) {INT_MAX, INT_MAX}, ORB_TAG_ANY, ORB_NO_ENTITY).len, 0
+    );
+    CHECK_EQ(
+        orb_query_circle(&lists, (orb_vec2) {0, 12}, INT_MAX, ORB_TAG_ANY, ORB_NO_ENTITY).len, 2
+    );
+    CHECK_EQ(
+        orb_query_circle(&lists, (orb_vec2) {INT_MIN, INT_MAX}, INT_MAX, ORB_TAG_ANY, ORB_NO_ENTITY)
+            .len,
+        0
+    );
+    CHECK_EQ(
+        orb_query_circle(&lists, (orb_vec2) {INT_MAX, INT_MIN}, INT_MAX, ORB_TAG_ANY, ORB_NO_ENTITY)
+            .len,
+        0
+    );
+
     // ray: the nearest body along x, at the entry point with the face normal
     orb_hit hit;
     CHECK(
@@ -495,6 +520,28 @@ static int test_queries(void) {
     CHECK(!orb_query_ray(
         (orb_vec2) {20, 20}, (orb_vec2) {44, 20}, 0, ORB_RAY_CELLS | ORB_RAY_ONEWAY, ORB_NO_ENTITY,
         &hit
+    ));
+
+    // endpoints at the extremes: nothing overflows, and a segment past the world bound is refused
+    // at once instead of walked
+    constexpr u32 all = ORB_RAY_CELLS | ORB_RAY_SOLIDS;
+
+    CHECK(!orb_query_ray(
+        (orb_vec2) {INT_MIN, INT_MIN}, (orb_vec2) {INT_MAX, INT_MAX}, 0, all, ORB_NO_ENTITY, &hit
+    ));
+    CHECK(!orb_query_ray(
+        (orb_vec2) {INT_MAX, 0}, (orb_vec2) {INT_MIN, 0}, ORB_TAG_ANY, all, ORB_NO_ENTITY, &hit
+    ));
+    CHECK(!orb_query_ray(
+        (orb_vec2) {0, 0}, (orb_vec2) {0, ORB_MAX_WORLD + 1}, 0, all, ORB_NO_ENTITY, &hit
+    ));
+    CHECK(!orb_query_ray(
+        (orb_vec2) {INT_MAX, INT_MAX}, (orb_vec2) {INT_MAX - 5, INT_MAX}, ORB_TAG_ANY, all,
+        ORB_NO_ENTITY, &hit
+    ));
+    CHECK(!orb_query_ray(
+        (orb_vec2) {INT_MIN, INT_MIN}, (orb_vec2) {INT_MIN + 5, INT_MIN}, ORB_TAG_ANY, all,
+        ORB_NO_ENTITY, &hit
     ));
     return 0;
 }
@@ -597,6 +644,10 @@ static int test_draw(void) {
     CHECK(rgb[2 * 16 + 9] != 0xffffffffu);
     CHECK_EQ(rgb[5 * 16 + 5], 0xffffffffu);
     CHECK_EQ(rgb[10 * 16 + 10], 0xffffffffu);
+    // a box at the edge of an int, seen from a camera far the other way, plots nothing
+    body(entity1)->box.at = (orb_vec2) {INT_MAX - 16, INT_MAX - 16};
+    orb_world_debug_draw(rgb, (orb_size) {16, 16}, (orb_vec2f) {-1e30f, -1e30f});
+    CHECK_EQ(rgb[5 * 16 + 5], 0xffffffffu);
     orb_entity_debug = false;
     clear_world();
     return 0;

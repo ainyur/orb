@@ -44,6 +44,20 @@ int main(void) {
        //
     CHECK_EQ(fb.px[0], 4);
 
+    // any position is safe: the extremes clip away instead of overflowing
+    orb_fb_clear(&fb, 7);
+
+    for (int i = 0; i < 4; i++) {
+        orb_vec2 corner = {i & 1 ? INT_MAX : INT_MIN, i & 2 ? INT_MAX : INT_MIN};
+
+        orb_fb_blit(&fb, src, 3, (orb_size) {3, 2}, corner, ORB_FLIP_X, nullptr);
+    }
+
+    orb_fb_blit(&fb, src, 3, (orb_size) {3, 2}, (orb_vec2) {INT_MIN, 0}, 0, nullptr);
+    orb_fb_blit(&fb, src, 3, (orb_size) {3, 2}, (orb_vec2) {0, INT_MAX}, 0, nullptr);
+    CHECK_EQ(fb.px[0], 7);
+    CHECK_EQ(fb.px[31], 7);
+
     orb_pal pal;
     u8 rgba[256 * 4] = {0};
     rgba[7 * 4 + 0] = 0x12;
@@ -121,6 +135,19 @@ int main(void) {
     orb_sprite_draw(
         &fb, &assets, (orb_vec2f) {}, ORB_SPRITE(99), (orb_vec2) {0, 0}, 0, nullptr
     ); // invalid handle: nothing
+
+    orb_fb_clear(&fb, 0);
+
+    for (int i = 0; i < 4; i++) {
+        orb_vec2 corner = {i & 1 ? INT_MAX : INT_MIN, i & 2 ? INT_MAX : INT_MIN};
+
+        orb_sprite_draw(&fb, &assets, (orb_vec2f) {}, ORB_SPRITE(0), corner, ORB_FLIP_X, nullptr);
+        orb_sprite_draw(
+            &fb, &assets, (orb_vec2f) {-1e30f, 1e30f}, ORB_SPRITE(0), corner, 0, nullptr
+        );
+    }
+
+    CHECK_EQ(fb.px[0], 0);
 
     orb_fb_clear(&fb, 0);
     orb_sprite_draw(
