@@ -226,8 +226,13 @@ static bool cast_pal(cast* context, orb_ase* master, orb_assets* assets) {
     return true;
 }
 
-// Remaps one file's palette indices onto the master palette, in place.
+// Remaps one file's palette indices onto the master palette, in place: a file whose palette is
+// the master's keeps its indices, and any other's colors are matched, each to its first entry.
 static bool cast_art_remap(cast* context, const orb_ase* master, orb_ase* ase, const char* path) {
+    if (ase->color_count == master->color_count && ase->transparent == master->transparent &&
+        memcmp(ase->rgb, master->rgb, sizeof ase->rgb[0] * ase->color_count) == 0)
+        return true;
+
     u8 remap[256] = {0};
 
     for (int k = 0; k < ase->color_count; k++) {

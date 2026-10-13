@@ -31,6 +31,36 @@ int main(void) {
     CHECK(strcmp(cast_dir_of(&scratch, "C:\\g\\w.ldtk"), "C:\\g") == 0);
 #endif
 
+    // a file in the master palette keeps its indices, though two of its entries share a color; a
+    // file in any other palette is matched by color, each color to its first entry
+    {
+        static orb_ase master, file;
+        u8 frames[3] = {0, 1, 2};
+        cast context = {.err = &err};
+
+        master.color_count = 3;
+        master.rgb[1][0] = 200;
+        master.rgb[2][0] = 200;
+        file = master;
+        file.width = 3;
+        file.height = 1;
+        file.frame_count = 1;
+        file.frames = frames;
+        CHECK(cast_art_remap(&context, &master, &file, "same"));
+        CHECK_EQ(frames[1], 1);
+        CHECK_EQ(frames[2], 2);
+
+        file.color_count = 4;
+        file.rgb[3][0] = 200;
+        CHECK(cast_art_remap(&context, &master, &file, "other"));
+        CHECK_EQ(frames[1], 1);
+        CHECK_EQ(frames[2], 1);
+
+        file.rgb[3][1] = 9;
+        CHECK(!cast_art_remap(&context, &master, &file, "stray"));
+        CHECK(strstr(err.text, "stray: color 3 (200,9,0) is not in the master palette") != nullptr);
+    }
+
     // the directories are overridden to point at the checked-in fixtures; a game
     // that keeps the conventional layout names none of them
     const char* manifest_json =
