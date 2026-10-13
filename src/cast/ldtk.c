@@ -19,7 +19,7 @@ typedef struct ldtk {
 } ldtk;
 
 // Every failure names the file, then the level, layer, entity, and field being read.
-[[gnu::format(gnu_printf, 2, 3)]] static bool ldtk_fail(ldtk* reader, const char* fmt, ...) {
+[[gnu::format(printf, 2, 3)]] static bool ldtk_fail(ldtk* reader, const char* fmt, ...) {
     char text[sizeof reader->err->text]; // orb_error is { char text[256]; }
     char where[sizeof reader->err->text] = "";
     va_list args;

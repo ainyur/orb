@@ -1,8 +1,8 @@
 WIN := bin/orb.exe build/wine/%.exe release-wine
 
+# CC, CFLAGS, and LDFLAGS come from the command line or the environment; the flags go after FLAGS.
 ifeq ($(OS),Windows_NT)
-CC       := gcc
-CFLAGS   := -std=c23 -D_WIN32_WINNT=0x0A00 -Wall -Wextra -Wformat=2
+FLAGS    := -std=c23 -D_WIN32_WINNT=0x0A00 -Wall -Wextra -Wformat=2
 BACKEND  := -DORB_OS_GDI
 LIBS     := -static -lgdi32 -lole32 -lshell32
 TESTLIBS := -lshell32
@@ -13,8 +13,7 @@ EXE      := .exe
 HARDEN   := -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -fstack-protector-strong
 HARDEN_LD :=
 else
-CC       := gcc
-CFLAGS   := -std=c23 -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Wformat=2
+FLAGS    := -std=c23 -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Wformat=2
 BACKEND  := -DORB_OS_X11
 LIBS     := -lX11 -lasound
 TESTLIBS :=
@@ -27,7 +26,7 @@ HARDEN_LD := -pie -Wl,-z,relro,-z,now
 $(WIN): private CC := x86_64-w64-mingw32-gcc
 endif
 
-$(WIN): private CFLAGS   := -std=c23 -D_WIN32_WINNT=0x0A00 -Wall -Wextra -Wformat=2
+$(WIN): private FLAGS    := -std=c23 -D_WIN32_WINNT=0x0A00 -Wall -Wextra -Wformat=2
 $(WIN): private BACKEND  := -DORB_OS_GDI
 $(WIN): private LIBS     := -static -lgdi32 -lole32 -lshell32
 $(WIN): private TESTLIBS := -lshell32
@@ -51,7 +50,7 @@ build/scratch build/wine build/asan bin:
 	mkdir -p $@
 
 bin/orb bin/orb.exe: $(SRC) | bin
-	$(CC) $(CFLAGS) -g -O1 $(BACKEND) -o $@ src/main.c $(LIBS)
+	$(CC) $(FLAGS) -g -O1 $(BACKEND) $(CFLAGS) $(LDFLAGS) -o $@ src/main.c $(LIBS)
 
 clean:
 	rm -rf build bin
@@ -64,20 +63,20 @@ release release-wine: $(ORB)
 	$(MAKE) --no-print-directory -s -C $(GAME) release-objects RELEASE_EXT=$(OBJ) RELEASE_CFLAGS='$(HARDEN)'
 	$(ORB) seal $(GAME) $(GAME)/build/game.orb
 	mkdir -p $(GAME)/bin
-	$(CC) $(CFLAGS) -O2 $(BACKEND) -DORB_RELEASE $(HARDEN) $(HARDEN_LD) --embed-dir=$(GAME)/build -o $(GAME)/bin/$(GAMENAME)$(EXE) src/main.c $(GAME)/build/release/*.$(OBJ) $(LIBS)
+	$(CC) $(FLAGS) -O2 $(BACKEND) -DORB_RELEASE $(HARDEN) $(HARDEN_LD) $(CFLAGS) $(LDFLAGS) --embed-dir=$(GAME)/build -o $(GAME)/bin/$(GAMENAME)$(EXE) src/main.c $(GAME)/build/release/*.$(OBJ) $(LIBS)
 
 run-wine: bin/orb.exe
 	$(MAKE) --no-print-directory -s -C $(GAME) build/game.dll
 	WINEDEBUG=-all wine bin/orb.exe run $(GAME)
 
 build/test_%: tests/test_%.c tests/test.h $(SRC) $(wildcard tests/fixtures/* tests/fixtures/*/* tests/fixtures/*/*/*) | build/scratch
-	$(CC) $(CFLAGS) -g -O1 -DORB_OS_HEADLESS -Isrc -o $@ $< $(TESTLIBS)
+	$(CC) $(FLAGS) -g -O1 -DORB_OS_HEADLESS -Isrc $(CFLAGS) $(LDFLAGS) -o $@ $< $(TESTLIBS)
 
 build/wine/test_%.exe: tests/test_%.c tests/test.h $(SRC) $(wildcard tests/fixtures/* tests/fixtures/*/* tests/fixtures/*/*/*) | build/scratch build/wine
-	$(CC) $(CFLAGS) -g -O1 -DORB_OS_HEADLESS -Isrc -o $@ $< $(TESTLIBS)
+	$(CC) $(FLAGS) -g -O1 -DORB_OS_HEADLESS -Isrc $(CFLAGS) $(LDFLAGS) -o $@ $< $(TESTLIBS)
 
 build/asan/test_%: tests/test_%.c tests/test.h $(SRC) $(wildcard tests/fixtures/* tests/fixtures/*/* tests/fixtures/*/*/*) | build/scratch build/asan
-	$(CC) $(CFLAGS) -g -O1 -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -DORB_OS_HEADLESS -Isrc -o $@ $< $(TESTLIBS)
+	$(CC) $(FLAGS) -g -O1 -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -DORB_OS_HEADLESS -Isrc $(CFLAGS) $(LDFLAGS) -o $@ $< $(TESTLIBS)
 
 test: $(TESTS)
 	@for t in $(TESTS); do echo "== $$t"; ./$$t || exit 1; done
@@ -101,4 +100,4 @@ fixtures: build/wav$(EXE)
 	build/wav$(EXE) song examples/demo/music/song.wav
 
 build/wav$(EXE): build/%$(EXE): tests/fixtures/%.c | build/scratch
-	$(CC) $(CFLAGS) -O1 -o $@ $<
+	$(CC) $(FLAGS) -O1 $(CFLAGS) $(LDFLAGS) -o $@ $<

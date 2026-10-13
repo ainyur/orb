@@ -1,6 +1,6 @@
 ORB    ?= ../..
-CC     := gcc
-CFLAGS := -std=c23 -Wall -Wextra -g -I$(ORB)/src
+# CC, CFLAGS, and LDFLAGS come from the command line or the environment; the flags go after FLAGS.
+FLAGS  := -std=c23 -Wall -Wextra -g -I$(ORB)/src
 PIC    := -fPIC
 OBJ    := $(patsubst %.c,build/%.o,$(wildcard *.c))
 
@@ -22,21 +22,21 @@ endif
 build/game.so: $(OBJ)
 build/game.dll: $(OBJ:.o=.obj)
 build/game.so build/game.dll:
-	$(CC) -shared -o $@ $^
+	$(CC) -shared $(LDFLAGS) -o $@ $^
 
 build/%.o: %.c | build
-	$(CC) $(CFLAGS) $(PIC) -MMD -MP -MF $@.d -c -o $@ $<
+	$(CC) $(FLAGS) $(PIC) $(CFLAGS) -MMD -MP -MF $@.d -c -o $@ $<
 
 build/%.obj: %.c | build
-	$(CC) $(CFLAGS) $(PIC) -MMD -MP -MF $@.d -c -o $@ $<
+	$(CC) $(FLAGS) $(PIC) $(CFLAGS) -MMD -MP -MF $@.d -c -o $@ $<
 
 release-objects: $(RELEASE_OBJ)
 
 build/release/%.o: %.c | build/release
-	$(CC) $(CFLAGS) -O2 $(RELEASE_CFLAGS) -DORB_RELEASE -MMD -MP -MF $@.d -c -o $@ $<
+	$(CC) $(FLAGS) -O2 $(RELEASE_CFLAGS) -DORB_RELEASE $(CFLAGS) -MMD -MP -MF $@.d -c -o $@ $<
 
 build/release/%.obj: %.c | build/release
-	$(CC) $(CFLAGS) -O2 $(RELEASE_CFLAGS) -DORB_RELEASE -MMD -MP -MF $@.d -c -o $@ $<
+	$(CC) $(FLAGS) -O2 $(RELEASE_CFLAGS) -DORB_RELEASE $(CFLAGS) -MMD -MP -MF $@.d -c -o $@ $<
 
 build/release:
 	mkdir -p build/release

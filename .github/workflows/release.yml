@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     container: gcc:15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - run: apt-get update && apt-get install -y make libx11-dev libasound2-dev
@@ -29,7 +29,7 @@ jobs:
           mkdir dist
           tar -czf dist/orb-linux.tar.gz -C bin orb
           tar -czf dist/demo-linux.tar.gz -C examples/demo/bin demo
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: linux
           path: dist/
@@ -38,15 +38,15 @@ jobs:
     runs-on: windows-latest
     defaults:
       run:
-        shell: bash
+        shell: msys2 {0}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - run: |
-          mkdir -p "$HOME/bin"
-          cp "$(command -v mingw32-make)" "$HOME/bin/make.exe"
-          cygpath -w "$HOME/bin" >> "$GITHUB_PATH"
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
+        with:
+          msystem: UCRT64
+          install: make mingw-w64-ucrt-x86_64-gcc
       - run: make test
       - run: make
       - run: make release GAME=examples/demo
@@ -58,7 +58,7 @@ jobs:
       - run: |
           mkdir dist
           cp bin/orb.exe examples/demo/bin/demo.exe dist/
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows
           path: dist/
@@ -70,7 +70,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true

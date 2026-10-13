@@ -632,7 +632,7 @@ typedef struct orb_api {
     f32 (*pad_trigger)(orb_pad trigger);
     orb_pad_make (*pad_make)(void);
 
-    [[gnu::format(gnu_printf, 1, 2)]] void (*log)(const char* fmt, ...);
+    [[gnu::format(printf, 1, 2)]] void (*log)(const char* fmt, ...);
 
     void (*var_int)(const char* name, i32* at, const char* help);
     void (*var_float)(const char* name, f32* at, const char* help);

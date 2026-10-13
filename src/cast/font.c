@@ -1,6 +1,6 @@
 // A font's cells come from its own Aseprite grid; a glyph's rect is the inked span of
 // its cell and its advance that width plus one.
-[[gnu::format(gnu_printf, 3, 4)]] static bool font_fail(
+[[gnu::format(printf, 3, 4)]] static bool font_fail(
     cast* context,
     const char* path,
     const char* fmt,
