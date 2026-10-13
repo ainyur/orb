@@ -5,6 +5,8 @@
 #include "fb.h"
 
 int orb_tilemap_cell(const orb_assets* assets, orb_level level, int layer, orb_vec2 at);
+// The tag of the topmost tile that carries one in the layer's cell at a world pixel, or "".
+const char* orb_tilemap_tile_tag(const orb_assets* assets, orb_level level, int layer, orb_vec2 at);
 u32 orb_tilemap_level_at(
     const orb_assets* assets,
     orb_vec2 at

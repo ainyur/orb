@@ -441,8 +441,12 @@ constexpr int ORB_AUDIO_RATE = 48000;
 //
 // Levels. level_find("cave") is the LDtk level Cave; layer_find(level, "floor") is a layer
 // index within it, ORB_NO_INDEX when missing. layer_draw draws one layer in world space under
-// the camera; cell_get reads an IntGrid value at a world pixel, 0 outside. camera_update moves
-// an orb_camera toward its target, clamps it to its bounds, draws under at plus shake, and
+// the camera; cell_get reads an IntGrid value at a world pixel, 0 outside. tile_tag reads a
+// layer's cell at a world pixel: the enum tag its tileset gives the topmost tile that has one,
+// as "grass" for the value grass, or "" when none has; a tile with two tags fails the cast.
+// level_field_string(level, "music", 0) reads a level's field as entity_field_string reads a
+// placement's; a level's points and entity refs are not cast. camera_update moves an
+// orb_camera toward its target, clamps it to its bounds, draws under at plus shake, and
 // returns the moved camera: g->camera = orb->camera_update(g->camera).
 //
 // Text. font_find("body") is body.aseprite from the manifest's fonts. text_draw puts a
@@ -556,6 +560,12 @@ typedef struct orb_api {
     orb_rect (*level_bounds)(orb_level level);
     orb_level_neighbor_list (*level_neighbors)(orb_level level);
     int (*cell_get)(orb_level level, int layer, orb_vec2 at);
+    const char* (*tile_tag)(orb_level level, int layer, orb_vec2 at);
+    int (*level_field_count)(orb_level level, const char* name);
+    i32 (*level_field_int)(orb_level level, const char* name, int index);
+    f32 (*level_field_float)(orb_level level, const char* name, int index);
+    bool (*level_field_bool)(orb_level level, const char* name, int index);
+    const char* (*level_field_string)(orb_level level, const char* name, int index);
 
     orb_type (*type_find)(const char* stem);
     void (*type_bind)(orb_type type, orb_entity_fn init, orb_entity_fn update);

@@ -79,6 +79,14 @@ static const orb_field_desc* entity_field(const orb_entity* entity, const char* 
     );
 }
 
+// The element's bytes, or nullptr for a missing field, a kind mismatch, or an index outside the
+// count.
+static const u8* field_element(const orb_field_desc* field, int index, orb_field_kind kind) {
+    if (!field || field->kind != kind || index < 0 || index >= field->count) return nullptr;
+
+    return entity_assets->field_data.elems + field->data + (u32)index * orb_field_width(kind);
+}
+
 // The element's bytes, or nullptr for a stale handle, a missing field, a kind mismatch, or
 // an index outside the count.
 static const u8* entity_element(
@@ -91,11 +99,27 @@ static const u8* entity_element(
 
     if (slot == ORB_NO_INDEX) return nullptr;
 
-    const orb_field_desc* field = entity_field(&entity_pool.entities[slot], name);
+    return field_element(entity_field(&entity_pool.entities[slot], name), index, kind);
+}
 
-    if (!field || field->kind != kind || index < 0 || index >= field->count) return nullptr;
+// The level's field named name, or nullptr for a stale handle or a file without level fields.
+static const orb_field_desc* level_field(orb_level level, const char* name) {
+    u32 index = orb_asset_index_of(entity_assets, level);
 
-    return entity_assets->field_data.elems + field->data + (u32)index * orb_field_width(kind);
+    if (index == ORB_NO_INDEX || index >= entity_assets->level_fields.len) return nullptr;
+
+    const orb_level_fields_desc* run = &entity_assets->level_fields.elems[index];
+
+    return entity_field_in(run->first_field, run->field_count, orb_asset_id(name, ""));
+}
+
+// A float element's value, 0 for nullptr.
+static f32 field_float(const u8* bytes) {
+    u32 bits = bytes ? orb_bytes_u32(bytes) : 0;
+    f32 value;
+
+    memcpy(&value, &bits, 4);
+    return value;
 }
 
 // Fills the slot at the head of the free ring and runs the type's init; ORB_NO_ENTITY when
@@ -322,12 +346,7 @@ i32 orb_entity_field_int(orb_entity_id id, const char* name, int index) {
 }
 
 f32 orb_entity_field_float(orb_entity_id id, const char* name, int index) {
-    const u8* bytes = entity_element(id, name, index, ORB_FIELD_FLOAT);
-    u32 bits = bytes ? orb_bytes_u32(bytes) : 0;
-    f32 value;
-
-    memcpy(&value, &bits, 4);
-    return value;
+    return field_float(entity_element(id, name, index, ORB_FIELD_FLOAT));
 }
 
 bool orb_entity_field_bool(orb_entity_id id, const char* name, int index) {
@@ -363,6 +382,34 @@ orb_entity_id orb_entity_field_ref(orb_entity_id id, const char* name, int index
     }
 
     return ORB_NO_ENTITY;
+}
+
+int orb_level_field_count(orb_level level, const char* name) {
+    const orb_field_desc* field = level_field(level, name);
+
+    return field ? field->count : 0;
+}
+
+i32 orb_level_field_int(orb_level level, const char* name, int index) {
+    const u8* bytes = field_element(level_field(level, name), index, ORB_FIELD_INT);
+
+    return bytes ? orb_bytes_i32(bytes) : 0;
+}
+
+f32 orb_level_field_float(orb_level level, const char* name, int index) {
+    return field_float(field_element(level_field(level, name), index, ORB_FIELD_FLOAT));
+}
+
+bool orb_level_field_bool(orb_level level, const char* name, int index) {
+    const u8* bytes = field_element(level_field(level, name), index, ORB_FIELD_BOOL);
+
+    return bytes && bytes[0] != 0;
+}
+
+const char* orb_level_field_string(orb_level level, const char* name, int index) {
+    const u8* bytes = field_element(level_field(level, name), index, ORB_FIELD_STRING);
+
+    return bytes ? (const char*)entity_assets->field_data.elems + orb_bytes_u32(bytes) : "";
 }
 
 void orb_level_despawn(orb_level level) {

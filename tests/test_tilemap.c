@@ -140,6 +140,32 @@ int main(void) {
     ); // a layer with no cells
     CHECK_EQ(orb_tilemap_cell(&assets, ORB_LEVEL(1), 0, (orb_vec2) {10, -4}), 0); // bad handle
 
+    // tags by world pixel: a file without them reads as having none; tile 0 is grass, tile 1
+    // untagged, and a cell's untagged tiles are passed over for the topmost tagged one
+    CHECK(strcmp(orb_tilemap_tile_tag(&assets, ORB_LEVEL(0), 0, (orb_vec2) {10, -4}), "") == 0);
+
+    u32 tileset_tags[1] = {0};
+    u32 tile_tags[2] = {0, ORB_NO_INDEX};
+    u8 tag_text[6] = "grass";
+
+    assets.tileset_tags = (u32_span) {tileset_tags, 1};
+    assets.tile_tags = (u32_span) {tile_tags, 2};
+    assets.tag_text = (u8_span) {tag_text, 6};
+    CHECK(
+        strcmp(orb_tilemap_tile_tag(&assets, ORB_LEVEL(0), 0, (orb_vec2) {10, -4}), "grass") == 0
+    );
+    CHECK(strcmp(orb_tilemap_tile_tag(&assets, ORB_LEVEL(0), 0, (orb_vec2) {12, -4}), "") == 0);
+    CHECK(strcmp(orb_tilemap_tile_tag(&assets, ORB_LEVEL(0), 0, (orb_vec2) {14, -4}), "") == 0);
+    CHECK(
+        strcmp(orb_tilemap_tile_tag(&assets, ORB_LEVEL(0), 1, (orb_vec2) {11, -3}), "grass") == 0
+    );
+    CHECK(strcmp(orb_tilemap_tile_tag(&assets, ORB_LEVEL(0), 0, (orb_vec2) {9, -4}), "") == 0);
+    CHECK(strcmp(orb_tilemap_tile_tag(&assets, ORB_LEVEL(1), 0, (orb_vec2) {10, -4}), "") == 0);
+    CHECK(strcmp(orb_tilemap_tile_tag(&assets, ORB_LEVEL(0), 2, (orb_vec2) {10, -4}), "") == 0);
+    tileset_tags[0] = ORB_NO_INDEX;
+    CHECK(strcmp(orb_tilemap_tile_tag(&assets, ORB_LEVEL(0), 0, (orb_vec2) {10, -4}), "") == 0);
+    tileset_tags[0] = 0;
+
     // camera: snap, lerp, clamp, center when the bounds are smaller than the screen, shake
     orb_camera cam = {.target = {100, 50}, .lerp = 0};
     cam = orb_camera_update(cam, (orb_size) {W, H});
@@ -225,6 +251,7 @@ int main(void) {
     CHECK_EQ(orb_api_fb()->px[0], 1);
     CHECK_EQ(orb_api_fb()->px[2], 2);
     CHECK_EQ(api->cell_get(cave, 0, (orb_vec2) {12, -4}), 7);
+    CHECK(strcmp(api->tile_tag(cave, 1, (orb_vec2) {11, -3}), "grass") == 0);
 
     orb_camera follow = {.target = {13, -1}, .lerp = 0, .bounds = bounds};
     follow = api->camera_update(follow);

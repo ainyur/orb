@@ -155,6 +155,7 @@ int main(void) {
     CHECK_EQ(world.tilesets.elems[0].columns, 4);
     CHECK_EQ(world.tilesets.elems[0].rows, 2);
     CHECK_EQ(world.tilesets.elems[0].width, 32);
+    CHECK(world.tilesets.elems[0].tags == nullptr);
     CHECK_EQ(world.layer_defs.len, 3);
     CHECK_EQ(world.levels.len, 2);
 
@@ -164,6 +165,7 @@ int main(void) {
     CHECK_EQ(room->world_y, -8);
     CHECK_EQ(room->width, 16);
     CHECK(room->external_path == nullptr);
+    CHECK_EQ(room->fields.len, 0);
     CHECK_EQ(room->layers.len, 2);
     CHECK(strcmp(room->layers.elems[0].name, "Floor") == 0);
     CHECK(strcmp(room->layers.elems[1].name, "Collision") == 0);
@@ -708,6 +710,50 @@ int main(void) {
         ),
         "neither layerInstances nor externalRelPath"
     ));
+
+    // a tileset's enum tags give each tile one value, and a level's fields are read but its points
+    // and refs; a tile tagged with two values is refused, naming the tileset, the tile, and both
+    static const char tagged_template[] =
+        "{\"jsonVersion\": \"1.5.3\", \"worlds\": [],"
+        " \"defs\": {\"tilesets\": [{\"uid\": 7, \"identifier\": \"Ground\","
+        "   \"relPath\": \"ground.aseprite\", \"pxWid\": 24, \"pxHei\": 8, \"tileGridSize\": 8,"
+        "   \"spacing\": 0, \"padding\": 0, \"__cWid\": 3, \"__cHei\": 1, \"enumTags\": ["
+        "    {\"enumValueId\": \"grass\", \"tileIds\": [0]},"
+        "    {\"enumValueId\": \"road\", \"tileIds\": [%s]}]}],"
+        "  \"layers\": [], \"entities\": []},"
+        " \"levels\": [{\"identifier\": \"Field\", \"iid\": \"fff\", \"worldX\": 0,"
+        "   \"worldY\": 0, \"pxWid\": 8, \"pxHei\": 8, \"bgRelPath\": null,"
+        "   \"externalRelPath\": null, \"__neighbours\": [], \"layerInstances\": [],"
+        "   \"fieldInstances\": ["
+        "    {\"__identifier\": \"palette\", \"__type\": \"LocalEnum.Palette\", \"__value\": "
+        "\"town\"},"
+        "    {\"__identifier\": \"depth\", \"__type\": \"Int\", \"__value\": 2},"
+        "    {\"__identifier\": \"exit\", \"__type\": \"Point\", \"__value\": {\"cx\": 1, "
+        "\"cy\": 0}},"
+        "    {\"__identifier\": \"link\", \"__type\": \"EntityRef\", \"__value\": "
+        "{\"entityIid\": \"x\"}},"
+        "    {\"__identifier\": \"note\", \"__type\": \"String\", \"__value\": null}]}]}";
+    char tagged[2048];
+    int tagged_len = snprintf(tagged, sizeof tagged, tagged_template, "2");
+
+    CHECK(orb_ldtk_parse(
+        &scratch, (u8_span) {(const u8*)tagged, (usize)tagged_len}, "world.ldtk", &world, &err
+    ));
+    CHECK(strcmp(world.tilesets.elems[0].tags[0], "grass") == 0);
+    CHECK(world.tilesets.elems[0].tags[1] == nullptr);
+    CHECK(strcmp(world.tilesets.elems[0].tags[2], "road") == 0);
+    CHECK_EQ(world.levels.elems[0].fields.len, 2);
+    CHECK(strcmp(world.levels.elems[0].fields.elems[0].name, "palette") == 0);
+    CHECK(strcmp(world.levels.elems[0].fields.elems[0].values.elems[0].string, "town") == 0);
+    CHECK_EQ(world.levels.elems[0].fields.elems[1].values.elems[0].integer, 2);
+
+    tagged_len = snprintf(tagged, sizeof tagged, tagged_template, "2, 0");
+    CHECK(fails_with(
+        &scratch, (u8_span) {(const u8*)tagged, (usize)tagged_len},
+        "tileset ground.aseprite: tile 0 is tagged both grass and road"
+    ));
+    tagged_len = snprintf(tagged, sizeof tagged, tagged_template, "3");
+    CHECK(fails_with(&scratch, (u8_span) {(const u8*)tagged, (usize)tagged_len}, "tile id 3"));
 
     return 0;
 }

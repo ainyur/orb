@@ -42,6 +42,10 @@ typedef enum orb_section_kind {
     ORB_SEC_FIELDS,
     ORB_SEC_FIELD_DATA,
     ORB_SEC_TYPE_IDS,
+    ORB_SEC_TILESET_TAGS, // u32 per tileset: its first tile's tag, or ORB_NO_INDEX when untagged
+    ORB_SEC_TILE_TAGS,    // u32 per tile of a tagged tileset: its tag's name, or ORB_NO_INDEX
+    ORB_SEC_TAG_TEXT,     // the tag names, each NUL-terminated, at the offsets the tags hold
+    ORB_SEC_LEVEL_FIELDS, // an orb_level_fields_desc per level
     ORB_SEC_COUNT_
 } orb_section_kind;
 
@@ -156,6 +160,13 @@ typedef struct orb_level_desc {
 } orb_level_desc; // 32 bytes
 
 static_assert(sizeof(orb_level_desc) == 32, "orb_level_desc layout");
+
+// A level's run of the fields section, after every type's and placement's.
+typedef struct orb_level_fields_desc {
+    u32 first_field, field_count;
+} orb_level_fields_desc; // 8 bytes
+
+static_assert(sizeof(orb_level_fields_desc) == 8, "orb_level_fields_desc layout");
 
 typedef struct orb_layer_desc {
     u32 tiles; // element offset into the tiles section

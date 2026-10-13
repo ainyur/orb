@@ -9,7 +9,8 @@ static char test_trap_text[128];
 
 // One level, two types, three placements. crate (8x8) defaults hp 10 and label "box";
 // crate-a carries hp 3, loot [1,2,3], exit (40,16), link -> crate-b; crate-b and the marker
-// carry nothing. The field data is laid out by hand as the caster would.
+// carry nothing; the level has depth 2 and palette "town". The field data is laid out by hand as
+// the caster would.
 static orb_level_desc levels[1] = {
     {.width = 64, .height = 32, .first_placement = 0, .placement_count = 3}
 };
@@ -48,8 +49,9 @@ static orb_placement_desc placements[3] = {
      .first_field = 6,
      .field_count = 0},
 };
-static orb_field_desc fields[6];
-static u8 data[40];
+static orb_field_desc fields[8];
+static u8 data[56];
+static orb_level_fields_desc level_fields[1] = {{.first_field = 6, .field_count = 2}};
 static orb_assets assets;
 static orb_asset_table table;
 static alignas(16) u8 region_mem[1 << 20];
@@ -93,14 +95,24 @@ static void fixture(void) {
     put32(28, 40);
     put32(32, 16);
     put32(36, 1);
+    fields[6] = (orb_field_desc) {
+        .name = orb_asset_id("depth", ""), .data = 40, .count = 1, .kind = ORB_FIELD_INT
+    };
+    fields[7] = (orb_field_desc) {
+        .name = orb_asset_id("palette", ""), .data = 44, .count = 1, .kind = ORB_FIELD_STRING
+    };
+    put32(40, 2);
+    put32(44, 48);
+    memcpy(data + 48, "town", 5);
     assets = (orb_assets) {
         .levels = {levels, 1},
         .level_ids = level_ids,
         .types = {types, 2},
         .type_ids = type_ids,
         .placements = {placements, 3},
-        .fields = {fields, 6},
-        .field_data = {data, 40}
+        .fields = {fields, 8},
+        .field_data = {data, 56},
+        .level_fields = {level_fields, 1}
     };
     table = (orb_asset_table) {};
     orb_asset_set(&table, &assets);
@@ -215,6 +227,21 @@ int main(void) {
     CHECK_EQ(orb_entity_field_int(idm, "hp", 0), 0);
     CHECK(!orb_entity_field_bool(ida, "hp", 0));
     CHECK(orb_entity_field_float(ida, "hp", 0) == 0);
+
+    // a level's fields: by name in any case, zero or "" for a missing name, a kind mismatch, a
+    // stale handle, or a file without level fields
+    CHECK_EQ(orb_level_field_int(room, "depth", 0), 2);
+    CHECK(strcmp(orb_level_field_string(room, "Palette", 0), "town") == 0);
+    CHECK_EQ(orb_level_field_count(room, "palette"), 1);
+    CHECK_EQ(orb_level_field_count(room, "hp"), 0);
+    CHECK_EQ(orb_level_field_int(room, "palette", 0), 0);
+    CHECK(!orb_level_field_bool(room, "depth", 0));
+    CHECK(orb_level_field_float(room, "depth", 0) == 0);
+    CHECK(strcmp(orb_level_field_string(room, "palette", 1), "") == 0);
+    CHECK(strcmp(orb_level_field_string(ORB_NO_LEVEL, "palette", 0), "") == 0);
+    table.assets.level_fields.len = 0;
+    CHECK(strcmp(orb_level_field_string(room, "palette", 0), "") == 0);
+    table.assets.level_fields.len = 1;
 
     // a ref to a despawning target is ORB_NO_ENTITY; to an unspawned one too
     orb_entity_despawn(idb);

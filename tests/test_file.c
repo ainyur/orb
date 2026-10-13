@@ -149,6 +149,96 @@ static int test_entities(orb_arena* scratch) {
     return 0;
 }
 
+// Two tilesets, one tagged, and one level with a field, round-tripped; a file without the
+// sections reads as having none; then each broken one way at a time.
+static int test_tags_and_level_fields(orb_arena* scratch) {
+    u8 pal[256 * 4] = {0};
+    orb_info_desc info = {.width = 8, .height = 8, .name = "t"};
+    orb_sheet_desc sheets[1] = {{.width = 16, .height = 8, .pixels = 0}};
+    u8 pixels[128] = {0};
+    orb_tileset_desc tilesets[2] = {
+        {.sheet = 0, .grid = 8, .columns = 2, .count = 2},
+        {.sheet = 0, .grid = 4, .columns = 4, .count = 8},
+    };
+    u32 tileset_tags[2] = {0, ORB_NO_INDEX};
+    u32 tile_tags[2] = {5, 0};
+    u8 tag_text[11] = "road\0grass";
+    orb_level_desc levels[1] = {{.width = 16, .height = 8}};
+    u64 level_ids[1] = {1};
+    orb_field_desc fields[1] = {
+        {.name = orb_asset_id("palette", ""), .data = 0, .count = 1, .kind = ORB_FIELD_STRING}
+    };
+    u8 data[12] = {4, 0, 0, 0, 't', 'o', 'w', 'n', 0};
+    orb_level_fields_desc level_fields[1] = {{.first_field = 0, .field_count = 1}};
+    orb_assets in = {
+        .info = &info,
+        .pal = pal,
+        .sheets = {sheets, 1},
+        .pixels = {pixels, 128},
+        .tilesets = {tilesets, 2},
+        .levels = {levels, 1},
+        .level_ids = level_ids,
+        .fields = {fields, 1},
+        .field_data = {data, 12},
+        .tileset_tags = {tileset_tags, 2},
+        .tile_tags = {tile_tags, 2},
+        .tag_text = {tag_text, 11},
+        .level_fields = {level_fields, 1}
+    };
+    orb_assets out;
+    orb_error err;
+
+    u8_span file = orb_file_write(scratch, &in);
+    CHECK(orb_file_load(file, &out, &err));
+    CHECK_EQ(out.tileset_tags.len, 2);
+    CHECK_EQ(out.tileset_tags.elems[1], ORB_NO_INDEX);
+    CHECK_EQ(out.tile_tags.len, 2);
+    CHECK(strcmp((const char*)out.tag_text.elems + out.tile_tags.elems[0], "grass") == 0);
+    CHECK_EQ(out.level_fields.len, 1);
+    CHECK_EQ(out.level_fields.elems[0].field_count, 1);
+
+    in.tileset_tags.len = in.tile_tags.len = in.tag_text.len = in.level_fields.len = 0;
+    file = orb_file_write(scratch, &in);
+    CHECK(orb_file_load(file, &out, &err));
+    CHECK_EQ(out.tileset_tags.len, 0);
+    CHECK_EQ(out.level_fields.len, 0);
+    in.tileset_tags.len = in.tile_tags.len = 2;
+    in.tag_text.len = 11;
+    in.level_fields.len = 1;
+
+    // a tileset tag run for each tileset, each inside the tile tags, each name inside the text
+    in.tileset_tags.len = 1;
+    file = orb_file_write(scratch, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "1 tileset tags for 2 tilesets"));
+    in.tileset_tags.len = 2;
+    tileset_tags[0] = 1;
+    file = orb_file_write(scratch, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "tileset 0 runs past the tile tags"));
+    tileset_tags[0] = 0;
+    tile_tags[1] = 11;
+    file = orb_file_write(scratch, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "tile tag 1 leaves the tag text"));
+    tile_tags[1] = 0;
+    in.tag_text.len = 10; // "grass" loses its NUL
+    file = orb_file_write(scratch, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "tile tag 0 leaves the tag text"));
+    in.tag_text.len = 11;
+
+    // a level field run for each level, each inside the fields
+    level_fields[0].field_count = 2;
+    file = orb_file_write(scratch, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "level 0 runs past the fields section"));
+    level_fields[0].field_count = 1;
+    file = orb_file_write(scratch, &in);
+    CHECK(orb_file_load(file, &out, &err));
+    return 0;
+}
+
 int main(void) {
     orb_arena scratch;
     static alignas(16) u8 mem[1 << 20];
@@ -621,6 +711,7 @@ int main(void) {
     fonts[0].first_glyph = 0;
 
     if (test_entities(&scratch)) return 1;
+    if (test_tags_and_level_fields(&scratch)) return 1;
 
     return 0;
 }

@@ -132,7 +132,7 @@ static int world_placement_of(const world_iid* iids, u32 count, const char* iid)
     return hit ? (int)hit->index : -1;
 }
 
-// Field rows and their data for one type or placement, refs resolved to placement indices.
+// Field rows and their data for one type, placement, or level, refs resolved to placement indices.
 static bool world_write_fields(
     cast* context,
     const world_iid* iids,
@@ -147,8 +147,10 @@ static bool world_write_fields(
 ) {
     char prefix[160];
 
-    if (level_name)
+    if (level_name && entity_name)
         snprintf(prefix, sizeof prefix, "level %s: entity %s", level_name, entity_name);
+    else if (level_name)
+        snprintf(prefix, sizeof prefix, "level %s", level_name);
     else
         snprintf(prefix, sizeof prefix, "entity %s", entity_name);
 
@@ -219,8 +221,8 @@ static bool world_write_fields(
     return true;
 }
 
-// The type, placement, field, and field data sections, and each level's placement run.
-// Sized by one counting pass, then filled.
+// The type, placement, field, field data, and level field sections, and each level's placement
+// run; a level's fields follow every placement's. Sized by one counting pass, then filled.
 static bool world_cast_entities(
     cast* context,
     const orb_ldtk* world,
@@ -247,6 +249,8 @@ static bool world_cast_entities(
         const orb_ldtk_level* level = &world->levels.elems[i];
 
         placement_total += (u32)level->instances.len;
+        field_total += (u32)level->fields.len;
+        data_total += world_field_bytes(level->fields);
 
         for (u32 j = 0; j < level->instances.len; j++) {
             const orb_ldtk_instance* inst = &level->instances.elems[j];
@@ -271,6 +275,8 @@ static bool world_cast_entities(
         orb_arena_push_array(scratch, orb_placement_desc, placement_total);
     orb_field_desc* fields = orb_arena_push_array(scratch, orb_field_desc, field_total);
     u8* data = orb_arena_push_array(scratch, u8, data_total);
+    orb_level_fields_desc* level_fields =
+        orb_arena_push_array(scratch, orb_level_fields_desc, world->levels.len);
     world_iid* iids = world_iid_index(scratch, world, placement_total);
     u32 field_offset = 0, data_offset = 0, placement_offset = 0;
 
@@ -343,11 +349,26 @@ static bool world_cast_entities(
         }
     }
 
+    for (u32 i = 0; i < world->levels.len; i++) {
+        const orb_ldtk_level* level = &world->levels.elems[i];
+
+        level_fields[i] = (orb_level_fields_desc) {
+            .first_field = field_offset, .field_count = (u32)level->fields.len
+        };
+
+        if (!world_write_fields(
+                context, iids, placement_total, level->name, nullptr, level->fields, fields, data,
+                &field_offset, &data_offset
+            ))
+            return false;
+    }
+
     assets->types = (orb_type_desc_span) {types, (u32)world->entity_defs.len};
     assets->type_ids = type_ids;
     assets->placements = (orb_placement_desc_span) {placements, placement_total};
     assets->fields = (orb_field_desc_span) {fields, field_total};
     assets->field_data = (u8_span) {data, data_total};
+    assets->level_fields = (orb_level_fields_desc_span) {level_fields, (u32)world->levels.len};
     return true;
 }
 
@@ -424,7 +445,7 @@ static bool world_size(cast* context, const orb_ldtk* world, world_sizes* out) {
 static bool world_tilesets(
     cast* context,
     const orb_ldtk* world,
-    u32 first_tileset_sheet,
+    const u16* tileset_sheets,
     orb_tileset_desc* tilesets
 ) {
     for (u32 i = 0; i < world->tilesets.len; i++) {
@@ -438,7 +459,7 @@ static bool world_tilesets(
             );
 
         tilesets[i] = (orb_tileset_desc) {
-            .sheet = (u16)(first_tileset_sheet + i),
+            .sheet = tileset_sheets[i],
             .grid = (u16)tileset->grid,
             .spacing = (u16)tileset->spacing,
             .padding = (u16)tileset->padding,
@@ -448,6 +469,61 @@ static bool world_tilesets(
     }
 
     return true;
+}
+
+// The tile tag sections: each tagged tileset's run of tile tags, each tag the offset of its name
+// in the tag text, which holds each name once.
+static void world_tags(cast* context, const orb_ldtk* world, orb_assets* assets) {
+    orb_arena* scratch = context->scratch;
+    u32 tile_total = 0, text_total = 0;
+
+    for (u32 i = 0; i < world->tilesets.len; i++) {
+        const orb_ldtk_tileset* tileset = &world->tilesets.elems[i];
+        u32 count = (u32)tileset->columns * tileset->rows;
+
+        if (!tileset->tags) continue;
+
+        tile_total += count;
+
+        for (u32 tile = 0; tile < count; tile++)
+            if (tileset->tags[tile]) text_total += (u32)strlen(tileset->tags[tile]) + 1;
+    }
+
+    u32* tileset_tags = orb_arena_push_array(scratch, u32, world->tilesets.len);
+    u32* tile_tags = orb_arena_push_array(scratch, u32, tile_total);
+    char* text = orb_arena_push_array(scratch, char, text_total);
+    u32 tile_offset = 0, text_used = 0;
+
+    for (u32 i = 0; i < world->tilesets.len; i++) {
+        const orb_ldtk_tileset* tileset = &world->tilesets.elems[i];
+        u32 count = (u32)tileset->columns * tileset->rows;
+
+        tileset_tags[i] = tileset->tags ? tile_offset : ORB_NO_INDEX;
+
+        for (u32 tile = 0; tileset->tags && tile < count; tile++) {
+            const char* name = tileset->tags[tile];
+            u32 at = 0;
+
+            if (!name) {
+                tile_tags[tile_offset++] = ORB_NO_INDEX;
+                continue;
+            }
+
+            while (at < text_used && strcmp(text + at, name) != 0)
+                at += (u32)strlen(text + at) + 1;
+
+            if (at == text_used) {
+                memcpy(text + at, name, strlen(name) + 1);
+                text_used += (u32)strlen(name) + 1;
+            }
+
+            tile_tags[tile_offset++] = at;
+        }
+    }
+
+    assets->tileset_tags = (u32_span) {tileset_tags, (u32)world->tilesets.len};
+    assets->tile_tags = (u32_span) {tile_tags, tile_total};
+    assets->tag_text = (u8_span) {(const u8*)text, text_used};
 }
 
 // One level's neighbors, each resolved from its iid to a level index.
@@ -481,12 +557,12 @@ static bool world_neighbors(
     return true;
 }
 
-// The level sections: tilesets, levels, layers, neighbors, tiles, and cells.
+// The level sections: tilesets and their tags, levels, layers, neighbors, tiles, and cells.
 // Sized by one counting pass, then filled by a second.
 static bool world_cast(
     cast* context,
     const orb_ldtk* world,
-    u32 first_tileset_sheet,
+    const u16* tileset_sheets,
     orb_assets* assets
 ) {
     orb_arena* scratch = context->scratch;
@@ -505,7 +581,7 @@ static bool world_cast(
     u64* level_ids = orb_arena_push_array(scratch, u64, world->levels.len);
     u64* layer_ids = orb_arena_push_array(scratch, u64, sizes.layer_total);
 
-    if (!world_tilesets(context, world, first_tileset_sheet, tilesets)) return false;
+    if (!world_tilesets(context, world, tileset_sheets, tilesets)) return false;
 
     u32 layer_offset = 0, neighbor_offset = 0, tile_offset = 0, cell_offset = 0;
 
@@ -586,6 +662,8 @@ static bool world_cast(
     }
 
     if (!world_cast_entities(context, world, levels, assets)) return false;
+
+    world_tags(context, world, assets);
 
     assets->tilesets = (orb_tileset_desc_span) {tilesets, (u32)world->tilesets.len};
     assets->levels = (orb_level_desc_span) {levels, (u32)world->levels.len};

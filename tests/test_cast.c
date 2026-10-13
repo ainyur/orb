@@ -434,6 +434,75 @@ int main(void) {
     CHECK(!orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
     CHECK(strstr(err.text, "not a level") != nullptr);
 
+    // two tileset definitions of one image share its sheet, one of them tagged; a level's fields
+    // follow the placements' in the fields section
+    const char* shared_project =
+        "{\"jsonVersion\": \"1.5.3\", \"worldLayout\": \"Free\", \"externalLevels\": false,\n"
+        " \"worlds\": [],\n"
+        " \"defs\": {\"layers\": [\n"
+        "   {\"uid\": 2, \"identifier\": \"small\", \"type\": \"Tiles\", \"gridSize\": 8,\n"
+        "    \"tilesetDefUid\": 7, \"parallaxFactorX\": 0, \"parallaxFactorY\": 0,\n"
+        "    \"parallaxScaling\": false},\n"
+        "   {\"uid\": 3, \"identifier\": \"big\", \"type\": \"Tiles\", \"gridSize\": 16,\n"
+        "    \"tilesetDefUid\": 8, \"parallaxFactorX\": 0, \"parallaxFactorY\": 0,\n"
+        "    \"parallaxScaling\": false}],\n"
+        "  \"tilesets\": [\n"
+        "   {\"uid\": 7, \"identifier\": \"small\",\n"
+        "    \"relPath\": \"../../../../tests/fixtures/levels/tiles.aseprite\",\n"
+        "    \"pxWid\": 32, \"pxHei\": 16, \"tileGridSize\": 8, \"spacing\": 0, \"padding\": 0,\n"
+        "    \"__cWid\": 4, \"__cHei\": 2},\n"
+        "   {\"uid\": 8, \"identifier\": \"big\",\n"
+        "    \"relPath\": \"../../../../tests/fixtures/levels/tiles.aseprite\",\n"
+        "    \"pxWid\": 32, \"pxHei\": 16, \"tileGridSize\": 16, \"spacing\": 0, \"padding\": 0,\n"
+        "    \"__cWid\": 2, \"__cHei\": 1,\n"
+        "    \"enumTags\": [{\"enumValueId\": \"rock\", \"tileIds\": [1]}]}],\n"
+        "  \"entities\": [], \"enums\": []},\n"
+        " \"levels\": [{\"identifier\": \"Hill\", \"iid\": \"hill-iid\", \"uid\": 20,\n"
+        "   \"worldX\": 0, \"worldY\": 0, \"worldDepth\": 0, \"pxWid\": 16, \"pxHei\": 16,\n"
+        "   \"bgRelPath\": null, \"externalRelPath\": null, \"__neighbours\": [],\n"
+        "   \"fieldInstances\": [{\"__identifier\": \"palette\", \"__type\": "
+        "\"LocalEnum.Palette\",\n"
+        "     \"__value\": \"town\"}],\n"
+        "   \"layerInstances\": [\n"
+        "    {\"__identifier\": \"big\", \"__type\": \"Tiles\", \"layerDefUid\": 3,\n"
+        "     \"__cWid\": 1, \"__cHei\": 1, \"__gridSize\": 16, \"__opacity\": 1,\n"
+        "     \"__pxTotalOffsetX\": 0, \"__pxTotalOffsetY\": 0, \"__tilesetDefUid\": 8,\n"
+        "     \"intGridCsv\": [], \"autoLayerTiles\": [], \"entityInstances\": [],\n"
+        "     \"gridTiles\": [{\"px\": [0, 0], \"src\": [16, 0], \"f\": 0, \"t\": 1, \"a\": "
+        "1}]},\n"
+        "    {\"__identifier\": \"small\", \"__type\": \"Tiles\", \"layerDefUid\": 2,\n"
+        "     \"__cWid\": 2, \"__cHei\": 2, \"__gridSize\": 8, \"__opacity\": 1,\n"
+        "     \"__pxTotalOffsetX\": 0, \"__pxTotalOffsetY\": 0, \"__tilesetDefUid\": 7,\n"
+        "     \"intGridCsv\": [], \"autoLayerTiles\": [], \"entityInstances\": [],\n"
+        "     \"gridTiles\": [{\"px\": [8, 8], \"src\": [8, 0], \"f\": 0, \"t\": 1, \"a\": "
+        "1}]}]}]}\n";
+    CHECK(orb_os_write_file(
+        DIR "/levels/world.ldtk", (u8_span) {(u8*)shared_project, strlen(shared_project)}
+    ));
+    orb_arena_clear(&scratch);
+    orb_arena_clear(&out);
+    CHECK(orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
+    CHECK(orb_file_load(result.file, &assets, &err));
+    CHECK_EQ(assets.tilesets.len, 2);
+    CHECK_EQ(assets.tilesets.elems[0].sheet, assets.sheets.len - 1);
+    CHECK_EQ(assets.tilesets.elems[1].sheet, assets.sheets.len - 1);
+    CHECK_EQ(assets.tilesets.elems[1].count, 2);
+    CHECK_EQ(assets.tileset_tags.elems[0], ORB_NO_INDEX);
+    CHECK_EQ(assets.tile_tags.len, 2);
+    CHECK(strcmp(orb_tilemap_tile_tag(&assets, ORB_LEVEL(0), 1, (orb_vec2) {4, 4}), "rock") == 0);
+    CHECK(strcmp(orb_tilemap_tile_tag(&assets, ORB_LEVEL(0), 0, (orb_vec2) {12, 12}), "") == 0);
+    CHECK_EQ(assets.level_fields.len, 1);
+    CHECK_EQ(assets.level_fields.elems[0].first_field, 0);
+    CHECK_EQ(assets.level_fields.elems[0].field_count, 1);
+    CHECK(assets.fields.elems[0].name == orb_asset_id("palette", ""));
+    CHECK(
+        strcmp(
+            (const char*)assets.field_data.elems +
+                orb_bytes_u32(assets.field_data.elems + assets.fields.elems[0].data),
+            "town"
+        ) == 0
+    );
+
     // clean up so later casts in this file, which use the default world path,
     // find no project again
     remove(DIR "/levels/world.ldtk");

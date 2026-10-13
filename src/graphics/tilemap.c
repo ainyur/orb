@@ -17,22 +17,64 @@ static const orb_layer_desc* tilemap_layer(const orb_assets* assets, orb_level l
     return &assets->layers.elems[level_desc->first_layer + layer];
 }
 
+// The index of the layer's cell holding a world pixel, or -1 outside the layer.
+static i64 tilemap_cell_index(
+    const orb_assets* assets,
+    orb_level level,
+    const orb_layer_desc* layer_desc,
+    orb_vec2 at
+) {
+    const orb_level_desc* level_desc = &assets->levels.elems[ORB_HANDLE_INDEX(level)];
+    i64 x = (i64)at.x - level_desc->world_x - layer_desc->offset_x,
+        y = (i64)at.y - level_desc->world_y - layer_desc->offset_y;
+
+    if (x < 0 || y < 0) return -1;
+
+    i64 cell_x = x / layer_desc->grid, cell_y = y / layer_desc->grid;
+
+    if (cell_x >= layer_desc->columns || cell_y >= layer_desc->rows) return -1;
+
+    return cell_y * layer_desc->columns + cell_x;
+}
+
 int orb_tilemap_cell(const orb_assets* assets, orb_level level, int layer, orb_vec2 at) {
     const orb_layer_desc* layer_desc = tilemap_layer(assets, level, layer);
 
     if (!layer_desc || layer_desc->cells == ORB_NO_INDEX) return 0;
 
-    const orb_level_desc* level_desc = &assets->levels.elems[ORB_HANDLE_INDEX(level)];
-    i64 x = (i64)at.x - level_desc->world_x - layer_desc->offset_x,
-        y = (i64)at.y - level_desc->world_y - layer_desc->offset_y;
+    i64 cell = tilemap_cell_index(assets, level, layer_desc, at);
 
-    if (x < 0 || y < 0) return 0;
+    return cell < 0 ? 0 : assets->cells.elems[layer_desc->cells + cell];
+}
 
-    i64 cell_x = x / layer_desc->grid, cell_y = y / layer_desc->grid;
+const char* orb_tilemap_tile_tag(
+    const orb_assets* assets,
+    orb_level level,
+    int layer,
+    orb_vec2 at
+) {
+    const orb_layer_desc* layer_desc = tilemap_layer(assets, level, layer);
 
-    if (cell_x >= layer_desc->columns || cell_y >= layer_desc->rows) return 0;
+    if (!layer_desc || !layer_desc->sublayers) return "";
+    if (layer_desc->tileset >= assets->tileset_tags.len) return "";
 
-    return assets->cells.elems[layer_desc->cells + (usize)cell_y * layer_desc->columns + cell_x];
+    u32 first = assets->tileset_tags.elems[layer_desc->tileset];
+    i64 cell = tilemap_cell_index(assets, level, layer_desc, at);
+    usize area = (usize)layer_desc->columns * layer_desc->rows;
+
+    if (first == ORB_NO_INDEX || cell < 0) return "";
+
+    for (int sublayer = layer_desc->sublayers - 1; sublayer >= 0; sublayer--) {
+        u16 tile = assets->tiles.elems[layer_desc->tiles + (usize)sublayer * area + cell];
+
+        if (!tile) continue;
+
+        u32 name = assets->tile_tags.elems[first + (tile & ORB_TILE_ID_MASK) - 1];
+
+        if (name != ORB_NO_INDEX) return (const char*)assets->tag_text.elems + name;
+    }
+
+    return "";
 }
 
 u32 orb_tilemap_level_at(const orb_assets* assets, orb_vec2 at) {

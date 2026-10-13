@@ -64,6 +64,10 @@ static const file_row file_rows[] = {
     FILE_ROW(FIELDS, orb_field_desc, fields, ORB_MAX_FIELDS),
     FILE_ROW(FIELD_DATA, u8, field_data, 0),
     FILE_IDS(TYPE_IDS, type_ids, types),
+    FILE_ROW(TILESET_TAGS, u32, tileset_tags, 0),
+    FILE_ROW(TILE_TAGS, u32, tile_tags, 0),
+    FILE_ROW(TAG_TEXT, u8, tag_text, 0),
+    FILE_ROW(LEVEL_FIELDS, orb_level_fields_desc, level_fields, ORB_MAX_LEVELS),
 };
 
 constexpr u32 FILE_ROW_COUNT = sizeof file_rows / sizeof *file_rows;
@@ -358,6 +362,47 @@ static bool file_check_entities(const orb_assets* out, orb_error* err) {
     return true;
 }
 
+// Tile tags and level fields, which a file may lack: each run inside its section, each tag's name
+// inside the tag text.
+static bool file_check_tags(const orb_assets* out, orb_error* err) {
+    if (out->tileset_tags.len && out->tileset_tags.len != out->tilesets.len)
+        return orb_error_set(
+            err, "orb file: %u tileset tags for %u tilesets", out->tileset_tags.len,
+            out->tilesets.len
+        );
+
+    for (u32 i = 0; i < out->tileset_tags.len; i++) {
+        u32 first = out->tileset_tags.elems[i];
+
+        if (first != ORB_NO_INDEX && (u64)first + out->tilesets.elems[i].count > out->tile_tags.len)
+            return orb_error_set(err, "orb file: tileset %u runs past the tile tags", i);
+    }
+
+    for (u32 i = 0; i < out->tile_tags.len; i++) {
+        u32 name = out->tile_tags.elems[i];
+
+        if (name != ORB_NO_INDEX &&
+            (name >= out->tag_text.len ||
+             !memchr(out->tag_text.elems + name, 0, out->tag_text.len - name)))
+            return orb_error_set(err, "orb file: tile tag %u leaves the tag text", i);
+    }
+
+    if (out->level_fields.len && out->level_fields.len != out->levels.len)
+        return orb_error_set(
+            err, "orb file: %u level field runs for %u levels", out->level_fields.len,
+            out->levels.len
+        );
+
+    for (u32 i = 0; i < out->level_fields.len; i++) {
+        const orb_level_fields_desc* run = &out->level_fields.elems[i];
+
+        if ((u64)run->first_field + run->field_count > out->fields.len)
+            return orb_error_set(err, "orb file: level %u runs past the fields section", i);
+    }
+
+    return true;
+}
+
 bool orb_file_load(u8_span file, orb_assets* out, orb_error* err) {
     if (file.len < sizeof(orb_file_header)) return orb_error_set(err, "orb file: too short");
     if ((uintptr_t)file.elems & 15) return orb_error_set(err, "orb file: misaligned buffer");
@@ -429,5 +474,5 @@ bool orb_file_load(u8_span file, orb_assets* out, orb_error* err) {
 
     return file_check_images(out, err) && file_check_audio(out, err) &&
            file_check_levels(out, err) && file_check_fonts(out, err) &&
-           file_check_entities(out, err);
+           file_check_entities(out, err) && file_check_tags(out, err);
 }

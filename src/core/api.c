@@ -139,6 +139,10 @@ static int api_cell_get(orb_level level, int layer, orb_vec2 at) {
     return orb_tilemap_cell(&api_assets.assets, level, layer, at);
 }
 
+static const char* api_tile_tag(orb_level level, int layer, orb_vec2 at) {
+    return orb_tilemap_tile_tag(&api_assets.assets, level, layer, at);
+}
+
 static orb_type api_type_find(const char* stem) {
     u32 index = orb_asset_find(&api_assets, ORB_ASSET_TYPE, orb_asset_id(stem, ""));
 
@@ -244,6 +248,12 @@ static const orb_api api_table = {
     .level_bounds = api_level_bounds,
     .level_neighbors = api_level_neighbors,
     .cell_get = api_cell_get,
+    .tile_tag = api_tile_tag,
+    .level_field_count = orb_level_field_count,
+    .level_field_int = orb_level_field_int,
+    .level_field_float = orb_level_field_float,
+    .level_field_bool = orb_level_field_bool,
+    .level_field_string = orb_level_field_string,
     .type_find = api_type_find,
     .type_bind = orb_type_bind,
     .entity_spawn = orb_entity_spawn,

@@ -5,6 +5,7 @@
 
 orb_span(u8);
 orb_span(u16);
+orb_span(u32);
 orb_span(orb_sheet_desc);
 orb_span(orb_sprite_desc);
 orb_span(orb_anim_desc);
@@ -13,6 +14,7 @@ orb_span(i16);
 orb_span(orb_song_desc);
 orb_span(orb_tileset_desc);
 orb_span(orb_level_desc);
+orb_span(orb_level_fields_desc);
 orb_span(orb_layer_desc);
 orb_span(orb_neighbor_desc);
 orb_span(orb_font_desc);
@@ -52,6 +54,10 @@ struct orb_assets {
     orb_field_desc_span fields;
     u8_span field_data;
     const u64* type_ids;
+    u32_span tileset_tags;
+    u32_span tile_tags;
+    u8_span tag_text;
+    orb_level_fields_desc_span level_fields;
     const u8* sprite_gens;
     const u8* anim_gens;
     const u8* sample_gens;

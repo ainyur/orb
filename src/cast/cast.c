@@ -269,14 +269,15 @@ static bool cast_sum(cast* context, u32* total, u64 n, const char* what) {
 
 // Every sprite file: one packed sheet each, a sprite per frame, an animation per tag.
 // Font and tileset files, appended after the art files, take a plainer path: one
-// unpacked sheet each, no sprites or animations.
+// unpacked sheet each, no sprites or animations. Tileset definitions of one image
+// share its sheet; tileset_sheets gets each definition's.
 static bool cast_art(
     cast* context,
     const orb_ase* master,
     const orb_ldtk* world,
     cast_files* fonts,
     u32* first_font_sheet,
-    u32* first_tileset_sheet,
+    u16* tileset_sheets,
     orb_assets* assets
 ) {
     orb_arena* scratch = context->scratch;
@@ -286,27 +287,42 @@ static bool cast_art(
         !cast_unique(context, &art))
         return false;
 
+    const char* world_dir = cast_dir_of(scratch, context->manifest->world);
+    const char** images = orb_arena_push_array(scratch, const char*, world->tilesets.len);
+    u32* image_of = orb_arena_push_array(scratch, u32, world->tilesets.len);
+    u32 image_count = 0;
+
+    for (u32 i = 0; i < world->tilesets.len; i++) {
+        const char* path = cast_path(scratch, world_dir, world->tilesets.elems[i].path);
+        u32 image = 0;
+
+        while (image < image_count && strcmp(images[image], path) != 0)
+            image++;
+
+        if (image == image_count) images[image_count++] = path;
+
+        image_of[i] = image;
+    }
+
     int art_count = art.count;
     int font_count = fonts->count;
-    int file_count = art_count + font_count + world->tilesets.len;
+    int file_count = art_count + font_count + (int)image_count;
 
     if (file_count > 65535)
         return orb_error_set(
             context->err, "%d art, font, and tileset files is more than 65535", file_count
         );
 
-    const char* world_dir = cast_dir_of(scratch, context->manifest->world);
     const char** paths = orb_arena_push_array(scratch, const char*, file_count);
 
     memcpy(paths, art.paths, sizeof *paths * art_count);
     memcpy(paths + art_count, fonts->paths, sizeof *paths * font_count);
+    memcpy(paths + art_count + font_count, images, sizeof *paths * image_count);
 
     for (u32 i = 0; i < world->tilesets.len; i++)
-        paths[art_count + font_count + i] =
-            cast_path(scratch, world_dir, world->tilesets.elems[i].path);
+        tileset_sheets[i] = (u16)(art_count + font_count + (int)image_of[i]);
 
     *first_font_sheet = (u32)art_count;
-    *first_tileset_sheet = (u32)(art_count + font_count);
 
     fonts->grid_x = orb_arena_push_array(scratch, i16, font_count);
     fonts->grid_y = orb_arena_push_array(scratch, i16, font_count);
@@ -365,18 +381,22 @@ static bool cast_art(
         }
 
         if (i >= art_count + font_count) {
-            const orb_ldtk_tileset* tileset = &world->tilesets.elems[i - art_count - font_count];
-
             if (ase->frame_count != 1)
                 return orb_error_set(
                     context->err, "%s: a tileset has one frame, this file has %u", paths[i],
                     ase->frame_count
                 );
-            if (ase->width != tileset->width || ase->height != tileset->height)
-                return orb_error_set(
-                    context->err, "%s: %ux%u, but the project says %dx%d", paths[i], ase->width,
-                    ase->height, tileset->width, tileset->height
-                );
+
+            for (u32 j = 0; j < world->tilesets.len; j++) {
+                const orb_ldtk_tileset* tileset = &world->tilesets.elems[j];
+
+                if (tileset_sheets[j] != i) continue;
+                if (ase->width != tileset->width || ase->height != tileset->height)
+                    return orb_error_set(
+                        context->err, "%s: %ux%u, but the project says %dx%d", paths[i], ase->width,
+                        ase->height, tileset->width, tileset->height
+                    );
+            }
         }
 
         if (i >= art_count) {
@@ -640,16 +660,17 @@ static bool cast_body(cast* context) {
     assets.info = &info;
 
     cast_files fonts;
-    u32 first_font_sheet = 0, first_tileset_sheet = 0;
+    u32 first_font_sheet = 0;
 
-    if (!cast_pal(context, &master, &assets) || !world_parse(context, &world) ||
-        !cast_walk(context, context->manifest->fonts, ".aseprite", "", &fonts) ||
+    if (!cast_pal(context, &master, &assets) || !world_parse(context, &world)) return false;
+
+    u16* tileset_sheets = orb_arena_push_array(context->scratch, u16, world.tilesets.len);
+
+    if (!cast_walk(context, context->manifest->fonts, ".aseprite", "", &fonts) ||
         !cast_unique(context, &fonts) ||
-        !cast_art(
-            context, &master, &world, &fonts, &first_font_sheet, &first_tileset_sheet, &assets
-        ) ||
+        !cast_art(context, &master, &world, &fonts, &first_font_sheet, tileset_sheets, &assets) ||
         !font_cast(context, &fonts, first_font_sheet, &assets) ||
-        !world_cast(context, &world, first_tileset_sheet, &assets) || !cast_audio(context, &assets))
+        !world_cast(context, &world, tileset_sheets, &assets) || !cast_audio(context, &assets))
         return false;
 
     context->result->file = orb_file_write(context->out, &assets);

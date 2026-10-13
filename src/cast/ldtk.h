@@ -68,6 +68,7 @@ typedef struct orb_ldtk_level {
     orb_ldtk_layer_slice layers; // bottom to top
     orb_ldtk_neighbor_slice neighbors;
     orb_ldtk_instance_slice instances; // every Entities layer's, bottom to top
+    orb_ldtk_field_slice fields;       // the non-null values, points and refs left out
 } orb_ldtk_level;
 
 orb_slice(orb_ldtk_level);
@@ -75,6 +76,7 @@ orb_slice(orb_ldtk_level);
 typedef struct orb_ldtk_tileset {
     const char* path;
     int uid, grid, spacing, padding, columns, rows, width, height;
+    const char** tags; // each tile's enum tag, nullptr for none; nullptr when no tile has one
 } orb_ldtk_tileset;
 
 orb_slice(orb_ldtk_tileset);

@@ -292,6 +292,9 @@ static bool ldtk_fields(
         if (!ldtk_field_kind(reader, type, &kind, &is_array, &skip)) return false;
         if (skip) continue;
 
+        // A level's fields come with no geometry: its points and refs are not cast.
+        if (!defaults && !geometry && (kind == ORB_FIELD_POINT || kind == ORB_FIELD_REF)) continue;
+
         if (def) {
             bool declared = false;
 
@@ -376,6 +379,57 @@ static bool ldtk_dir(ldtk* reader, const char* code, orb_level_dir* out) {
     return ldtk_fail(reader, "unknown neighbour dir %s", code);
 }
 
+// A tileset definition's enumTags, each an enum value and the tiles it tags, as each tile's tag;
+// nullptr when the definition tags none. A tile tagged twice is an error naming both values.
+static bool ldtk_tile_tags(
+    ldtk* reader,
+    const orb_json* entry,
+    const char* path,
+    int columns,
+    int rows,
+    const char*** out
+) {
+    const orb_json* enum_tags = orb_json_get(entry, "enumTags");
+    u32 count = (u32)columns * (u32)rows;
+
+    *out = nullptr;
+
+    if (!enum_tags || enum_tags->kind == ORB_JSON_NULL) return true;
+    if (enum_tags->kind != ORB_JSON_ARRAY) return ldtk_fail(reader, "enumTags is not an array");
+    if (enum_tags->count == 0) return true;
+    if (count > ORB_MAX_TILE_ID + 1)
+        return ldtk_fail(
+            reader, "tileset %s: %u tiles is more than %u", path, count, ORB_MAX_TILE_ID + 1
+        );
+
+    const char** tags = orb_arena_push_array(reader->scratch, const char*, count);
+
+    for (const orb_json* tag = enum_tags->first; tag; tag = tag->next) {
+        const char* value;
+        if (!ldtk_string(reader, tag, "enumValueId", &value)) return false;
+
+        const orb_json* ids;
+        if (!ldtk_array(reader, tag, "tileIds", &ids)) return false;
+
+        for (const orb_json* id = ids ? ids->first : nullptr; id; id = id->next) {
+            int tile;
+            if (id->kind != ORB_JSON_NUMBER) return ldtk_fail(reader, "tileIds holds a non-number");
+            if (!ldtk_convert(reader, "tile id", id->num, 0, (int)count - 1, &tile)) return false;
+
+            if (tags[tile] && strcmp(tags[tile], value) != 0)
+                return ldtk_fail(
+                    reader, "tileset %s: tile %d is tagged both %s and %s", path, tile, tags[tile],
+                    value
+                );
+
+            tags[tile] = value;
+        }
+    }
+
+    *out = tags;
+    return true;
+}
+
 // defs.tilesets: one orb_ldtk_tileset per definition with an .aseprite relPath. A
 // definition with no relPath, or one that does not end in .aseprite, is kept in
 // skipped instead of failing outright, so only a layer that actually uses it fails.
@@ -418,6 +472,9 @@ static bool ldtk_defs_tilesets(ldtk* reader, const orb_json* defs, orb_ldtk* out
         if (!ldtk_int(reader, entry, "pxWid", &width)) return false;
         if (!ldtk_int(reader, entry, "pxHei", &height)) return false;
 
+        const char** tags;
+        if (!ldtk_tile_tags(reader, entry, path, columns, rows, &tags)) return false;
+
         tilesets.elems[tilesets.len++] = (orb_ldtk_tileset) {
             .path = path,
             .uid = uid,
@@ -427,7 +484,8 @@ static bool ldtk_defs_tilesets(ldtk* reader, const orb_json* defs, orb_ldtk* out
             .columns = columns,
             .rows = rows,
             .width = width,
-            .height = height
+            .height = height,
+            .tags = tags
         };
     }
 
@@ -880,7 +938,7 @@ static bool ldtk_layers(
     return true;
 }
 
-// identifier, iid, world placement, background (unsupported), and neighbours.
+// identifier, iid, world placement, background (unsupported), neighbours, and fields.
 static bool ldtk_level_head(ldtk* reader, const orb_json* level_json, orb_ldtk_level* out) {
     const char* identifier;
     if (!ldtk_string(reader, level_json, "identifier", &identifier)) return false;
@@ -931,6 +989,15 @@ static bool ldtk_level_head(ldtk* reader, const orb_json* level_json, orb_ldtk_l
     out->width = width;
     out->height = height;
     out->neighbors = (orb_ldtk_neighbor_slice) {.elems = neighbors, .len = (u32)neighbor_count};
+
+    const orb_json* fields = orb_json_get(level_json, "fieldInstances");
+
+    if (fields && fields->kind != ORB_JSON_NULL) {
+        if (fields->kind != ORB_JSON_ARRAY)
+            return ldtk_fail(reader, "fieldInstances is not an array");
+        if (!ldtk_fields(reader, fields, false, nullptr, nullptr, &out->fields, nullptr))
+            return false;
+    }
 
     return true;
 }
