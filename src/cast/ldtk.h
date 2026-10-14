@@ -10,7 +10,8 @@
 orb_span(u8);
 
 typedef struct orb_ldtk_tile {
-    u16 cell_x, cell_y, id;
+    u16 cell_x, cell_y;
+    u32 id;
     u8 flip;
 } orb_ldtk_tile;
 

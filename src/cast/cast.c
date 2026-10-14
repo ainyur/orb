@@ -33,6 +33,18 @@ typedef struct cast_files {
     u16* grid_height;
 } cast_files;
 
+// A tileset definition as the cast stores it: each tile of its image's grid that draws or carries
+// a tag, one tile for each set of pixels and tag, in id order, in rows as wide as the image.
+typedef struct cast_tileset {
+    u16 sheet;
+    u16 columns;
+    u16 width, height;
+    u32 count;
+    u32* ids;          // per tile of the image's grid: its packed id + 1, or 0 when dropped
+    const char** tags; // per packed tile, or nullptr when the definition tags none
+    u8* pixels;        // width * height
+} cast_tileset;
+
 // dir/rel, unless rel is absolute or dir is empty, in which case rel is returned unchanged.
 static const char* cast_path(orb_arena* out, const char* dir, const char* rel) {
     if (orb_path_absolute(rel) || !*dir) {
@@ -272,17 +284,129 @@ static bool cast_sum(cast* context, u32* total, u64 n, const char* what) {
     return true;
 }
 
+// FNV-1a over a tile's pixels and then its tag.
+static u64 cast_tile_hash(const u8* pixels, usize size, const char* tag) {
+    u64 hash = 0xcbf29ce484222325u;
+
+    for (usize i = 0; i < size; i++)
+        hash = (hash ^ pixels[i]) * 0x100000001b3u;
+
+    for (const char* c = tag ? tag : ""; *c; c++)
+        hash = (hash ^ (u8)*c) * 0x100000001b3u;
+
+    return hash;
+}
+
+// Packs one tileset definition of image: a tile with every pixel transparent and no tag is
+// dropped, and tiles with the same pixels and the same tag are one. Past ORB_MAX_TILE_ID + 1
+// packed tiles is an error.
+static bool cast_tileset_pack(
+    cast* context,
+    const orb_ase* image,
+    const orb_ldtk_tileset* tileset,
+    cast_tileset* out
+) {
+    orb_arena* scratch = context->scratch;
+    u32 grid = (u32)tileset->grid;
+    u32 columns = (u32)tileset->columns;
+    u32 slots = columns * (u32)tileset->rows;
+    u32 most = slots < ORB_MAX_TILE_ID + 1 ? slots : ORB_MAX_TILE_ID + 1;
+    usize size = (usize)grid * grid;
+    u32 buckets = 1;
+
+    while (buckets < 2 * most)
+        buckets *= 2;
+
+    // the tiles kept, one after another, and room after them for the tile being read
+    u8* tiles = orb_arena_push_checked(scratch, size, (usize)most + 1, 1);
+    u32* table = orb_arena_push_array(scratch, u32, buckets);
+
+    out->ids = orb_arena_push_array(scratch, u32, slots);
+    out->tags = tileset->tags ? orb_arena_push_array(scratch, const char*, most) : nullptr;
+    out->count = 0;
+
+    for (u32 id = 0; id < slots; id++) {
+        u8* tile = tiles + (usize)out->count * size;
+        u64 left = (u64)tileset->padding + (u64)(id % columns) * (grid + (u32)tileset->spacing);
+        u64 top = (u64)tileset->padding + (u64)(id / columns) * (grid + (u32)tileset->spacing);
+        const char* tag = tileset->tags ? tileset->tags[id] : nullptr;
+        bool blank = true;
+
+        for (u32 y = 0; y < grid; y++) {
+            for (u32 x = 0; x < grid; x++) {
+                bool inside = left + x < image->width && top + y < image->height;
+                u8 index = inside ? image->frames[(top + y) * image->width + left + x] : 0;
+
+                tile[y * grid + x] = index;
+                blank = blank && index == 0;
+            }
+        }
+
+        if (blank && !tag) continue;
+
+        u32 bucket = (u32)cast_tile_hash(tile, size, tag) & (buckets - 1);
+
+        while (table[bucket]) {
+            u32 kept = table[bucket] - 1;
+            const char* kept_tag = out->tags ? out->tags[kept] : nullptr;
+            bool same_tag = kept_tag == tag || (kept_tag && tag && strcmp(kept_tag, tag) == 0);
+
+            if (same_tag && memcmp(tiles + (usize)kept * size, tile, size) == 0) break;
+
+            bucket = (bucket + 1) & (buckets - 1);
+        }
+
+        if (!table[bucket]) {
+            if (out->count == ORB_MAX_TILE_ID + 1)
+                return orb_error_set(
+                    context->err, "tileset %s: its tiles pack to more than %u", tileset->path,
+                    ORB_MAX_TILE_ID + 1
+                );
+
+            if (out->tags) out->tags[out->count] = tag;
+
+            table[bucket] = ++out->count;
+        }
+
+        out->ids[id] = table[bucket];
+    }
+
+    u32 across = image->width / grid ? image->width / grid : 1;
+    u32 rows = (out->count + across - 1) / across;
+
+    if ((u64)rows * grid > 65535)
+        return orb_error_set(
+            context->err, "tileset %s: packed sheet taller than 65535 pixels", tileset->path
+        );
+
+    out->columns = (u16)across;
+    out->width = (u16)(across * grid);
+    out->height = (u16)(rows * grid);
+    out->pixels = orb_arena_push(scratch, (usize)out->width * out->height, 1);
+
+    for (u32 kept = 0; kept < out->count; kept++) {
+        usize corner = (usize)(kept / across) * grid * out->width + (usize)(kept % across) * grid;
+
+        for (u32 y = 0; y < grid; y++)
+            memcpy(
+                out->pixels + corner + (usize)y * out->width, tiles + kept * size + y * grid, grid
+            );
+    }
+
+    return true;
+}
+
 // Every sprite file: one packed sheet each, a sprite per frame, an animation per tag.
-// Font and tileset files, appended after the art files, take a plainer path: one
-// unpacked sheet each, no sprites or animations. Tileset definitions of one image
-// share its sheet; tileset_sheets gets each definition's.
+// Font files, appended after the art files, take a plainer path: one unpacked sheet
+// each, no sprites or animations. Each tileset definition, after the fonts, gets a
+// sheet of its packed tiles; tilesets gets each definition's.
 static bool cast_art(
     cast* context,
     const orb_ase* master,
     const orb_ldtk* world,
     cast_files* fonts,
     u32* first_font_sheet,
-    u16* tileset_sheets,
+    cast_tileset* tilesets,
     orb_assets* assets
 ) {
     orb_arena* scratch = context->scratch;
@@ -312,10 +436,11 @@ static bool cast_art(
     int art_count = art.count;
     int font_count = fonts->count;
     int file_count = art_count + font_count + (int)image_count;
+    int sheet_count = art_count + font_count + (int)world->tilesets.len;
 
-    if (file_count > 65535)
+    if (sheet_count > 65535)
         return orb_error_set(
-            context->err, "%d art, font, and tileset files is more than 65535", file_count
+            context->err, "%d art, font, and tileset sheets is more than 65535", sheet_count
         );
 
     const char** paths = orb_arena_push_array(scratch, const char*, file_count);
@@ -325,7 +450,7 @@ static bool cast_art(
     memcpy(paths + art_count + font_count, images, sizeof *paths * image_count);
 
     for (u32 i = 0; i < world->tilesets.len; i++)
-        tileset_sheets[i] = (u16)(art_count + font_count + (int)image_of[i]);
+        tilesets[i].sheet = (u16)(art_count + font_count + (int)i);
 
     *first_font_sheet = (u32)art_count;
 
@@ -356,7 +481,7 @@ static bool cast_art(
         }
     }
 
-    orb_sheet_desc* sheets = orb_arena_push_array(scratch, orb_sheet_desc, file_count);
+    orb_sheet_desc* sheets = orb_arena_push_array(scratch, orb_sheet_desc, sheet_count);
     orb_sprite_desc* sprites = orb_arena_push_array(scratch, orb_sprite_desc, max_sprites);
     orb_anim_desc* anims = orb_arena_push_array(scratch, orb_anim_desc, max_anims);
     u16* durations = orb_arena_push_array(scratch, u16, max_durations);
@@ -394,14 +519,25 @@ static bool cast_art(
 
             for (u32 j = 0; j < world->tilesets.len; j++) {
                 const orb_ldtk_tileset* tileset = &world->tilesets.elems[j];
+                cast_tileset* packed = &tilesets[j];
 
-                if (tileset_sheets[j] != i) continue;
+                if (art_count + font_count + (int)image_of[j] != i) continue;
                 if (ase->width != tileset->width || ase->height != tileset->height)
                     return orb_error_set(
                         context->err, "%s: %ux%u, but the project says %dx%d", paths[i], ase->width,
                         ase->height, tileset->width, tileset->height
                     );
+                if (!cast_tileset_pack(context, ase, tileset, packed)) return false;
+
+                sheets[packed->sheet] = (orb_sheet_desc) {
+                    .width = packed->width, .height = packed->height, .pixels = pixel_total
+                };
+
+                if (!cast_sum(context, &pixel_total, (u32)packed->width * packed->height, "pixels"))
+                    return false;
             }
+
+            continue;
         }
 
         if (i >= art_count) {
@@ -479,7 +615,7 @@ static bool cast_art(
 
     u8* pixels = orb_arena_push(scratch, pixel_total, 16);
 
-    for (int i = 0; i < file_count; i++) {
+    for (int i = 0; i < art_count + font_count; i++) {
         const u8* src = i < art_count ? packs[i].pixels : files[i].frames;
         usize n = i < art_count ? (usize)packs[i].sheet_width * packs[i].sheet_height
                                 : (usize)files[i].width * files[i].height;
@@ -487,7 +623,16 @@ static bool cast_art(
         memcpy(pixels + sheets[i].pixels, src, n);
     }
 
-    assets->sheets = (orb_sheet_desc_span) {sheets, (u32)file_count};
+    for (u32 i = 0; i < world->tilesets.len; i++) {
+        const cast_tileset* packed = &tilesets[i];
+
+        memcpy(
+            pixels + sheets[packed->sheet].pixels, packed->pixels,
+            (usize)packed->width * packed->height
+        );
+    }
+
+    assets->sheets = (orb_sheet_desc_span) {sheets, (u32)sheet_count};
     assets->pixels = (u8_span) {pixels, pixel_total};
     assets->sprites = (orb_sprite_desc_span) {sprites, sprite_count};
     assets->anims = (orb_anim_desc_span) {anims, anim_count};
@@ -669,13 +814,14 @@ static bool cast_body(cast* context) {
 
     if (!cast_pal(context, &master, &assets) || !world_parse(context, &world)) return false;
 
-    u16* tileset_sheets = orb_arena_push_array(context->scratch, u16, world.tilesets.len);
+    cast_tileset* tilesets =
+        orb_arena_push_array(context->scratch, cast_tileset, world.tilesets.len);
 
     if (!cast_walk(context, context->manifest->fonts, ".aseprite", "", &fonts) ||
         !cast_unique(context, &fonts) ||
-        !cast_art(context, &master, &world, &fonts, &first_font_sheet, tileset_sheets, &assets) ||
+        !cast_art(context, &master, &world, &fonts, &first_font_sheet, tilesets, &assets) ||
         !font_cast(context, &fonts, first_font_sheet, &assets) ||
-        !world_cast(context, &world, tileset_sheets, &assets) || !cast_audio(context, &assets))
+        !world_cast(context, &world, tilesets, &assets) || !cast_audio(context, &assets))
         return false;
 
     context->result->file = orb_file_write(context->out, &assets);

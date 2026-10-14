@@ -61,6 +61,46 @@ int main(void) {
         CHECK(strstr(err.text, "stray: color 3 (200,9,0) is not in the master palette") != nullptr);
     }
 
+    // the limit counts packed tiles: 16,510 tiles that all differ are refused, and with the last
+    // row of 127 cleared, the 16,383 left pack, the cleared ones dropped
+    {
+        static alignas(16) u8 pack_mem[1 << 20], pixels[254 * 260];
+        static orb_ase image;
+        orb_arena pack_scratch;
+        orb_arena_init(&pack_scratch, "pack", pack_mem, sizeof pack_mem);
+        orb_ldtk_tileset tileset = {
+            .path = "big", .grid = 2, .columns = 127, .rows = 130, .width = 254, .height = 260
+        };
+        cast context = {.scratch = &pack_scratch, .err = &err};
+        cast_tileset packed;
+
+        for (int k = 0; k < 127 * 130; k++) {
+            int x = k % 127 * 2, y = k / 127 * 2;
+
+            pixels[y * 254 + x] = (u8)(1 + k % 255);
+            pixels[y * 254 + x + 1] = (u8)(1 + k / 255);
+        }
+
+        image.width = 254;
+        image.height = 260;
+        image.frame_count = 1;
+        image.frames = pixels;
+        CHECK(!cast_tileset_pack(&context, &image, &tileset, &packed));
+        CHECK(strstr(err.text, "tileset big: its tiles pack to more than 16383") != nullptr);
+
+        memset(pixels + 254 * 258, 0, 254 * 2);
+        CHECK(cast_tileset_pack(&context, &image, &tileset, &packed));
+        CHECK_EQ(packed.count, 16383);
+        CHECK_EQ(packed.ids[0], 1);
+        CHECK_EQ(packed.ids[127 * 129 - 1], 16383);
+        CHECK_EQ(packed.ids[127 * 129], 0);
+        CHECK_EQ(packed.columns, 127);
+        CHECK_EQ(packed.width, 254);
+        CHECK_EQ(packed.height, 258);
+        CHECK_EQ(packed.pixels[2 * 254 + 1], 1 + 127 / 255);
+        CHECK_EQ(packed.pixels[2 * 254], 1 + 127 % 255);
+    }
+
     // the directories are overridden to point at the checked-in fixtures; a game
     // that keeps the conventional layout names none of them
     const char* manifest_json =
@@ -464,8 +504,8 @@ int main(void) {
     CHECK(!orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
     CHECK(strstr(err.text, "not a level") != nullptr);
 
-    // two tileset definitions of one image share its sheet, one of them tagged; a level's fields
-    // follow the placements' in the fields section
+    // two tileset definitions of one image each pack into a sheet of their own, one of them
+    // tagged; a level's fields follow the placements' in the fields section
     const char* shared_project =
         "{\"jsonVersion\": \"1.5.3\", \"worldLayout\": \"Free\", \"externalLevels\": false,\n"
         " \"worlds\": [],\n"
@@ -514,7 +554,7 @@ int main(void) {
     CHECK(orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
     CHECK(orb_file_load(result.file, &assets, &err));
     CHECK_EQ(assets.tilesets.len, 2);
-    CHECK_EQ(assets.tilesets.elems[0].sheet, assets.sheets.len - 1);
+    CHECK_EQ(assets.tilesets.elems[0].sheet, assets.sheets.len - 2);
     CHECK_EQ(assets.tilesets.elems[1].sheet, assets.sheets.len - 1);
     CHECK_EQ(assets.tilesets.elems[1].count, 2);
     CHECK_EQ(assets.tileset_tags.elems[0], ORB_NO_INDEX);
@@ -532,6 +572,107 @@ int main(void) {
             "town"
         ) == 0
     );
+
+    // packing, on a font's sheet of 1px tiles: in the tagged definition, whose grid runs past
+    // 16,383 tiles, the blank untagged tiles drop, the blank tiles tagged rock are one tile and
+    // water's another, and the ink is a tile for rock, for water, and for none; the untagged
+    // definition packs its ink to one tile. A placed tile keeps its flips, one packing dropped is
+    // no tile, and a cell's dropped tiles add no sub-layer.
+    const char* packed_project =
+        "{\"jsonVersion\": \"1.5.3\", \"worldLayout\": \"Free\", \"externalLevels\": false,\n"
+        " \"worlds\": [],\n"
+        " \"defs\": {\"layers\": [\n"
+        "   {\"uid\": 2, \"identifier\": \"marks\", \"type\": \"Tiles\", \"gridSize\": 1,\n"
+        "    \"tilesetDefUid\": 7, \"parallaxFactorX\": 0, \"parallaxFactorY\": 0,\n"
+        "    \"parallaxScaling\": false},\n"
+        "   {\"uid\": 3, \"identifier\": \"plain\", \"type\": \"Tiles\", \"gridSize\": 1,\n"
+        "    \"tilesetDefUid\": 8, \"parallaxFactorX\": 0, \"parallaxFactorY\": 0,\n"
+        "    \"parallaxScaling\": false}],\n"
+        "  \"tilesets\": [\n"
+        "   {\"uid\": 7, \"identifier\": \"marks\",\n"
+        "    \"relPath\": \"../../../../tests/fixtures/fonts/body.aseprite\",\n"
+        "    \"pxWid\": 64, \"pxHei\": 36, \"tileGridSize\": 1, \"spacing\": 0, \"padding\": 0,\n"
+        "    \"__cWid\": 64, \"__cHei\": 300,\n"
+        "    \"enumTags\": [{\"enumValueId\": \"rock\", \"tileIds\": [0, 1, 4, 6]},\n"
+        "                 {\"enumValueId\": \"water\", \"tileIds\": [2, 8]}]},\n"
+        "   {\"uid\": 8, \"identifier\": \"plain\",\n"
+        "    \"relPath\": \"../../../../tests/fixtures/fonts/body.aseprite\",\n"
+        "    \"pxWid\": 64, \"pxHei\": 36, \"tileGridSize\": 1, \"spacing\": 0, \"padding\": 0,\n"
+        "    \"__cWid\": 64, \"__cHei\": 36}],\n"
+        "  \"entities\": [], \"enums\": []},\n"
+        " \"levels\": [{\"identifier\": \"Marks\", \"iid\": \"marks-iid\", \"uid\": 20,\n"
+        "   \"worldX\": 0, \"worldY\": 0, \"worldDepth\": 0, \"pxWid\": 4, \"pxHei\": 2,\n"
+        "   \"bgRelPath\": null, \"externalRelPath\": null, \"__neighbours\": [],\n"
+        "   \"fieldInstances\": [],\n"
+        "   \"layerInstances\": [\n"
+        "    {\"__identifier\": \"marks\", \"__type\": \"Tiles\", \"layerDefUid\": 2,\n"
+        "     \"__cWid\": 4, \"__cHei\": 2, \"__gridSize\": 1, \"__opacity\": 1,\n"
+        "     \"__pxTotalOffsetX\": 0, \"__pxTotalOffsetY\": 0, \"__tilesetDefUid\": 7,\n"
+        "     \"intGridCsv\": [], \"autoLayerTiles\": [], \"entityInstances\": [],\n"
+        "     \"gridTiles\": [\n"
+        "      {\"px\": [0, 0], \"src\": [3, 0], \"f\": 0, \"t\": 3, \"a\": 1},\n"
+        "      {\"px\": [1, 0], \"src\": [4, 0], \"f\": 1, \"t\": 4, \"a\": 1},\n"
+        "      {\"px\": [2, 0], \"src\": [6, 0], \"f\": 2, \"t\": 6, \"a\": 1},\n"
+        "      {\"px\": [3, 0], \"src\": [9, 0], \"f\": 0, \"t\": 9, \"a\": 1},\n"
+        "      {\"px\": [0, 1], \"src\": [1, 0], \"f\": 0, \"t\": 1, \"a\": 1},\n"
+        "      {\"px\": [1, 1], \"src\": [2, 0], \"f\": 0, \"t\": 2, \"a\": 1},\n"
+        "      {\"px\": [2, 1], \"src\": [8, 0], \"f\": 0, \"t\": 8, \"a\": 1},\n"
+        "      {\"px\": [3, 1], \"src\": [3, 0], \"f\": 0, \"t\": 3, \"a\": 1},\n"
+        "      {\"px\": [3, 1], \"src\": [5, 0], \"f\": 0, \"t\": 5, \"a\": 1},\n"
+        "      {\"px\": [3, 1], \"src\": [10, 0], \"f\": 0, \"t\": 10, \"a\": 1}]},\n"
+        "    {\"__identifier\": \"plain\", \"__type\": \"Tiles\", \"layerDefUid\": 3,\n"
+        "     \"__cWid\": 4, \"__cHei\": 2, \"__gridSize\": 1, \"__opacity\": 1,\n"
+        "     \"__pxTotalOffsetX\": 0, \"__pxTotalOffsetY\": 0, \"__tilesetDefUid\": 8,\n"
+        "     \"intGridCsv\": [], \"autoLayerTiles\": [], \"entityInstances\": [],\n"
+        "     \"gridTiles\": [\n"
+        "      {\"px\": [0, 0], \"src\": [4, 0], \"f\": 0, \"t\": 4, \"a\": 1},\n"
+        "      {\"px\": [1, 0], \"src\": [0, 0], \"f\": 0, \"t\": 0, \"a\": 1}]}]}]}\n";
+    CHECK(orb_os_write_file(
+        DIR "/levels/world.ldtk", (u8_span) {(u8*)packed_project, strlen(packed_project)}
+    ));
+    orb_arena_clear(&scratch);
+    orb_arena_clear(&out);
+    CHECK(orb_cast_game(&scratch, &out, DIR, &manifest, &result, &err));
+    CHECK(orb_file_load(result.file, &assets, &err));
+    CHECK_EQ(assets.tilesets.len, 2);
+    CHECK_EQ(assets.tilesets.elems[0].count, 5);
+    CHECK_EQ(assets.tilesets.elems[0].columns, 64);
+    CHECK_EQ(assets.tilesets.elems[1].count, 1);
+    CHECK_EQ(assets.tileset_tags.elems[1], ORB_NO_INDEX);
+    CHECK_EQ(assets.tile_tags.len, 5);
+
+    const orb_sheet_desc* marks_sheet = &assets.sheets.elems[assets.tilesets.elems[0].sheet];
+    const u8* marks_pixels = assets.pixels.elems + marks_sheet->pixels;
+    CHECK_EQ(marks_sheet->width, 64);
+    CHECK_EQ(marks_sheet->height, 1);
+    CHECK_EQ(marks_pixels[0], 0);
+    CHECK_EQ(marks_pixels[1], 0);
+    CHECK(marks_pixels[2] != 0);
+    CHECK_EQ(marks_pixels[3], marks_pixels[2]);
+    CHECK_EQ(marks_pixels[4], marks_pixels[2]);
+
+    const orb_layer_desc* plain_layer = &assets.layers.elems[0];
+    CHECK_EQ(plain_layer->sublayers, 1);
+    CHECK_EQ(assets.tiles.elems[plain_layer->tiles + 0], 1);
+    CHECK_EQ(assets.tiles.elems[plain_layer->tiles + 1], 0);
+
+    const orb_layer_desc* marks_layer = &assets.layers.elems[1];
+    const u16* marked = assets.tiles.elems + marks_layer->tiles;
+    CHECK_EQ(marks_layer->sublayers, 1);
+    CHECK_EQ(marked[0], 0);
+    CHECK_EQ(marked[1], 3 | ORB_TILE_FLIP_X);
+    CHECK_EQ(marked[2], 3 | ORB_TILE_FLIP_Y);
+    CHECK_EQ(marked[3], 5);
+    CHECK_EQ(marked[4 + 0], 1);
+    CHECK_EQ(marked[4 + 1], 2);
+    CHECK_EQ(marked[4 + 2], 4);
+    CHECK_EQ(marked[4 + 3], 5);
+    CHECK(strcmp(orb_tilemap_tile_tag(&assets, ORB_LEVEL(0), 1, (orb_vec2) {0, 0}), "") == 0);
+    CHECK(strcmp(orb_tilemap_tile_tag(&assets, ORB_LEVEL(0), 1, (orb_vec2) {2, 0}), "rock") == 0);
+    CHECK(strcmp(orb_tilemap_tile_tag(&assets, ORB_LEVEL(0), 1, (orb_vec2) {0, 1}), "rock") == 0);
+    CHECK(strcmp(orb_tilemap_tile_tag(&assets, ORB_LEVEL(0), 1, (orb_vec2) {1, 1}), "water") == 0);
+    CHECK(strcmp(orb_tilemap_tile_tag(&assets, ORB_LEVEL(0), 1, (orb_vec2) {2, 1}), "water") == 0);
+    CHECK(strcmp(orb_tilemap_tile_tag(&assets, ORB_LEVEL(0), 1, (orb_vec2) {3, 1}), "") == 0);
 
     // clean up so later casts in this file, which use the default world path,
     // find no project again

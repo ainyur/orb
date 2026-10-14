@@ -128,5 +128,67 @@ int main(void) {
         !orb_ase_parse(&scratch, (u8_span) {too_many_colors, sizeof too_many_colors}, &ase, &err)
     );
     CHECK(strstr(err.text, "more than 256 colors") != nullptr);
+
+    // A 6x2 tilemap layer over a tileset of three 2x2 tiles (tile 0 empty), its row of tiles 1, 0,
+    // and 2 flattened as LDtk flattens it; each zlib stream is one stored block.
+    static const u8 tilemap[316] = {
+        [0] = 60,     [1] = 1,                                  // file size: 316
+        [4] = 0xE0,   [5] = 0xA5,                               // magic
+        [6] = 1,                                                // frame_count
+        [8] = 6,      [10] = 2,                                 // width, height
+        [12] = 8,                                               // color depth: indexed
+        [128] = 188,                                            // frame size
+        [132] = 0xFA, [133] = 0xF1,                             // frame magic
+        [134] = 3,                                              // chunk_count
+        [144] = 28,                                             // layer chunk: size
+        [148] = 0x04, [149] = 0x20,                             // type
+        [150] = 1,                                              // flags: visible
+        [152] = 2,                                              // layer type: tilemap
+        [162] = 255,                                            // opacity; no name; tileset 0
+        [172] = 67,                                             // tileset chunk: size
+        [176] = 0x23, [177] = 0x20,                             // type
+        [182] = 2,                                              // flags: its tiles in this file
+        [186] = 3,                                              // three tiles
+        [190] = 2,    [192] = 2,                                // each 2x2
+        [194] = 1,                                              // base index; no name
+        [212] = 23,                                             // the tiles' stream: its size
+        [216] = 0x78, [217] = 0x01,                             // zlib's header
+        [218] = 0x01, [219] = 12,   [221] = 0xF3, [222] = 0xFF, // a last stored block of 12
+        [227] = 1,    [228] = 2,    [229] = 3,    [230] = 4,    // tile 1
+        [231] = 5,    [232] = 5,    [233] = 5,                  // tile 2
+        [239] = 77,                                             // cel chunk: size
+        [243] = 0x05, [244] = 0x20,                             // type
+        [251] = 255,                                            // opacity
+        [252] = 3,                                              // cel type: compressed tilemap
+        [261] = 3,    [263] = 1,                                // three tiles by one
+        [265] = 32,                                             // bits a tile
+        [267] = 0xFF, [268] = 0xFF, [269] = 0xFF, [270] = 0x1F, // the id's bits
+        [274] = 0x80, [278] = 0x40, [282] = 0x20,               // the flips' bits
+        [293] = 0x78, [294] = 0x01,                             // zlib's header
+        [295] = 0x01, [296] = 12,   [298] = 0xF3, [299] = 0xFF, // a last stored block of 12
+        [300] = 1,    [308] = 2,                                // tiles 1, 0, and 2
+    };
+    static u8 changed[sizeof tilemap];
+    static const u8 flat[12] = {1, 2, 0, 0, 5, 5, 3, 4, 0, 0, 5, 0};
+
+    CHECK(orb_ase_parse(&scratch, (u8_span) {(u8*)tilemap, sizeof tilemap}, &ase, &err));
+    CHECK_EQ(ase.width, 6);
+    CHECK(memcmp(ase.frames, flat, sizeof flat) == 0);
+
+    // a flipped tile, a tile past the tileset, and a tileset kept in another file are refused
+    memcpy(changed, tilemap, sizeof tilemap);
+    changed[311] = 0x80;
+    CHECK(!orb_ase_parse(&scratch, (u8_span) {changed, sizeof changed}, &ase, &err));
+    CHECK(strstr(err.text, "a tilemap tile is flipped, which LDtk does not draw") != nullptr);
+
+    memcpy(changed, tilemap, sizeof tilemap);
+    changed[308] = 3;
+    CHECK(!orb_ase_parse(&scratch, (u8_span) {changed, sizeof changed}, &ase, &err));
+    CHECK(strstr(err.text, "a tilemap tile is past its tileset") != nullptr);
+
+    memcpy(changed, tilemap, sizeof tilemap);
+    changed[182] = 1;
+    CHECK(!orb_ase_parse(&scratch, (u8_span) {changed, sizeof changed}, &ase, &err));
+    CHECK(strstr(err.text, "a tileset's tiles are not in the file") != nullptr);
     return 0;
 }

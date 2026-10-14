@@ -43,12 +43,14 @@ static bool world_parse(cast* context, orb_ldtk* world) {
 }
 
 // The maximum number of tiles any one cell of the layer receives, counted with
-// a per-cell counter pushed and popped from scratch. A cell over ORB_MAX_SUBLAYERS
-// is an error naming the level, the layer, and the cell.
+// a per-cell counter pushed and popped from scratch; a tile packing dropped is not
+// counted. A cell over ORB_MAX_SUBLAYERS is an error naming the level, the layer,
+// and the cell.
 static bool world_sublayers(
     cast* context,
     const orb_ldtk_level* level,
     const orb_ldtk_layer* layer,
+    const cast_tileset* packed,
     u32* out
 ) {
     orb_arena* scratch = context->scratch;
@@ -59,6 +61,9 @@ static bool world_sublayers(
 
     for (u32 i = 0; i < layer->tiles.len; i++) {
         const orb_ldtk_tile* tile = &layer->tiles.elems[i];
+
+        if (!packed[layer->tileset].ids[tile->id]) continue;
+
         u32 cell = (u32)tile->cell_y * (u32)layer->columns + tile->cell_x;
         u32 depth = ++counts[cell];
 
@@ -379,7 +384,12 @@ typedef struct world_sizes {
 
 // Level and layer counts against their limits, and each layer's sublayer depth
 // (from world_sublayers), which sizes the tiles section.
-static bool world_size(cast* context, const orb_ldtk* world, world_sizes* out) {
+static bool world_size(
+    cast* context,
+    const orb_ldtk* world,
+    const cast_tileset* packed,
+    world_sizes* out
+) {
     if ((u32)world->levels.len > ORB_MAX_LEVELS)
         return orb_error_set(
             context->err, "%s: more than %u levels", context->manifest->world, ORB_MAX_LEVELS
@@ -416,7 +426,7 @@ static bool world_size(cast* context, const orb_ldtk* world, world_sizes* out) {
             u32 area = (u32)layer->columns * layer->rows;
             u32 depth;
 
-            if (!world_sublayers(context, level, layer, &depth)) return false;
+            if (!world_sublayers(context, level, layer, packed, &depth)) return false;
 
             sublayers[k] = (u8)depth;
 
@@ -441,51 +451,51 @@ static bool world_size(cast* context, const orb_ldtk* world, world_sizes* out) {
     return true;
 }
 
-// The tileset table: sheet index, grid metrics, and the tile-id bound each layer checks against.
-static bool world_tilesets(
-    cast* context,
+// The tileset table: each definition's sheet of packed tiles, its grid, and its packed count,
+// the tile-id bound each layer checks against.
+static void world_tilesets(
     const orb_ldtk* world,
-    const u16* tileset_sheets,
+    const cast_tileset* packed,
     orb_tileset_desc* tilesets
 ) {
-    for (u32 i = 0; i < world->tilesets.len; i++) {
-        const orb_ldtk_tileset* tileset = &world->tilesets.elems[i];
-        u32 slots = (u32)tileset->columns * tileset->rows;
-
-        if (slots > ORB_MAX_TILE_ID + 1)
-            return orb_error_set(
-                context->err, "tileset %s: %u tiles is more than %u", tileset->path, slots,
-                ORB_MAX_TILE_ID + 1
-            );
-
+    for (u32 i = 0; i < world->tilesets.len; i++)
         tilesets[i] = (orb_tileset_desc) {
-            .sheet = tileset_sheets[i],
-            .grid = (u16)tileset->grid,
-            .spacing = (u16)tileset->spacing,
-            .padding = (u16)tileset->padding,
-            .columns = (u16)tileset->columns,
-            .count = (u16)slots
+            .sheet = packed[i].sheet,
+            .grid = (u16)world->tilesets.elems[i].grid,
+            .columns = packed[i].columns,
+            .count = (u16)packed[i].count
         };
-    }
-
-    return true;
 }
 
-// The tile tag sections: each tagged tileset's run of tile tags, each tag the offset of its name
-// in the tag text, which holds each name once.
-static void world_tags(cast* context, const orb_ldtk* world, orb_assets* assets) {
+// The tile as a layer holds it: its packed id + 1 and its flips, or 0 when packing dropped it.
+static u16 world_tile(const cast_tileset* tileset, const orb_ldtk_tile* tile) {
+    u32 id = tileset->ids[tile->id];
+
+    if (!id) return 0;
+
+    return (u16)(id | (tile->flip & 1 ? ORB_TILE_FLIP_X : 0) |
+                 (tile->flip & 2 ? ORB_TILE_FLIP_Y : 0));
+}
+
+// The tile tag sections: each tagged tileset's run of packed tiles' tags, each tag the offset of
+// its name in the tag text, which holds each name once.
+static void world_tags(
+    cast* context,
+    const orb_ldtk* world,
+    const cast_tileset* packed,
+    orb_assets* assets
+) {
     orb_arena* scratch = context->scratch;
     u32 tile_total = 0, text_total = 0;
 
     for (u32 i = 0; i < world->tilesets.len; i++) {
-        const orb_ldtk_tileset* tileset = &world->tilesets.elems[i];
-        u32 count = (u32)tileset->columns * tileset->rows;
+        const cast_tileset* tileset = &packed[i];
 
         if (!tileset->tags) continue;
 
-        tile_total += count;
+        tile_total += tileset->count;
 
-        for (u32 tile = 0; tile < count; tile++)
+        for (u32 tile = 0; tile < tileset->count; tile++)
             if (tileset->tags[tile]) text_total += (u32)strlen(tileset->tags[tile]) + 1;
     }
 
@@ -495,12 +505,11 @@ static void world_tags(cast* context, const orb_ldtk* world, orb_assets* assets)
     u32 tile_offset = 0, text_used = 0;
 
     for (u32 i = 0; i < world->tilesets.len; i++) {
-        const orb_ldtk_tileset* tileset = &world->tilesets.elems[i];
-        u32 count = (u32)tileset->columns * tileset->rows;
+        const cast_tileset* tileset = &packed[i];
 
         tileset_tags[i] = tileset->tags ? tile_offset : ORB_NO_INDEX;
 
-        for (u32 tile = 0; tileset->tags && tile < count; tile++) {
+        for (u32 tile = 0; tileset->tags && tile < tileset->count; tile++) {
             const char* name = tileset->tags[tile];
             u32 at = 0;
 
@@ -562,13 +571,13 @@ static bool world_neighbors(
 static bool world_cast(
     cast* context,
     const orb_ldtk* world,
-    const u16* tileset_sheets,
+    const cast_tileset* packed,
     orb_assets* assets
 ) {
     orb_arena* scratch = context->scratch;
     world_sizes sizes;
 
-    if (!world_size(context, world, &sizes)) return false;
+    if (!world_size(context, world, packed, &sizes)) return false;
 
     orb_tileset_desc* tilesets =
         orb_arena_push_array(scratch, orb_tileset_desc, world->tilesets.len);
@@ -581,7 +590,7 @@ static bool world_cast(
     u64* level_ids = orb_arena_push_array(scratch, u64, world->levels.len);
     u64* layer_ids = orb_arena_push_array(scratch, u64, sizes.layer_total);
 
-    if (!world_tilesets(context, world, tileset_sheets, tilesets)) return false;
+    world_tilesets(world, packed, tilesets);
 
     u32 layer_offset = 0, neighbor_offset = 0, tile_offset = 0, cell_offset = 0;
 
@@ -637,12 +646,14 @@ static bool world_cast(
 
                 for (u32 tile_index = 0; tile_index < layer->tiles.len; tile_index++) {
                     const orb_ldtk_tile* tile = &layer->tiles.elems[tile_index];
+                    u16 stored = world_tile(&packed[layer->tileset], tile);
+
+                    if (!stored) continue;
+
                     u32 cell = (u32)tile->cell_y * (u32)layer->columns + tile->cell_x;
                     u32 plane = plane_of[cell]++;
-                    u16 flags = (u16)((tile->flip & 1 ? ORB_TILE_FLIP_X : 0) |
-                                      (tile->flip & 2 ? ORB_TILE_FLIP_Y : 0));
 
-                    tiles[tile_offset + plane * area + cell] = (u16)((tile->id + 1) | flags);
+                    tiles[tile_offset + plane * area + cell] = stored;
                 }
 
                 scratch->used = mark;
@@ -663,7 +674,7 @@ static bool world_cast(
 
     if (!world_cast_entities(context, world, levels, assets)) return false;
 
-    world_tags(context, world, assets);
+    world_tags(context, world, packed, assets);
 
     assets->tilesets = (orb_tileset_desc_span) {tilesets, (u32)world->tilesets.len};
     assets->levels = (orb_level_desc_span) {levels, (u32)world->levels.len};

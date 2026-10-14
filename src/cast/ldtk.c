@@ -397,10 +397,6 @@ static bool ldtk_tile_tags(
     if (!enum_tags || enum_tags->kind == ORB_JSON_NULL) return true;
     if (enum_tags->kind != ORB_JSON_ARRAY) return ldtk_fail(reader, "enumTags is not an array");
     if (enum_tags->count == 0) return true;
-    if (count > ORB_MAX_TILE_ID + 1)
-        return ldtk_fail(
-            reader, "tileset %s: %u tiles is more than %u", path, count, ORB_MAX_TILE_ID + 1
-        );
 
     const char** tags = orb_arena_push_array(reader->scratch, const char*, count);
 
@@ -644,8 +640,7 @@ static bool ldtk_tiles(
 
             int id;
             if (!ldtk_int(reader, entry, "t", &id)) return false;
-            if (id < 0 || id > (int)ORB_MAX_TILE_ID)
-                return ldtk_fail(reader, "tile id %d does not fit", id);
+            if (id < 0) return ldtk_fail(reader, "tile id %d does not fit", id);
             if ((u64)id >= (u64)tileset->columns * tileset->rows)
                 return ldtk_fail(reader, "tile id %d is past the tileset", id);
 
@@ -665,7 +660,7 @@ static bool ldtk_tiles(
             if (alpha != 1) return ldtk_fail(reader, "tile alpha %g is not 1", alpha);
 
             tiles[tile_index] = (orb_ldtk_tile) {
-                .cell_x = (u16)cell_x, .cell_y = (u16)cell_y, .id = (u16)id, .flip = (u8)flip
+                .cell_x = (u16)cell_x, .cell_y = (u16)cell_y, .id = (u32)id, .flip = (u8)flip
             };
         }
     }
