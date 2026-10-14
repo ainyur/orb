@@ -231,6 +231,9 @@ static bool file_check_levels(const orb_assets* out, orb_error* err) {
                     err, "orb file: layer %u holds tile %u past its tileset", i, id
                 );
 
+            if (!id && out->tiles.elems[layer->tiles + k])
+                return orb_error_set(err, "orb file: layer %u holds a flipped empty tile", i);
+
             if (!id) continue;
 
             const orb_sheet_desc* sheet = &out->sheets.elems[tileset->sheet];

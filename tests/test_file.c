@@ -613,6 +613,11 @@ int main(void) {
     CHECK(!orb_file_load(file, &out, &err));
     CHECK(strstr(err.text, "tile") != nullptr);
     tiles[1] = 2;
+    tiles[2] = ORB_TILE_FLIP_X; // flags without an id
+    file = orb_file_write(&scratch, &in);
+    CHECK(!orb_file_load(file, &out, &err));
+    CHECK(strstr(err.text, "flipped empty tile") != nullptr);
+    tiles[2] = 0;
     neighbors[0].level = 2;
     file = orb_file_write(&scratch, &in);
     CHECK(!orb_file_load(file, &out, &err));
