@@ -94,6 +94,10 @@ static void api_layer_draw(orb_level level, int layer) {
     orb_tilemap_draw(&api_fb, &api_assets.assets, api_camera, level, layer);
 }
 
+static void api_layer_draw_rect(orb_level level, int layer, orb_rect rect) {
+    orb_tilemap_draw_rect(&api_fb, &api_assets.assets, api_camera, level, layer, rect);
+}
+
 static orb_level api_level_find(const char* stem) {
     u32 index = orb_asset_find(&api_assets, ORB_ASSET_LEVEL, orb_asset_id(stem, ""));
 
@@ -244,6 +248,7 @@ static const orb_api api_table = {
     .layer_find = api_layer_find,
     .layer_info = api_layer_info,
     .layer_draw = api_layer_draw,
+    .layer_draw_rect = api_layer_draw_rect,
     .level_find = api_level_find,
     .level_bounds = api_level_bounds,
     .level_neighbors = api_level_neighbors,

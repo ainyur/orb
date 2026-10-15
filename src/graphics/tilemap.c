@@ -152,12 +152,41 @@ orb_level_neighbor_list orb_tilemap_level_neighbors(
     return list;
 }
 
-void orb_tilemap_draw(
+// Blits one tile at a screen position, flipped by flags, leaving out its pixels outside clip.
+static void tilemap_blit(
+    orb_fb* fb,
+    const u8* src,
+    int stride,
+    int grid,
+    orb_vec2 at,
+    u32 flags,
+    orb_rect clip
+) {
+    int left = orb_max(at.x, clip.at.x);
+    int top = orb_max(at.y, clip.at.y);
+    int right = orb_min(at.x + grid, clip.at.x + clip.size.width);
+    int bottom = orb_min(at.y + grid, clip.at.y + clip.size.height);
+
+    if (left >= right || top >= bottom) return;
+
+    // a flipped axis takes the part shown from the tile's far side
+    int x = flags & ORB_FLIP_X ? at.x + grid - right : left - at.x;
+    int y = flags & ORB_FLIP_Y ? at.y + grid - bottom : top - at.y;
+
+    orb_fb_blit(
+        fb, src + (usize)y * stride + x, stride, (orb_size) {right - left, bottom - top},
+        (orb_vec2) {left, top}, flags, nullptr
+    );
+}
+
+// Draws the layer under the camera, only its pixels inside clip, a rectangle of the framebuffer.
+static void tilemap_draw_clipped(
     orb_fb* fb,
     const orb_assets* assets,
     orb_vec2f cam,
     orb_level level,
-    int layer
+    int layer,
+    orb_rect clip
 ) {
     const orb_layer_desc* layer_desc = tilemap_layer(assets, level, layer);
 
@@ -179,11 +208,13 @@ void orb_tilemap_draw(
     f32 anchor_y = level_desc->world_y + (level_desc->height - layer_desc->offset_y) / 2.0f;
     int origin_y = level_desc->world_y + layer_desc->offset_y -
                    orb_floor(cam.y - (center_y - anchor_y) * layer_desc->parallax_y);
-    // Only the cells the framebuffer can see.
-    int first_x = orb_max(0, -origin_x / grid);
-    int last_x = orb_min(layer_desc->columns, (fb->width - origin_x + grid - 1) / grid);
-    int first_y = orb_max(0, -origin_y / grid);
-    int last_y = orb_min(layer_desc->rows, (fb->height - origin_y + grid - 1) / grid);
+    // Only the cells inside the clip.
+    int first_x = orb_max(0, (clip.at.x - origin_x) / grid);
+    int last_x =
+        orb_min(layer_desc->columns, (clip.at.x + clip.size.width - origin_x + grid - 1) / grid);
+    int first_y = orb_max(0, (clip.at.y - origin_y) / grid);
+    int last_y =
+        orb_min(layer_desc->rows, (clip.at.y + clip.size.height - origin_y + grid - 1) / grid);
 
     for (int sublayer = 0; sublayer < layer_desc->sublayers; sublayer++) {
         const u16* tiles = assets->tiles.elems + layer_desc->tiles + (usize)sublayer * area;
@@ -202,12 +233,45 @@ void orb_tilemap_draw(
                 u32 flags = (tile & ORB_TILE_FLIP_X ? ORB_FLIP_X : 0) |
                             (tile & ORB_TILE_FLIP_Y ? ORB_FLIP_Y : 0);
 
-                orb_fb_blit(
-                    fb, pixels + (usize)src_y * sheet->width + src_x, sheet->width,
-                    (orb_size) {tileset->grid, tileset->grid},
-                    (orb_vec2) {origin_x + x * grid, origin_y + y * grid}, flags, nullptr
+                tilemap_blit(
+                    fb, pixels + (usize)src_y * sheet->width + src_x, sheet->width, tileset->grid,
+                    (orb_vec2) {origin_x + x * grid, origin_y + y * grid}, flags, clip
                 );
             }
         }
     }
+}
+
+void orb_tilemap_draw(
+    orb_fb* fb,
+    const orb_assets* assets,
+    orb_vec2f cam,
+    orb_level level,
+    int layer
+) {
+    tilemap_draw_clipped(
+        fb, assets, cam, level, layer, (orb_rect) {{0, 0}, {fb->width, fb->height}}
+    );
+}
+
+void orb_tilemap_draw_rect(
+    orb_fb* fb,
+    const orb_assets* assets,
+    orb_vec2f cam,
+    orb_level level,
+    int layer,
+    orb_rect rect
+) {
+    // the rectangle on the screen, as a sprite at its corner lies, cut to the framebuffer
+    i64 left = orb_max((i64)rect.at.x - orb_floor(cam.x), 0);
+    i64 top = orb_max((i64)rect.at.y - orb_floor(cam.y), 0);
+    i64 right = orb_min((i64)rect.at.x + rect.size.width - orb_floor(cam.x), (i64)fb->width);
+    i64 bottom = orb_min((i64)rect.at.y + rect.size.height - orb_floor(cam.y), (i64)fb->height);
+
+    if (left >= right || top >= bottom) return;
+
+    tilemap_draw_clipped(
+        fb, assets, cam, level, layer,
+        (orb_rect) {{(int)left, (int)top}, {(int)(right - left), (int)(bottom - top)}}
+    );
 }

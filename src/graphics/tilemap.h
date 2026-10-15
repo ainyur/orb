@@ -26,3 +26,12 @@ void orb_tilemap_draw(
     orb_level level,
     int layer
 );
+// What orb_tilemap_draw draws, only its pixels inside rect, a rectangle of world pixels.
+void orb_tilemap_draw_rect(
+    orb_fb* fb,
+    const orb_assets* assets,
+    orb_vec2f cam,
+    orb_level level,
+    int layer,
+    orb_rect rect
+);

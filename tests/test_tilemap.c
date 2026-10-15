@@ -79,6 +79,69 @@ int main(void) {
     CHECK_EQ(at(&fb, 0, 0), 5); // tile 1's bottom-right at world (13, -3)
     orb_tilemap_draw(&fb, &assets, (orb_vec2f) {1e6f, -1e6f}, ORB_LEVEL(0), 0);
 
+    // a rectangle of world pixels: only the pixels inside it, tiles cut at its edges, flips kept
+    orb_fb_clear(&fb, 0);
+    orb_tilemap_draw_rect(
+        &fb, &assets, (orb_vec2f) {10, -4}, ORB_LEVEL(0), 0, (orb_rect) {{11, -3}, {2, 2}}
+    );
+    CHECK_EQ(at(&fb, 1, 1), 1); // tile 0's bottom-right
+    CHECK_EQ(at(&fb, 2, 1), 4); // tile 1's bottom-left
+    CHECK_EQ(at(&fb, 1, 2), 2); // tile 1 flipped X: its top-right shows 2
+    CHECK_EQ(at(&fb, 2, 2), 4); // tile 1 flipped Y: its top-left shows 4
+    CHECK_EQ(at(&fb, 0, 1), 0); // tile 0's bottom-left, left of the rectangle
+    CHECK_EQ(at(&fb, 3, 1), 0); // tile 1's bottom-right, right of it
+    CHECK_EQ(at(&fb, 1, 0), 0); // above it
+    CHECK_EQ(at(&fb, 1, 3), 0); // below it
+
+    // a flipped tile cut at its right edge shows the part from its far side
+    orb_fb_clear(&fb, 0);
+    orb_tilemap_draw_rect(
+        &fb, &assets, (orb_vec2f) {10, -4}, ORB_LEVEL(0), 0, (orb_rect) {{10, -2}, {1, 1}}
+    );
+    CHECK_EQ(at(&fb, 0, 2), 3); // tile 1 flipped X: its top-left shows 3
+    CHECK_EQ(at(&fb, 1, 2), 0);
+
+    // a fractional camera floors as a sprite's does, so (10.9, -4.5) cuts as (10, -5) does
+    orb_fb_clear(&fb, 0);
+    orb_tilemap_draw_rect(
+        &fb, &assets, (orb_vec2f) {10.9f, -4.5f}, ORB_LEVEL(0), 0, (orb_rect) {{11, -3}, {2, 2}}
+    );
+    CHECK_EQ(at(&fb, 1, 2), 1); // tile 0's bottom-right, the layer a pixel lower
+    CHECK_EQ(at(&fb, 3, 2), 0);
+    CHECK_EQ(at(&fb, 2, 1), 0); // above it, where truncating -4.5 to -4 would start it
+    CHECK_EQ(at(&fb, 2, 3), 4);
+
+    // a rectangle holding the whole screen draws what orb_tilemap_draw draws
+    u8 whole[W * H];
+
+    orb_fb_clear(&fb, 0);
+    orb_tilemap_draw(&fb, &assets, (orb_vec2f) {13, -3}, ORB_LEVEL(0), 0);
+    memcpy(whole, fb.px, sizeof whole);
+    orb_fb_clear(&fb, 0);
+    orb_tilemap_draw_rect(
+        &fb, &assets, (orb_vec2f) {13, -3}, ORB_LEVEL(0), 0, (orb_rect) {{0, -100}, {100, 200}}
+    );
+    CHECK(memcmp(whole, fb.px, sizeof whole) == 0);
+
+    // an empty rectangle, one turned inside out, and one off the screen draw nothing
+    orb_fb_clear(&fb, 0);
+    orb_tilemap_draw_rect(
+        &fb, &assets, (orb_vec2f) {10, -4}, ORB_LEVEL(0), 0, (orb_rect) {{10, -4}, {0, 4}}
+    );
+    orb_tilemap_draw_rect(
+        &fb, &assets, (orb_vec2f) {10, -4}, ORB_LEVEL(0), 0, (orb_rect) {{16, -4}, {-6, 4}}
+    );
+    orb_tilemap_draw_rect(
+        &fb, &assets, (orb_vec2f) {10, -4}, ORB_LEVEL(0), 0, (orb_rect) {{-100, -4}, {90, 4}}
+    );
+    orb_tilemap_draw_rect(
+        &fb, &assets, (orb_vec2f) {10, -4}, ORB_LEVEL(0), 0,
+        (orb_rect) {{INT_MIN, INT_MIN}, {INT_MAX, INT_MAX}}
+    );
+
+    for (int i = 0; i < W * H; i++)
+        CHECK_EQ(fb.px[i], 0);
+
     // layer 1: two sub-layers stack, the second (tile 1) over the first (tile 0); offset (1,1)
     // parallax anchors on the camera's center relative to the level's center (LDtk's rule)
     // origin_x = 11 - floor(0.5 * cam.x + 4.25) for parallax_x 0.5
@@ -250,6 +313,12 @@ int main(void) {
     api->layer_draw(cave, 0);
     CHECK_EQ(orb_api_fb()->px[0], 1);
     CHECK_EQ(orb_api_fb()->px[2], 2);
+    api->clear(0);
+    api->layer_draw_rect(cave, 0, (orb_rect) {{12, -4}, {2, 2}});
+    CHECK_EQ(orb_api_fb()->px[0], 0);
+    CHECK_EQ(orb_api_fb()->px[2], 2);
+    CHECK_EQ(orb_api_fb()->px[1 * W + 3], 5);
+    CHECK_EQ(orb_api_fb()->px[1 * W + 4], 0);
     CHECK_EQ(api->cell_get(cave, 0, (orb_vec2) {12, -4}), 7);
     CHECK(strcmp(api->tile_tag(cave, 1, (orb_vec2) {11, -3}), "grass") == 0);
 

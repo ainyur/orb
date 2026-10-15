@@ -441,7 +441,8 @@ constexpr int ORB_AUDIO_RATE = 48000;
 //
 // Levels. level_find("cave") is the LDtk level Cave; layer_find(level, "floor") is a layer
 // index within it, ORB_NO_INDEX when missing. layer_draw draws one layer in world space under
-// the camera; cell_get reads an IntGrid value at a world pixel, 0 outside. tile_tag reads a
+// the camera, and layer_draw_rect only its pixels inside a rectangle of world pixels, tiles cut
+// at its edges; cell_get reads an IntGrid value at a world pixel, 0 outside. tile_tag reads a
 // layer's cell at a world pixel: the enum tag its tileset gives the topmost tile that has one,
 // as "grass" for the value grass, or "" when none has; a tile with two tags fails the cast.
 // level_field_string(level, "music", 0) reads a level's field as entity_field_string reads a
@@ -556,6 +557,7 @@ typedef struct orb_api {
     int (*layer_find)(orb_level level, const char* name);
     orb_layer_info (*layer_info)(orb_level level, int layer);
     void (*layer_draw)(orb_level level, int layer);
+    void (*layer_draw_rect)(orb_level level, int layer, orb_rect rect);
     orb_level (*level_find)(const char* stem);
     orb_rect (*level_bounds)(orb_level level);
     orb_level_neighbor_list (*level_neighbors)(orb_level level);
